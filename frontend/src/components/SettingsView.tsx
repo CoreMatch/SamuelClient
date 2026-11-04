@@ -127,9 +127,9 @@ export default function SettingsView() {
     return '';
   };
 
-  // handleSaveConfig persists the in-progress memory settings to the
-  // backend (PUT /api/v1/launcher/config). On success it replaces `config`
-  // with the merged response from the server and clears the dirty flag.
+  // handleSaveConfig persists the in-progress memory settings through the
+  // UpdateLauncherConfig Wails binding. On success it replaces `config`
+  // with the merged response from the backend and clears the dirty flag.
   const handleSaveConfig = async () => {
     const validationError = validateMemorySettings();
     if (validationError) {

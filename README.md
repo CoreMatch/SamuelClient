@@ -8,7 +8,6 @@ A cross-platform Minecraft launcher built with [Wails](https://wails.io/) (Go + 
 - **Version management** — browse and download vanilla Minecraft versions, plus Fabric and Forge mod loaders
 - **Mod management** — open the `mods` folder for the active profile directly from the UI
 - **Java management** — track installed Java runtimes and set a default per profile
-- **Local HTTP API** — embedded [Gin](https://gin-gonic.com/) server exposing launcher functionality (auth, versions, downloads, launch, system info)
 - **Persistent storage** — embedded [SQLite](https://www.sqlite.org/) database for users, settings, logs, tasks, file records, and Java installations
 - **Cross-platform** — Windows, macOS, and Linux builds via Wails
 
@@ -16,7 +15,7 @@ A cross-platform Minecraft launcher built with [Wails](https://wails.io/) (Go + 
 
 | Layer    | Technology |
 |----------|------------|
-| Backend  | Go 1.25, [Wails v2](https://wails.io/), [Gin](https://gin-gonic.com/), [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) |
+| Backend  | Go 1.25, [Wails v2](https://wails.io/), [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) |
 | Frontend | React 19, TypeScript 5, [Vite 6](https://vitejs.dev/), [Material UI v6](https://mui.com/) |
 | Build    | Wails CLI (WebKitGTK 2.41+ on Linux) |
 
@@ -29,20 +28,15 @@ HRPML-Wails/
 ├── wails.json              # Wails project configuration
 ├── go.mod / go.sum         # Go module definition
 ├── internal/
-│   ├── config/             # Configuration loading
 │   ├── database/           # SQLite initialization and access
-│   ├── handlers/           # HTTP handlers (db, mc, generic)
-│   ├── middleware/         # Gin middleware (recovery, logger, CORS)
 │   ├── models/             # Domain & API models
 │   ├── repository/         # Data access layer
-│   ├── routes/             # Router setup
-│   └── services/           # HTTP service + platform-specific services
+│   └── services/           # Auth, download, and launcher services
 ├── frontend/
 │   ├── src/
 │   │   ├── components/     # React views (Home, Versions, Accounts, Mods, Settings, Debug, Login)
 │   │   ├── App.tsx         # Main app shell with navigation drawer
-│   │   ├── main.tsx        # React entry point
-│   │   └── variables.ts    # Shared frontend constants
+│   │   └── main.tsx        # React entry point
 │   ├── index.html
 │   ├── package.json
 │   ├── tsconfig.json
@@ -85,23 +79,6 @@ wails build
 
 The output binary is written to `build/bin/` (`SamuelClient` / `SamuelClient.exe`). Cross-compilation is supported via `wails build -platform windows/amd64` etc. — see the [Wails CLI reference](https://wails.io/docs/reference/cli#build).
 
-## HTTP API
-
-On startup, the embedded Gin server listens on the port configured in `internal/config` (see [config.go](file:///home/lnb/HRPML-Wails/internal/config/config.go)). The frontend talks to it through the Wails bindings in [app.go](file:///home/lnb/HRPML-Wails/app.go).
-
-Selected routes (all under `/api/v1`, plus a few legacy unprefixed routes for backward compatibility):
-
-| Group         | Example endpoints |
-|---------------|-------------------|
-| Health        | `GET /health`, `GET /ping`, `GET /hello/:name` |
-| Utility       | `POST /echo`, `GET /sysinfo` |
-| Database      | `GET/POST/PUT/DELETE /db/users`, `/db/settings`, `/db/logs`, `/db/tasks`, `/db/files`, `/db/java` |
-| Auth          | `GET /auth/meta`, `POST /auth/login`, `/auth/refresh`, `/auth/validate`, `/auth/offline` |
-| Versions      | `GET /versions`, `GET /versions/:id` |
-| Loaders       | `GET /fabric/versions`, `GET /forge/versions` |
-| Download      | `POST /download/version` |
-| Launcher      | `GET /launcher/config`, `POST /launcher/launch`, `GET /launcher/minecraft-dir`, `GET /launcher/installed-versions` |
-
 ## Frontend
 
 The UI is a single-page React app written in TypeScript and built with Vite. Material UI provides the component library. Views are organized around a left navigation drawer:
@@ -111,7 +88,7 @@ The UI is a single-page React app written in TypeScript and built with Vite. Mat
 - **Accounts** — add and switch between offline and Yggdrasil accounts
 - **Mods** — open the active profile's `mods` folder
 - **Settings** — application preferences
-- **Debug** — internal API and database diagnostics
+- **Debug** — database diagnostics
 
 Run frontend-only checks:
 
@@ -128,6 +105,5 @@ This project is licensed under the **GNU Affero General Public License v3.0** �
 ## Acknowledgements
 
 - [Wails](https://wails.io/) — Go + web frontend framework
-- [Gin](https://gin-gonic.com/) — HTTP web framework
 - [Material UI](https://mui.com/) — React component library
 - [authlib-injector](https://github.com/yushijinhun/authlib-injector) — Yggdrasil authentication reference
