@@ -373,6 +373,16 @@ func NewBMCLAPIService() *BMCLAPIService {
 	}
 }
 
+// NewBMCLAPIServiceWithBaseURL creates a BMCLAPIService against a custom
+// mirror base URL. It exists so tests can point the client at an httptest
+// server (no network access), and so a future mirror configuration
+// (LauncherConfig.BMCLAPIMirrors) can reuse it.
+func NewBMCLAPIServiceWithBaseURL(baseURL string) *BMCLAPIService {
+	svc := NewBMCLAPIService()
+	svc.baseURL = baseURL
+	return svc
+}
+
 // BMCLVersionManifestResponse represents the version manifest response from BMCLAPI
 type BMCLVersionManifestResponse struct {
 	Latest   map[string]string `json:"latest"`

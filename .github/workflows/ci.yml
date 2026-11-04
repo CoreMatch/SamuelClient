@@ -1,0 +1,56 @@
+# Minimal CI for SamuelClient (ADR-0004 follow-up): build, vet, and test only.
+# It never publishes artifacts.
+#
+# Order matters:
+#   1. `wails generate module` produces frontend/wailsjs (gitignored), which
+#      the frontend TypeScript imports.
+#   2. `npm run build` produces frontend/dist, which main.go embeds.
+#   3. Only then can `go build/vet/test` compile package main.
+# Plain `go build` (no production/webkit tags) compiles through Wails'
+# tag-gated stub, so no GTK/WebKit system packages are required here.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Generate Wails bindings
+        run: wails generate module
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Go build
+        run: go build ./...
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Go test
+        run: go test ./...

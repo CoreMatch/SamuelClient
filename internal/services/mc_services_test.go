@@ -1,0 +1,1288 @@
+package services
+
+import (
+	"archive/zip"
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
+	"testing"
+
+	"HRPMLW/internal/database"
+	"HRPMLW/internal/models"
+	"HRPMLW/internal/repository"
+)
+
+// TestMain initializes one temporary SQLite database for the whole test
+// binary (database.Initialize is sync.Once-guarded). The launcher-config
+// tests rely on it; tests that need a clean settings state delete the
+// launcher.* keys themselves.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "samuelclient-svctest")
+	if err != nil {
+		os.Exit(1)
+	}
+	if err := database.Initialize(&database.Config{Path: filepath.Join(dir, "svc.db")}); err != nil {
+		os.Exit(1)
+	}
+	code := m.Run()
+	_ = database.Close()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+// ==================== AuthService ====================
+
+const testMetaJSON = `{
+	"meta": {
+		"serverName": "TestAuth",
+		"implementationName": "TestImpl",
+		"implementationVersion": "1.0"
+	},
+	"signaturePublickey": "test-public-key",
+	"skinDomains": ["skin.example.com"]
+}`
+
+func TestGetAuthlibMeta(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, testMetaJSON)
+	}))
+	defer srv.Close()
+
+	auth := NewAuthService()
+	result := auth.GetAuthlibMeta(srv.URL)
+	if !result.Success {
+		t.Fatalf("GetAuthlibMeta failed: %s", result.Error)
+	}
+
+	data, ok := result.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("Data is %T, want map[string]interface{}", result.Data)
+	}
+	meta, ok := data["meta"].(*AuthlibServerMeta)
+	if !ok {
+		t.Fatalf("data[meta] is %T, want *AuthlibServerMeta", data["meta"])
+	}
+	if meta.Meta.ServerName != "TestAuth" {
+		t.Errorf("ServerName = %q, want TestAuth", meta.Meta.ServerName)
+	}
+	if meta.SignaturePublickey != "test-public-key" {
+		t.Errorf("SignaturePublickey = %q, want test-public-key", meta.SignaturePublickey)
+	}
+	raw, _ := data["raw"].(string)
+	if !strings.Contains(raw, "TestAuth") {
+		t.Errorf("raw body does not contain serverName: %q", raw)
+	}
+	if data["resolved_url"] != srv.URL+"/" {
+		t.Errorf("resolved_url = %v, want %s", data["resolved_url"], srv.URL+"/")
+	}
+}
+
+func TestGetAuthlibMetaFollowsALIRedirect(t *testing.T) {
+	var srvURL string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Point the client at /api per the authlib-injector ALI header.
+		w.Header().Set("X-Authlib-Injector-API-Location", srvURL+"/api")
+		io.WriteString(w, "homepage, not meta")
+	})
+	mux.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, testMetaJSON)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	srvURL = srv.URL
+
+	auth := NewAuthService()
+	result := auth.GetAuthlibMeta(srv.URL)
+	if !result.Success {
+		t.Fatalf("GetAuthlibMeta with ALI redirect failed: %s", result.Error)
+	}
+	data := result.Data.(map[string]interface{})
+	if data["resolved_url"] != srv.URL+"/api" {
+		t.Errorf("resolved_url = %v, want %s/api", data["resolved_url"], srv.URL)
+	}
+	meta := data["meta"].(*AuthlibServerMeta)
+	if meta.Meta.ServerName != "TestAuth" {
+		t.Errorf("ServerName after redirect = %q, want TestAuth", meta.Meta.ServerName)
+	}
+}
+
+func TestGetAuthlibMetaHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	result := NewAuthService().GetAuthlibMeta(srv.URL)
+	if result.Success {
+		t.Fatal("expected failure for HTTP 500")
+	}
+	if !strings.Contains(result.Error, "500") {
+		t.Errorf("error = %q, want mention of 500", result.Error)
+	}
+}
+
+func TestAuthenticateWithAuthlib(t *testing.T) {
+	var gotBody map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/authserver/authenticate" {
+			http.NotFound(w, r)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{
+			"accessToken": "access-123",
+			"clientToken": "client-456",
+			"availableProfiles": [{"id": "p1", "name": "PlayerOne"}],
+			"selectedProfile": {"id": "p1", "name": "PlayerOne"},
+			"user": {"id": "u1"}
+		}`)
+	}))
+	defer srv.Close()
+
+	auth := NewAuthService()
+	result := auth.AuthenticateWithAuthlib(srv.URL, "alice", "secret", "client-456")
+	if !result.Success {
+		t.Fatalf("AuthenticateWithAuthlib failed: %s", result.Error)
+	}
+
+	// The request must follow the Yggdrasil shape.
+	if gotBody["username"] != "alice" || gotBody["password"] != "secret" {
+		t.Errorf("credentials not transmitted: %v", gotBody)
+	}
+	if gotBody["clientToken"] != "client-456" {
+		t.Errorf("clientToken = %v, want client-456", gotBody["clientToken"])
+	}
+	if gotBody["requestUser"] != true {
+		t.Errorf("requestUser = %v, want true", gotBody["requestUser"])
+	}
+	agent, _ := gotBody["agent"].(map[string]interface{})
+	if agent == nil || agent["name"] != "Minecraft" {
+		t.Errorf("agent = %v, want Minecraft agent object", gotBody["agent"])
+	}
+
+	resp, ok := result.Data.(AuthlibAuthResponse)
+	if !ok {
+		t.Fatalf("Data is %T, want AuthlibAuthResponse", result.Data)
+	}
+	if resp.AccessToken != "access-123" || resp.SelectedProfile.Name != "PlayerOne" {
+		t.Errorf("unexpected auth response: %+v", resp)
+	}
+}
+
+func TestAuthenticateWithAuthlibErrorMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		io.WriteString(w, `{"errorMessage": "Invalid credentials. Invalid username or password."}`)
+	}))
+	defer srv.Close()
+
+	result := NewAuthService().AuthenticateWithAuthlib(srv.URL, "alice", "wrong", "")
+	if result.Success {
+		t.Fatal("expected failure for 403")
+	}
+	if !strings.Contains(result.Error, "Invalid credentials") {
+		t.Errorf("error = %q, want the server errorMessage", result.Error)
+	}
+}
+
+func TestRefreshAuthlibTokenWithProfile(t *testing.T) {
+	var gotBody map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/authserver/refresh" {
+			http.NotFound(w, r)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		io.WriteString(w, `{"accessToken": "new-token", "clientToken": "client-456", "selectedProfile": {"id": "p1", "name": "PlayerOne"}}`)
+	}))
+	defer srv.Close()
+
+	auth := NewAuthService()
+	result := auth.RefreshAuthlibTokenWithProfile(srv.URL, "old-token", "client-456", "p1")
+	if !result.Success {
+		t.Fatalf("refresh failed: %s", result.Error)
+	}
+	if gotBody["accessToken"] != "old-token" || gotBody["clientToken"] != "client-456" {
+		t.Errorf("tokens not transmitted: %v", gotBody)
+	}
+	profile, _ := gotBody["selectedProfile"].(map[string]interface{})
+	if profile == nil || profile["id"] != "p1" {
+		t.Errorf("selectedProfile = %v, want id p1", gotBody["selectedProfile"])
+	}
+	resp := result.Data.(AuthlibAuthResponse)
+	if resp.AccessToken != "new-token" {
+		t.Errorf("AccessToken = %q, want new-token", resp.AccessToken)
+	}
+}
+
+func TestValidateAuthlibToken(t *testing.T) {
+	cases := []struct {
+		name      string
+		status    int
+		body      string
+		wantOK    bool
+		wantError string
+	}{
+		{"204 valid", http.StatusNoContent, "", true, ""},
+		{"403 invalid", http.StatusForbidden, `{"errorMessage": "ForbiddenOperationException"}`, false, "Invalid token"},
+		{"500 with message", http.StatusInternalServerError, `{"errorMessage": "server broke"}`, false, "server broke"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				io.WriteString(w, tc.body)
+			}))
+			defer srv.Close()
+
+			result := NewAuthService().ValidateAuthlibToken(srv.URL, "token", "client")
+			if result.Success != tc.wantOK {
+				t.Fatalf("Success = %v, want %v (error: %s)", result.Success, tc.wantOK, result.Error)
+			}
+			if tc.wantError != "" && result.Error != tc.wantError {
+				t.Errorf("Error = %q, want %q", result.Error, tc.wantError)
+			}
+		})
+	}
+}
+
+// ==================== BMCLAPIService ====================
+
+// recordingMux wraps an http.ServeMux and records every request path in
+// order so orchestration tests can assert the stage sequence.
+type recordingMux struct {
+	mu    sync.Mutex
+	paths []string
+	mux   *http.ServeMux
+}
+
+func newRecordingMux() *recordingMux {
+	return &recordingMux{mux: http.NewServeMux()}
+}
+
+func (r *recordingMux) Handle(pattern string, handler http.HandlerFunc) {
+	r.mux.HandleFunc(pattern, func(w http.ResponseWriter, req *http.Request) {
+		r.mu.Lock()
+		r.paths = append(r.paths, req.URL.Path)
+		r.mu.Unlock()
+		handler(w, req)
+	})
+}
+
+func (r *recordingMux) recorded() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string{}, r.paths...)
+}
+
+func (r *recordingMux) server() *httptest.Server {
+	return httptest.NewServer(r.mux)
+}
+
+const testVersionID = "1.99"
+
+// installFixtures serves a complete fake BMCLAPI: version manifest, version
+// JSON, client jar, one plain library and one natives library (artifact +
+// classifier zip). Returns the server and the recorded request paths.
+func installFixtures(t *testing.T, jarStatus int) (*httptest.Server, *recordingMux) {
+	t.Helper()
+
+	versionJSON := fmt.Sprintf(`{
+		"id": %q,
+		"mainClass": "net.minecraft.client.main.Main",
+		"assetIndex": {"id": "5", "url": "https://piston-meta.mojang.com/v1/assets/5.json", "sha1": "x", "size": 1},
+		"assets": "5",
+		"downloads": {
+			"client": {"sha1": "c1", "size": 9, "url": "https://piston-data.mojang.com/v1/objects/c1/client.jar"}
+		},
+		"libraries": [
+			{
+				"name": "com.example:lib:1.0",
+				"downloads": {"artifact": {"path": "com/example/lib/1.0/lib-1.0.jar", "url": "https://libraries.minecraft.net/com/example/lib/1.0/lib-1.0.jar", "sha1": "l1", "size": 3}}
+			},
+			{
+				"name": "com.example:natives:1.0",
+				"downloads": {
+					"artifact": {"path": "com/example/natives/1.0/natives-1.0.jar", "url": "https://libraries.minecraft.net/com/example/natives/1.0/natives-1.0.jar", "sha1": "n1", "size": 3},
+					"classifiers": {
+						"natives-linux": {"path": "com/example/natives/1.0/natives-1.0-linux.jar", "url": "https://libraries.minecraft.net/com/example/natives/1.0/natives-1.0-linux.jar", "sha1": "n2", "size": 100}
+					}
+				}
+			}
+		],
+		"type": "release"
+	}`, testVersionID)
+
+	manifest := fmt.Sprintf(`{
+		"latest": {"release": %q},
+		"versions": [{"id": %q, "type": "release", "url": "https://piston-meta.mojang.com/v1/packages/abc/%s.json"}]
+	}`, testVersionID, testVersionID, testVersionID)
+
+	rec := newRecordingMux()
+	rec.Handle("/mc/game/version_manifest.json", func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, manifest)
+	})
+	rec.Handle("/v1/packages/abc/"+testVersionID+".json", func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, versionJSON)
+	})
+	rec.Handle("/v1/objects/c1/client.jar", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(jarStatus)
+		if jarStatus == http.StatusOK {
+			io.WriteString(w, "jar-bytes")
+		}
+	})
+	rec.Handle("/maven/com/example/lib/1.0/lib-1.0.jar", func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "lib")
+	})
+	rec.Handle("/maven/com/example/natives/1.0/natives-1.0.jar", func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "nat")
+	})
+	rec.Handle("/maven/com/example/natives/1.0/natives-1.0-linux.jar", func(w http.ResponseWriter, r *http.Request) {
+		w.Write(nativeZipFixture(t))
+	})
+
+	srv := rec.server()
+	t.Cleanup(srv.Close)
+	return srv, rec
+}
+
+// nativeZipFixture builds a real zip in memory containing one .so (which must
+// be extracted), one META-INF entry and one .txt file (both must be skipped).
+func nativeZipFixture(t *testing.T) []byte {
+	t.Helper()
+	buf := new(bytes.Buffer)
+	zw := zip.NewWriter(buf)
+	entries := []struct{ name, body string }{
+		{"libfoo.so", "native-bytes"},
+		{"META-INF/MANIFEST.MF", "Manifest-Version: 1.0"},
+		{"readme.txt", "not a native"},
+	}
+	for _, e := range entries {
+		w, err := zw.Create(e.name)
+		if err != nil {
+			t.Fatalf("zip create %q: %v", e.name, err)
+		}
+		if _, err := w.Write([]byte(e.body)); err != nil {
+			t.Fatalf("zip write %q: %v", e.name, err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("zip close: %v", err)
+	}
+	return buf.Bytes()
+}
+
+func TestGetVersionList(t *testing.T) {
+	srv, _ := installFixtures(t, http.StatusOK)
+	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
+
+	result := svc.GetVersionList()
+	if !result.Success {
+		t.Fatalf("GetVersionList failed: %s", result.Error)
+	}
+	manifest, ok := result.Data.(BMCLVersionManifestResponse)
+	if !ok {
+		t.Fatalf("Data is %T, want BMCLVersionManifestResponse", result.Data)
+	}
+	if len(manifest.Versions) != 1 || manifest.Versions[0].ID != testVersionID {
+		t.Errorf("unexpected manifest: %+v", manifest)
+	}
+	if manifest.Latest["release"] != testVersionID {
+		t.Errorf("latest.release = %q, want %s", manifest.Latest["release"], testVersionID)
+	}
+}
+
+func TestGetVersionListHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "nope", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).GetVersionList()
+	if result.Success {
+		t.Fatal("expected failure for HTTP 404")
+	}
+	if result.Error != "HTTP 404" {
+		t.Errorf("Error = %q, want HTTP 404", result.Error)
+	}
+}
+
+func TestGetVersionManifestRewritesMojangURL(t *testing.T) {
+	srv, rec := installFixtures(t, http.StatusOK)
+	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
+
+	// The caller passes the official Mojang URL; the service must rewrite it
+	// onto the mirror (here: the test server).
+	result := svc.GetVersionManifest("https://piston-meta.mojang.com/v1/packages/abc/" + testVersionID + ".json")
+	if !result.Success {
+		t.Fatalf("GetVersionManifest failed: %s", result.Error)
+	}
+	vj, ok := result.Data.(BMCLVersionJSON)
+	if !ok {
+		t.Fatalf("Data is %T, want BMCLVersionJSON", result.Data)
+	}
+	if vj.MainClass != "net.minecraft.client.main.Main" {
+		t.Errorf("MainClass = %q", vj.MainClass)
+	}
+	paths := rec.recorded()
+	if len(paths) != 1 || paths[0] != "/v1/packages/abc/"+testVersionID+".json" {
+		t.Errorf("recorded paths = %v, want the rewritten manifest path", paths)
+	}
+}
+
+func TestGetFabricAndForgeVersions(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/fabric-meta/v2/versions/loader/1.99", func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `[{"loader": {"version": "0.15.0"}}]`)
+	})
+	mux.HandleFunc("/forge/minecraft/1.99", func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `[{"version": "47.2.0"}]`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
+
+	fabric := svc.GetFabricVersions("1.99")
+	if !fabric.Success {
+		t.Fatalf("GetFabricVersions failed: %s", fabric.Error)
+	}
+	fabricList, ok := fabric.Data.([]map[string]interface{})
+	if !ok || len(fabricList) != 1 {
+		t.Fatalf("fabric Data = %T %v, want one entry", fabric.Data, fabric.Data)
+	}
+
+	forge := svc.GetForgeVersions("1.99")
+	if !forge.Success {
+		t.Fatalf("GetForgeVersions failed: %s", forge.Error)
+	}
+	forgeList, ok := forge.Data.([]map[string]interface{})
+	if !ok || len(forgeList) != 1 {
+		t.Fatalf("forge Data = %T %v, want one entry", forge.Data, forge.Data)
+	}
+}
+
+func TestDownloadFileWritesContentAndReportsProgress(t *testing.T) {
+	body := "download-me"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
+	dest := filepath.Join(t.TempDir(), "sub", "out.bin")
+
+	var calls []int64
+	result := svc.DownloadFile(srv.URL+"/file", dest, int64(len(body)), func(downloaded, total int64) {
+		calls = append(calls, downloaded)
+		if total != int64(len(body)) {
+			t.Errorf("progress total = %d, want %d", total, len(body))
+		}
+	})
+	if !result.Success {
+		t.Fatalf("DownloadFile failed: %s", result.Error)
+	}
+
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatalf("read downloaded file: %v", err)
+	}
+	if string(got) != body {
+		t.Errorf("file content = %q, want %q", got, body)
+	}
+	if len(calls) == 0 || calls[len(calls)-1] != int64(len(body)) {
+		t.Errorf("progress calls = %v, want final downloaded == %d", calls, len(body))
+	}
+}
+
+func TestDownloadFileHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "gone", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).DownloadFile(srv.URL+"/missing", filepath.Join(t.TempDir(), "x"), 0, nil)
+	if result.Success {
+		t.Fatal("expected failure for HTTP 404")
+	}
+}
+
+func TestDownloadLibrariesRewritesAndSkipsExisting(t *testing.T) {
+	var mu sync.Mutex
+	libRequests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/maven/com/example/lib/1.0/lib-1.0.jar" {
+			mu.Lock()
+			libRequests++
+			mu.Unlock()
+			io.WriteString(w, "lib")
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
+	libsDir := t.TempDir()
+	libs := []BMCLLibrary{{
+		Name: "com.example:lib:1.0",
+		Downloads: BMCLLibraryDownloads{
+			Artifact: BMCLArtifact{
+				Path: "com/example/lib/1.0/lib-1.0.jar",
+				URL:  "https://libraries.minecraft.net/com/example/lib/1.0/lib-1.0.jar",
+				Size: 3,
+			},
+		},
+	}}
+
+	var progressNames []string
+	result := svc.DownloadLibraries(libs, libsDir, func(name string, downloaded, total int64) {
+		progressNames = append(progressNames, name)
+	})
+	if !result.Success {
+		t.Fatalf("DownloadLibraries failed: %s", result.Error)
+	}
+
+	wantPath := filepath.Join(libsDir, "com", "example", "lib", "1.0", "lib-1.0.jar")
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("library not written to maven layout %q: %v", wantPath, err)
+	}
+	if len(progressNames) != 1 || progressNames[0] != "com.example:lib:1.0" {
+		t.Errorf("progress = %v, want one call for the library name", progressNames)
+	}
+
+	// Second run: the file exists, so no request must be made.
+	result = svc.DownloadLibraries(libs, libsDir, nil)
+	if !result.Success {
+		t.Fatalf("second DownloadLibraries failed: %s", result.Error)
+	}
+	mu.Lock()
+	if libRequests != 1 {
+		t.Errorf("library requested %d times, want 1 (existing file must be skipped)", libRequests)
+	}
+	mu.Unlock()
+}
+
+func TestDownloadLibrariesReportsFailureButContinues(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/maven/good.jar" {
+			io.WriteString(w, "ok")
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
+	libsDir := t.TempDir()
+	libs := []BMCLLibrary{
+		{Name: "com.example:bad:1.0", Downloads: BMCLLibraryDownloads{Artifact: BMCLArtifact{Path: "bad.jar", URL: "https://libraries.minecraft.net/bad.jar", Size: 1}}},
+		{Name: "com.example:good:1.0", Downloads: BMCLLibraryDownloads{Artifact: BMCLArtifact{Path: "good.jar", URL: "https://libraries.minecraft.net/good.jar", Size: 2}}},
+	}
+
+	result := svc.DownloadLibraries(libs, libsDir, nil)
+	if result.Success {
+		t.Fatal("expected failure when one library 404s")
+	}
+	if !strings.Contains(result.Error, "com.example:bad:1.0") {
+		t.Errorf("error = %q, want the failed library name", result.Error)
+	}
+	// The good library must still have been downloaded (continue semantics).
+	// DownloadLibraries derives the path from the maven name.
+	goodPath := filepath.Join(libsDir, "com", "example", "good", "1.0", "good-1.0.jar")
+	if _, err := os.Stat(goodPath); err != nil {
+		t.Errorf("good library missing after partial failure: %v", err)
+	}
+}
+
+func TestDownloadNativesExtractsOnlyNativeFiles(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skipf("fixture provides natives-linux only; GOOS=%s", runtime.GOOS)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/maven/natives-linux.jar" {
+			w.Write(nativeZipFixture(t))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
+	nativesDir := filepath.Join(t.TempDir(), "natives")
+	libs := []BMCLLibrary{{
+		Name: "com.example:natives:1.0",
+		Downloads: BMCLLibraryDownloads{
+			Classifiers: map[string]BMCLArtifact{
+				"natives-linux": {Path: "natives-linux.jar", URL: "https://libraries.minecraft.net/natives-linux.jar", Size: 100},
+			},
+		},
+	}}
+
+	var progressNames []string
+	result := svc.DownloadNatives(libs, nativesDir, func(name string, downloaded, total int64) {
+		progressNames = append(progressNames, name)
+	})
+	if !result.Success {
+		t.Fatalf("DownloadNatives failed: %s", result.Error)
+	}
+
+	if got, err := os.ReadFile(filepath.Join(nativesDir, "libfoo.so")); err != nil || string(got) != "native-bytes" {
+		t.Errorf("libfoo.so missing or wrong (err=%v, got=%q)", err, got)
+	}
+	if _, err := os.Stat(filepath.Join(nativesDir, "readme.txt")); !os.IsNotExist(err) {
+		t.Error("non-native readme.txt must not be extracted")
+	}
+	if _, err := os.Stat(filepath.Join(nativesDir, "MANIFEST.MF")); !os.IsNotExist(err) {
+		t.Error("META-INF entries must not be extracted")
+	}
+	if len(progressNames) != 1 {
+		t.Errorf("progress calls = %v, want exactly one", progressNames)
+	}
+}
+
+func TestInstallVersionHappyPath(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skipf("fixture provides natives-linux only; GOOS=%s", runtime.GOOS)
+	}
+
+	srv, rec := installFixtures(t, http.StatusOK)
+	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
+	gameDir := t.TempDir()
+
+	type progressEvent struct {
+		stage, name string
+	}
+	var events []progressEvent
+	result := svc.InstallVersion(testVersionID, gameDir, func(stage, name string, downloaded, total int64) {
+		events = append(events, progressEvent{stage, name})
+	})
+	if !result.Success {
+		t.Fatalf("InstallVersion failed: %s", result.Error)
+	}
+
+	// Stage order: manifest -> version json -> jar -> libraries -> natives.
+	wantPaths := []string{
+		"/mc/game/version_manifest.json",
+		"/v1/packages/abc/" + testVersionID + ".json",
+		"/v1/objects/c1/client.jar",
+		"/maven/com/example/lib/1.0/lib-1.0.jar",
+		"/maven/com/example/natives/1.0/natives-1.0.jar",
+		"/maven/com/example/natives/1.0/natives-1.0-linux.jar",
+	}
+	gotPaths := rec.recorded()
+	if len(gotPaths) != len(wantPaths) {
+		t.Fatalf("request sequence = %v, want %v", gotPaths, wantPaths)
+	}
+	for i := range wantPaths {
+		if gotPaths[i] != wantPaths[i] {
+			t.Errorf("request %d = %q, want %q", i, gotPaths[i], wantPaths[i])
+		}
+	}
+
+	// Files on disk.
+	versionDir := filepath.Join(gameDir, "versions", testVersionID)
+	jsonData, err := os.ReadFile(filepath.Join(versionDir, testVersionID+".json"))
+	if err != nil {
+		t.Fatalf("version JSON not written: %v", err)
+	}
+	var vj BMCLVersionJSON
+	if err := json.Unmarshal(jsonData, &vj); err != nil || vj.MainClass != "net.minecraft.client.main.Main" {
+		t.Errorf("persisted version JSON invalid: %v / %+v", err, vj)
+	}
+	if got, err := os.ReadFile(filepath.Join(versionDir, testVersionID+".jar")); err != nil || string(got) != "jar-bytes" {
+		t.Errorf("version jar missing or wrong (err=%v, got=%q)", err, got)
+	}
+	if _, err := os.Stat(filepath.Join(gameDir, "libraries", "com", "example", "lib", "1.0", "lib-1.0.jar")); err != nil {
+		t.Errorf("library missing: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(versionDir, "natives", "libfoo.so")); err != nil || string(got) != "native-bytes" {
+		t.Errorf("native missing or wrong (err=%v, got=%q)", err, got)
+	}
+
+	// Result payload paths.
+	data, ok := result.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("Data is %T, want map", result.Data)
+	}
+	if data["version_json"] != filepath.Join(versionDir, testVersionID+".json") {
+		t.Errorf("version_json = %v", data["version_json"])
+	}
+
+	// Progress stage order: all jar events before library events, library
+	// before native.
+	stageOrder := map[string]int{"jar": 0, "library": 1, "native": 2}
+	last := -1
+	for _, e := range events {
+		if stageOrder[e.stage] < last {
+			t.Errorf("progress stage %q arrived after a later stage; events=%v", e.stage, events)
+			break
+		}
+		last = stageOrder[e.stage]
+	}
+	for _, want := range []string{"jar", "library", "native"} {
+		seen := false
+		for _, e := range events {
+			if e.stage == want {
+				seen = true
+			}
+		}
+		if !seen {
+			t.Errorf("no progress events for stage %q; events=%v", want, events)
+		}
+	}
+}
+
+func TestInstallVersionUnknownVersion(t *testing.T) {
+	srv, _ := installFixtures(t, http.StatusOK)
+	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
+	gameDir := t.TempDir()
+
+	result := svc.InstallVersion("does-not-exist", gameDir, nil)
+	if result.Success {
+		t.Fatal("expected failure for unknown version")
+	}
+	if result.Error != "version not found" {
+		t.Errorf("Error = %q, want 'version not found'", result.Error)
+	}
+	if _, err := os.Stat(filepath.Join(gameDir, "versions")); !os.IsNotExist(err) {
+		t.Error("no version directory may be created for an unknown version")
+	}
+}
+
+func TestInstallVersionListFailureWritesNothing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "down", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
+	gameDir := t.TempDir()
+
+	result := svc.InstallVersion(testVersionID, gameDir, nil)
+	if result.Success {
+		t.Fatal("expected failure when the version list is unavailable")
+	}
+	entries, _ := os.ReadDir(gameDir)
+	if len(entries) != 0 {
+		t.Errorf("gameDir must stay untouched on list failure, found %d entries", len(entries))
+	}
+}
+
+func TestInstallVersionJarFailureStopsBeforeLibraries(t *testing.T) {
+	srv, rec := installFixtures(t, http.StatusInternalServerError)
+	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
+	gameDir := t.TempDir()
+
+	result := svc.InstallVersion(testVersionID, gameDir, nil)
+	if result.Success {
+		t.Fatal("expected failure when the jar download fails")
+	}
+
+	// The version JSON (stage 1) is written before the jar download; the jar
+	// itself must be absent and no library/native request may follow.
+	versionDir := filepath.Join(gameDir, "versions", testVersionID)
+	if _, err := os.Stat(filepath.Join(versionDir, testVersionID+".json")); err != nil {
+		t.Errorf("stage-1 version JSON missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(versionDir, testVersionID+".jar")); !os.IsNotExist(err) {
+		t.Error("jar must not exist after a failed jar download")
+	}
+	for _, p := range rec.recorded() {
+		if strings.HasPrefix(p, "/maven/") {
+			t.Errorf("library/native requested despite jar failure: %s", p)
+		}
+	}
+}
+
+func TestInstallVersionLibraryFailureSkipsNatives(t *testing.T) {
+	// Custom server: manifest, version JSON and jar succeed, the library 404s.
+	failSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/mc/game/version_manifest.json":
+			fmt.Fprintf(w, `{"versions": [{"id": %q, "type": "release", "url": "https://piston-meta.mojang.com/v1/packages/abc/%s.json"}]}`, testVersionID, testVersionID)
+		case "/v1/packages/abc/" + testVersionID + ".json":
+			fmt.Fprintf(w, `{
+				"id": %q,
+				"mainClass": "net.minecraft.client.main.Main",
+				"downloads": {"client": {"sha1": "c1", "size": 3, "url": "https://piston-data.mojang.com/v1/objects/c1/client.jar"}},
+				"libraries": [
+					{"name": "com.example:lib:1.0", "downloads": {"artifact": {"path": "com/example/lib/1.0/lib-1.0.jar", "url": "https://libraries.minecraft.net/com/example/lib/1.0/lib-1.0.jar", "size": 3}}}
+				]
+			}`, testVersionID)
+		case "/v1/objects/c1/client.jar":
+			io.WriteString(w, "jar")
+		default:
+			http.NotFound(w, r) // the library 404s
+		}
+	}))
+	defer failSrv.Close()
+
+	failSvc := NewBMCLAPIServiceWithBaseURL(failSrv.URL)
+	gameDir := t.TempDir()
+
+	result := failSvc.InstallVersion(testVersionID, gameDir, nil)
+	if result.Success {
+		t.Fatal("expected failure when a library download fails")
+	}
+	if !strings.Contains(result.Error, "com.example:lib:1.0") {
+		t.Errorf("Error = %q, want the failed library name", result.Error)
+	}
+	// Jar (stage 2) completed, so it must exist; natives stage never runs.
+	if _, err := os.Stat(filepath.Join(gameDir, "versions", testVersionID, testVersionID+".jar")); err != nil {
+		t.Errorf("jar should exist before the failing library stage: %v", err)
+	}
+	// The natives directory is created up front by InstallVersion, but no
+	// native file may have been extracted into it after a library failure.
+	nativesDir := filepath.Join(gameDir, "versions", testVersionID, "natives")
+	if entries, err := os.ReadDir(nativesDir); err == nil && len(entries) > 0 {
+		t.Errorf("natives extracted despite library failure: %v", entries)
+	}
+}
+
+// ==================== LauncherService: config persistence ====================
+
+// clearLauncherSettings removes all launcher.* rows so config tests start
+// from a known state (the DB is shared across the test binary).
+func clearLauncherSettings(t *testing.T) {
+	t.Helper()
+	repo := repository.NewSettingRepository()
+	for _, key := range []string{
+		"launcher.max_memory", "launcher.min_memory", "launcher.java_args",
+		"launcher.game_width", "launcher.game_height", "launcher.game_dir",
+		"launcher.authlib_jar",
+	} {
+		_ = repo.Delete(key)
+	}
+}
+
+// fakeJavaHome points JAVA_HOME at a temp dir containing a fake bin/java so
+// GetJavaPath is deterministic.
+func fakeJavaHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	bin := filepath.Join(home, "bin")
+	if err := os.MkdirAll(bin, 0755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	javaPath := filepath.Join(bin, "java")
+	if err := os.WriteFile(javaPath, []byte("#!/bin/sh\n"), 0755); err != nil {
+		t.Fatalf("write fake java: %v", err)
+	}
+	t.Setenv("JAVA_HOME", home)
+	return javaPath
+}
+
+func TestGetLauncherConfigDefaultsOnEmptySettings(t *testing.T) {
+	clearLauncherSettings(t)
+	javaPath := fakeJavaHome(t)
+	t.Setenv("HOME", t.TempDir())
+
+	cfg := NewLauncherService().GetLauncherConfig()
+	if cfg.MaxMemory != 4096 || cfg.MinMemory != 1024 {
+		t.Errorf("memory defaults = %d/%d, want 4096/1024", cfg.MaxMemory, cfg.MinMemory)
+	}
+	if cfg.GameWidth != 854 || cfg.GameHeight != 480 {
+		t.Errorf("window defaults = %dx%d, want 854x480", cfg.GameWidth, cfg.GameHeight)
+	}
+	if cfg.JavaPath != javaPath {
+		t.Errorf("JavaPath = %q, want fake JAVA_HOME java %q", cfg.JavaPath, javaPath)
+	}
+	if cfg.GameDir == "" {
+		t.Error("GameDir must fall back to a platform default, got empty")
+	}
+	if cfg.JavaArgs != "" || cfg.AuthlibJar != "" {
+		t.Errorf("optional fields must default to empty, got %q / %q", cfg.JavaArgs, cfg.AuthlibJar)
+	}
+}
+
+func TestSaveLauncherConfigRoundTrip(t *testing.T) {
+	clearLauncherSettings(t)
+	fakeJavaHome(t)
+	gameDir := t.TempDir()
+
+	svc := NewLauncherService()
+	result := svc.SaveLauncherConfig(models.LauncherConfig{
+		MaxMemory:  2048,
+		MinMemory:  512,
+		JavaArgs:   "-XX:+UseG1GC",
+		GameWidth:  1024,
+		GameHeight: 768,
+		GameDir:    gameDir,
+		AuthlibJar: "/opt/authlib-injector.jar",
+	})
+	if !result.Success {
+		t.Fatalf("SaveLauncherConfig failed: %s", result.Error)
+	}
+
+	// The response carries the merged config.
+	merged, ok := result.Data.(models.LauncherConfig)
+	if !ok {
+		t.Fatalf("Data is %T, want models.LauncherConfig", result.Data)
+	}
+	if merged.MaxMemory != 2048 || merged.MinMemory != 512 || merged.GameWidth != 1024 || merged.GameHeight != 768 {
+		t.Errorf("merged config wrong: %+v", merged)
+	}
+
+	// A fresh read sees the persisted values.
+	cfg := svc.GetLauncherConfig()
+	if cfg.MaxMemory != 2048 || cfg.MinMemory != 512 {
+		t.Errorf("persisted memory = %d/%d, want 2048/512", cfg.MaxMemory, cfg.MinMemory)
+	}
+	if cfg.JavaArgs != "-XX:+UseG1GC" {
+		t.Errorf("persisted java args = %q", cfg.JavaArgs)
+	}
+	if cfg.GameDir != gameDir {
+		t.Errorf("persisted game dir = %q, want %q", cfg.GameDir, gameDir)
+	}
+	if cfg.AuthlibJar != "/opt/authlib-injector.jar" {
+		t.Errorf("persisted authlib jar = %q", cfg.AuthlibJar)
+	}
+}
+
+func TestSaveLauncherConfigValidation(t *testing.T) {
+	clearLauncherSettings(t)
+	svc := NewLauncherService()
+
+	cases := []struct {
+		name      string
+		cfg       models.LauncherConfig
+		wantError string
+	}{
+		{"negative max memory", models.LauncherConfig{MaxMemory: -1}, "memory values must be non-negative"},
+		{"negative min memory", models.LauncherConfig{MinMemory: -5}, "memory values must be non-negative"},
+		{"min exceeds max", models.LauncherConfig{MinMemory: 2048, MaxMemory: 1024}, "min memory cannot exceed max memory"},
+		{"negative width", models.LauncherConfig{GameWidth: -1}, "game window dimensions must be non-negative"},
+		{"negative height", models.LauncherConfig{GameHeight: -1}, "game window dimensions must be non-negative"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := svc.SaveLauncherConfig(tc.cfg)
+			if result.Success {
+				t.Fatalf("expected validation failure for %+v", tc.cfg)
+			}
+			if result.Error != tc.wantError {
+				t.Errorf("Error = %q, want %q", result.Error, tc.wantError)
+			}
+		})
+	}
+}
+
+func TestSaveLauncherConfigSkipsEmptyOptionalFields(t *testing.T) {
+	clearLauncherSettings(t)
+	svc := NewLauncherService()
+
+	// Empty GameDir/AuthlibJar must not be persisted (mirrors the old HTTP
+	// PUT semantics where absent fields were left untouched).
+	result := svc.SaveLauncherConfig(models.LauncherConfig{MaxMemory: 1024, MinMemory: 512})
+	if !result.Success {
+		t.Fatalf("SaveLauncherConfig failed: %s", result.Error)
+	}
+
+	repo := repository.NewSettingRepository()
+	for _, key := range []string{"launcher.game_dir", "launcher.authlib_jar"} {
+		if _, err := repo.Get(key); err == nil {
+			t.Errorf("setting %q must not be persisted when empty", key)
+		}
+	}
+}
+
+func TestParseIntSetting(t *testing.T) {
+	if got := parseIntSetting("4096", 1); got != 4096 {
+		t.Errorf("parseIntSetting(4096) = %d", got)
+	}
+	if got := parseIntSetting("", 7); got != 7 {
+		t.Errorf("parseIntSetting(empty) = %d, want default 7", got)
+	}
+	if got := parseIntSetting("not-a-number", 9); got != 9 {
+		t.Errorf("parseIntSetting(garbage) = %d, want default 9", got)
+	}
+}
+
+// ==================== LauncherService: command building ====================
+
+// writeVersionJSON creates <gameDir>/versions/<id>/<id>.json with the given
+// content for BuildLaunchCommand tests.
+func writeVersionJSON(t *testing.T, gameDir, id, content string) {
+	t.Helper()
+	dir := filepath.Join(gameDir, "versions", id)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, id+".json"), []byte(content), 0644); err != nil {
+		t.Fatalf("write version json: %v", err)
+	}
+}
+
+const testVersionJSON = `{
+	"id": "1.99",
+	"mainClass": "net.minecraft.client.main.Main",
+	"assetIndex": {"id": "5"},
+	"libraries": [
+		{"name": "com.example:lib:1.0", "downloads": {"artifact": {"path": "com/example/lib/1.0/lib-1.0.jar"}}},
+		{"name": "com.example:nat:1.0", "downloads": {"artifact": {"path": "com/example/nat/1.0/nat-1.0.jar"}, "classifiers": {"natives-linux": {"path": "natives-linux"}}}},
+		{"name": "com.example:win:1.0", "downloads": {"artifact": {"path": "com/example/win/1.0/win-1.0.jar"}}, "rules": [{"action": "allow", "os": {"name": "windows"}}]}
+	]
+}`
+
+func TestBuildLaunchCommandOffline(t *testing.T) {
+	gameDir := t.TempDir()
+	writeVersionJSON(t, gameDir, "1.99", testVersionJSON)
+
+	svc := NewLauncherService()
+	args, err := svc.BuildLaunchCommand(
+		models.LauncherConfig{
+			JavaPath:   "/opt/java/bin/java",
+			MaxMemory:  2048,
+			MinMemory:  512,
+			JavaArgs:   "-XX:+UseG1GC -Dfoo=bar",
+			GameWidth:  1024,
+			GameHeight: 768,
+			GameDir:    gameDir,
+		},
+		&models.MinecraftVersion{VersionID: "1.99"},
+		&models.MinecraftAccount{
+			Username:    "Steve",
+			UUID:        "11111111-2222-3333-4444-555555555555",
+			AccessToken: "at",
+			ClientToken: "ct",
+			AuthType:    "offline",
+		},
+	)
+	if err != nil {
+		t.Fatalf("BuildLaunchCommand: %v", err)
+	}
+
+	joined := strings.Join(args, "\x00")
+	contains := func(want string) {
+		t.Helper()
+		if !strings.Contains(joined, want) {
+			t.Errorf("args missing %q\nfull args: %v", want, args)
+		}
+	}
+
+	if args[0] != "/opt/java/bin/java" {
+		t.Errorf("args[0] = %q, want the java path", args[0])
+	}
+	contains("-Xmx2048M")
+	contains("-Xms512M")
+	contains("-XX:+UseG1GC")
+	contains("-Dfoo=bar")
+	contains("-Djava.library.path=" + filepath.Join(gameDir, "versions", "1.99", "natives"))
+
+	// Classpath: version jar + plain library; natives classifier libs and
+	// windows-only libs are excluded on linux.
+	cpIdx := -1
+	for i, a := range args {
+		if a == "-cp" {
+			cpIdx = i
+		}
+	}
+	if cpIdx == -1 || cpIdx+1 >= len(args) {
+		t.Fatalf("-cp not found in args: %v", args)
+	}
+	cp := args[cpIdx+1]
+	if !strings.Contains(cp, filepath.Join(gameDir, "versions", "1.99", "1.99.jar")) {
+		t.Errorf("classpath missing version jar: %q", cp)
+	}
+	if !strings.Contains(cp, filepath.Join(gameDir, "libraries", "com", "example", "lib", "1.0", "lib-1.0.jar")) {
+		t.Errorf("classpath missing plain library: %q", cp)
+	}
+	if strings.Contains(cp, "nat-1.0.jar") {
+		t.Errorf("classpath must exclude natives-classifier library: %q", cp)
+	}
+	if strings.Contains(cp, "win-1.0.jar") {
+		t.Errorf("classpath must exclude windows-only library on linux: %q", cp)
+	}
+	if args[cpIdx+2] != "net.minecraft.client.main.Main" {
+		t.Errorf("main class = %q, want net.minecraft.client.main.Main", args[cpIdx+2])
+	}
+
+	contains("--username")
+	contains("Steve")
+	contains("--uuid")
+	contains("11111111222233334444555555555555") // dashes stripped
+	contains("--accessToken")
+	contains("--userType")
+	contains("legacy") // offline maps to legacy
+	contains("--versionType")
+	contains("release") // default for empty version type
+	contains("--assetsDir")
+	contains(filepath.Join(gameDir, "assets"))
+	contains("--assetIndex")
+	contains("--width")
+	contains("1024")
+	contains("--height")
+	contains("768")
+}
+
+func TestBuildLaunchCommandAuthlibInjector(t *testing.T) {
+	gameDir := t.TempDir()
+	writeVersionJSON(t, gameDir, "1.99", testVersionJSON)
+
+	metaJSON := `{"meta":{"serverName":"TestAuth"}}`
+	svc := NewLauncherService()
+	args, err := svc.BuildLaunchCommand(
+		models.LauncherConfig{
+			JavaPath:        "/opt/java/bin/java",
+			GameDir:         gameDir,
+			AuthlibJar:      "/opt/authlib-injector.jar",
+			AuthlibMetaJSON: metaJSON,
+		},
+		&models.MinecraftVersion{VersionID: "1.99"},
+		&models.MinecraftAccount{
+			Username:    "Steve",
+			UUID:        "abcd",
+			AccessToken: "at",
+			ClientToken: "ct",
+			AuthType:    "authlib-injector",
+			AuthServer:  "https://auth.example.com/",
+		},
+	)
+	if err != nil {
+		t.Fatalf("BuildLaunchCommand: %v", err)
+	}
+
+	joined := strings.Join(args, "\x00")
+	wantAgent := "-javaagent:/opt/authlib-injector.jar=https://auth.example.com"
+	if !strings.Contains(joined, wantAgent) {
+		t.Errorf("args missing %q\nfull args: %v", wantAgent, args)
+	}
+	wantPrefetched := "-Dauthlibinjector.yggdrasil.prefetched=" + base64.StdEncoding.EncodeToString([]byte(metaJSON))
+	if !strings.Contains(joined, wantPrefetched) {
+		t.Errorf("args missing prefetched meta %q", wantPrefetched)
+	}
+	if !strings.Contains(joined, "mojang") {
+		t.Errorf("authlib-injector userType must be mojang, args: %v", args)
+	}
+}
+
+func TestBuildLaunchCommandForgeTweakClass(t *testing.T) {
+	gameDir := t.TempDir()
+	writeVersionJSON(t, gameDir, "1.12.2", strings.Replace(testVersionJSON, "net.minecraft.client.main.Main", "net.minecraft.launchwrapper.Launch", 1))
+
+	svc := NewLauncherService()
+	args, err := svc.BuildLaunchCommand(
+		models.LauncherConfig{JavaPath: "java", GameDir: gameDir},
+		&models.MinecraftVersion{VersionID: "1.12.2"},
+		&models.MinecraftAccount{Username: "Steve", UUID: "u", AccessToken: "at", ClientToken: "ct", AuthType: "offline"},
+	)
+	if err != nil {
+		t.Fatalf("BuildLaunchCommand: %v", err)
+	}
+
+	found := false
+	for i, a := range args {
+		if a == "--tweakClass" && i+1 < len(args) && args[i+1] == "net.minecraftforge.fml.common.launcher.FMLTweaker" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("LaunchWrapper main class must add --tweakClass FMLTweaker, args: %v", args)
+	}
+}
+
+func TestBuildLaunchCommandErrors(t *testing.T) {
+	svc := NewLauncherService()
+	account := &models.MinecraftAccount{Username: "u", UUID: "u", AccessToken: "a", ClientToken: "c"}
+	version := &models.MinecraftVersion{VersionID: "missing"}
+
+	if _, err := svc.BuildLaunchCommand(models.LauncherConfig{}, nil, account); err == nil {
+		t.Error("nil version must fail")
+	}
+	if _, err := svc.BuildLaunchCommand(models.LauncherConfig{}, version, nil); err == nil {
+		t.Error("nil account must fail")
+	}
+	// No version JSON on disk for id "missing".
+	if _, err := svc.BuildLaunchCommand(models.LauncherConfig{GameDir: t.TempDir()}, version, account); err == nil {
+		t.Error("missing version JSON must fail")
+	}
+}
+
+// ==================== small helpers ====================
+
+func TestResolveUserType(t *testing.T) {
+	cases := map[string]string{
+		"offline":          "legacy",
+		"microsoft":        "msa",
+		"msa":              "msa",
+		"authlib-injector": "mojang",
+		"mojang":           "mojang",
+		"":                 "mojang",
+	}
+	for in, want := range cases {
+		if got := resolveUserType(in); got != want {
+			t.Errorf("resolveUserType(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestResolveVersionType(t *testing.T) {
+	if got := resolveVersionType(""); got != "release" {
+		t.Errorf("resolveVersionType(empty) = %q, want release", got)
+	}
+	if got := resolveVersionType("snapshot"); got != "snapshot" {
+		t.Errorf("resolveVersionType(snapshot) = %q", got)
+	}
+}
+
+func TestStripDashes(t *testing.T) {
+	if got := stripDashes("aa-bb-cc"); got != "aabbcc" {
+		t.Errorf("stripDashes = %q, want aabbcc", got)
+	}
+}
+
+func TestShellQuote(t *testing.T) {
+	if got := shellQuote("plain"); got != "plain" {
+		t.Errorf("shellQuote(plain) = %q", got)
+	}
+	if got := shellQuote(""); got != "''" {
+		t.Errorf("shellQuote(empty) = %q, want ''", got)
+	}
+	if got := shellQuote("has space"); !strings.Contains(got, "'") {
+		t.Errorf("shellQuote(has space) = %q, want quoted", got)
+	}
+	if got := shellQuote("it's"); got != `'it'\''s'` {
+		t.Errorf("shellQuote(it's) = %q, want 'it'\\''s'", got)
+	}
+}
+
+func TestGetJavaPathHonorsJavaHome(t *testing.T) {
+	javaPath := fakeJavaHome(t)
+	if got := NewLauncherService().GetJavaPath(); got != javaPath {
+		t.Errorf("GetJavaPath = %q, want %q", got, javaPath)
+	}
+}
+
+func TestGetMinecraftDirUsesHome(t *testing.T) {
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		t.Skipf("linux-specific expectation; GOOS=%s", runtime.GOOS)
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if got := NewLauncherService().GetMinecraftDir(); got != filepath.Join(home, ".minecraft") {
+		t.Errorf("GetMinecraftDir = %q, want %q", got, filepath.Join(home, ".minecraft"))
+	}
+}
