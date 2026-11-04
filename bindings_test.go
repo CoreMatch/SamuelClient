@@ -172,6 +172,18 @@ func TestUpdateJavaInstallationMissingID(t *testing.T) {
 	wantFailure(t, app.UpdateJavaInstallation(999999, "/x", "n"), "")
 }
 
+// Delete/SetDefault on a missing id must surface the repository not-found
+// error instead of silently succeeding.
+func TestDeleteJavaInstallationMissingID(t *testing.T) {
+	app := newTestApp()
+	wantFailure(t, app.DeleteJavaInstallation(999999), "")
+}
+
+func TestSetDefaultJavaInstallationMissingID(t *testing.T) {
+	app := newTestApp()
+	wantFailure(t, app.SetDefaultJavaInstallation(999999), "")
+}
+
 // ==================== HTTP-backed bindings against httptest ====================
 
 const yggdrasilAuthResponse = `{
