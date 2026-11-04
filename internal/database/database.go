@@ -119,18 +119,3 @@ func runMigrations() error {
 
 	return nil
 }
-
-// Transaction executes a function within a transaction
-func Transaction(fn func(*sql.Tx) error) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-
-	if err := fn(tx); err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	return tx.Commit()
-}

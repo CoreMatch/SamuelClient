@@ -27,21 +27,30 @@ need an owner decision before being acted on.
    the launch log for the process's stdout/stderr lines and clean exit. No
    real network, accounts, or GUI. Remaining gap: it exercises a fake java,
    not a real Minecraft client — real-game verification stays manual.
-4. **`database.Transaction` has no production consumer.** It is now covered by
-   tests, but nothing calls it. Decision: delete, or keep as infrastructure?
-5. **Wails event emission is not unit-tested.** `launcher:log` /
-   `download:progress` emission needs a real Wails runtime context
-   (`runtime.EventsEmit`), which unit tests cannot create. The emit call sites
-   are exercised (with nil context they no-op), but delivery to the frontend
-   is only verified by reading the code. Decision: accept, or add a `wails
-   dev`-based smoke test?
+4. **`database.Transaction` deleted (2026-11-05, branch
+   `feat/loader-install`).** It had no production consumer (grep-verified;
+   only its own test called it), so per the standing "do not keep dead
+   code" policy the helper and `TestTransactionCommitAndRollback` were
+   removed. `JavaRepository.SetDefault` keeps its own explicit transaction,
+   which is the only transactional code path.
+5. **Wails event emission: NOT unit-tested — accepted.**
+   `launcher:log` / `download:progress` emission needs a real Wails runtime
+   context (`runtime.EventsEmit`), which unit tests cannot create.
+   Mitigations in place: the emit call sites are exercised with a nil
+   context (no-op path), the payload contract is documented in `bindings.go`
+   and README, the smoke test verifies the underlying log/download paths,
+   and delivery was manually confirmed on a `wails build` artifact.
+   Reopening only makes sense if the frontend gains an integration harness.
 6. **`GetJavaPath` fallback branches are environment-dependent.** Only the
    JAVA_HOME branch is tested deterministically; the common-paths/`"java"`
    fallback depends on the machine. Decision: accept partial coverage?
-7. **Frontend has no automated tests** (no test runner configured in
-   `package.json`). This round only guarantees `tsc` + `vite build` (plus a
-   working `npm run lint`). Decision: introduce Vitest (or similar) for the
-   React views?
+7. **Frontend test framework introduced (2026-11-05, branch
+   `feat/loader-install`).** Vitest + jsdom + @testing-library/react, wired
+   through `vite.config.ts` (`npm test`, also added to CI). Key-interaction
+   coverage: LoginView (authlib validation/success/failure, offline login
+   via the type select) and HomeView (Play gating, launch request payload,
+   backend error surfacing), all Wails bindings mocked. Remaining gap: no
+   tests for VersionManager/AccountManager/SettingsView/ModManager yet.
 8. **Triage of the unwired service methods (2026-11-05, branch
    `fix/round3-triage`).** Each method was grep'd for callers and classified:
    - `DownloadAssets` — **WIRED** into `InstallVersion` as stage 5. Reason:
@@ -61,15 +70,28 @@ need an owner decision before being acted on.
    - `RefreshAuthlibToken` — **DELETED**. Thin wrapper with no caller; the
      binding calls `RefreshAuthlibTokenWithProfile` directly (the no-profile
      case is tested by passing `""`).
-   - `GetFabricInstaller` / `DownloadForgeInstaller` — **NEED AUTHOR
-     DECISION**. These only download installer jars. The UI offers a
-     Fabric/Forge loader dropdown and `LaunchGameRequest` carries
-     loader_type/loader_version, but nothing installs the loader (no
-     installer execution, no loader version JSON generation), so modded
-     launch is a feature gap bigger than one wiring step: it needs a design
-     (run installer via detected Java, or merge loader profiles into the
-     version JSON). Options: (a) design and implement loader installation,
-     (b) hide the loader dropdown until then, (c) delete the two downloaders.
+   - `GetFabricInstaller` / `DownloadForgeInstaller` — **WIRED**
+     (2026-11-05, branch `feat/loader-install`): `InstallFabricLoader`
+     fetches the Fabric profile JSON, persists it under
+     `versions/<profile id>/` with `inheritsFrom` (resolved by
+     `BuildLaunchCommand` at launch) and downloads the loader libraries;
+     `InstallForgeLoader` downloads the installer jar, runs
+     `java -jar <installer> --installClient` headless with a 10-minute
+     timeout, streams its output as `launcher:log` events, verifies the
+     generated version directory and removes the transient installer jar.
+     Both emit `download:progress` with stage `"loader"`, clean up fresh
+     directories on failure, and are retryable.
+     **Not verified**: against a real Fabric/Forge installer and real JRE
+     (tests use httptest meta + a shell-script installer covering exit 0 /
+     non-zero / timeout). Known limitation: the stock Forge installer
+     targets the platform-default Minecraft directory; `--installClient`
+     without a directory flag cannot be redirected on older installers, so
+     `gameDir` should be the default one. Decision left for the author:
+     whether to add modern-installer `--installDir` handling.
+     UI follow-up (not done this round): the HomeView loader dropdown still
+     only sets `loader_type` on the launch request; it should instead call
+     `InstallFabricLoader`/`InstallForgeLoader` and let the user pick the
+     resulting version from the installed list.
 9. **`UserRepository`, `TaskRepository`, `FileRepository` retired
    (2026-11-05, branch `fix/round3-triage`).** Zero production callers were
    found (grep across `*.go`), so the repositories, their models
@@ -87,6 +109,21 @@ need an owner decision before being acted on.
     was added, and `saveAccount`/`StoredAccount` moved to
     `src/accountStorage.ts` so component files only export components
     (react-refresh).
+11. **Process lifecycle: no cancellation plumbing (author confirmation
+    wanted).** Recorded 2026-11-05 (branch `feat/loader-install`).
+    - Impact: an in-flight `DownloadVersion` or Forge installer run cannot
+      be cancelled from the UI — the Forge run is bounded only by its
+      10-minute timeout; a user "retry" can run two installs concurrently;
+      the launched game is detached on purpose (survives the launcher) and
+      is not meant to be killable from the launcher.
+    - Minimal change (NOT implemented — alters the binding surface):
+      thread `context.Context` through `DownloadFile`/`InstallVersion`/
+      `InstallForgeLoader` (requests via `http.NewRequestWithContext`,
+      processes via `exec.CommandContext`/`cmd.Cancel`), keep per-version
+      cancel funcs in `App`, add a `CancelInstall(versionID)` binding and a
+      cancel button in the UI.
+    - Decision needed: accept the status quo (timeouts + retry tolerance) or
+      schedule the cancellation work.
 
 ## Known behavior documented by tests (no action needed unless disagreed)
 
