@@ -4,13 +4,9 @@ import (
 	"HRPMLW/internal/database"
 	"HRPMLW/internal/models"
 	"HRPMLW/internal/repository"
-	"bytes"
-	"fmt"
+	"HRPMLW/internal/services"
 	"net/http"
-	"os"
-	"os/exec"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -528,36 +524,6 @@ func (h *DBHandler) GetDBSchema(c *gin.Context) {
 
 // ========== Java Installation Handlers ==========
 
-// detectJavaVersion runs java -version and extracts the version string
-func detectJavaVersion(javaPath string) (string, error) {
-	var stdout, stderr bytes.Buffer
-	cmd := exec.Command(javaPath, "-version")
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	if err != nil {
-		return "", fmt.Errorf("failed to run java -version: %w", err)
-	}
-
-	output := stderr.String()
-	if output == "" {
-		output = stdout.String()
-	}
-
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		if strings.Contains(line, "version") {
-			parts := strings.Split(line, "\"")
-			if len(parts) >= 2 {
-				return strings.TrimSpace(parts[1]), nil
-			}
-		}
-	}
-
-	return "Unknown", nil
-}
-
 // CreateJavaInstallation handles POST /db/java
 func (h *DBHandler) CreateJavaInstallation(c *gin.Context) {
 	var req struct {
@@ -575,7 +541,7 @@ func (h *DBHandler) CreateJavaInstallation(c *gin.Context) {
 		return
 	}
 
-	version, err := detectJavaVersion(req.Path)
+	version, err := services.DetectJavaVersion(req.Path)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Failed to detect Java version: " + err.Error()})
 		return
@@ -623,9 +589,9 @@ func (h *DBHandler) GetAllJavaInstallations(c *gin.Context) {
 
 	// If no Java installations exist, auto-detect system Java
 	if len(javas) == 0 {
-		systemJavaPath := detectSystemJava()
+		systemJavaPath := services.DetectSystemJava()
 		if systemJavaPath != "" {
-			version, _ := detectJavaVersion(systemJavaPath)
+			version, _ := services.DetectJavaVersion(systemJavaPath)
 			defaultJava := &models.JavaInstallation{
 				Path:         systemJavaPath,
 				FriendlyName: "System Default Java",
@@ -639,58 +605,6 @@ func (h *DBHandler) GetAllJavaInstallations(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, javas)
-}
-
-// detectSystemJava attempts to find the system Java executable
-func detectSystemJava() string {
-	// Common Java locations on Linux
-	linuxPaths := []string{
-		"/usr/bin/java",
-		"/usr/lib/jvm/java-17-openjdk-amd64/bin/java",
-		"/usr/lib/jvm/java-11-openjdk-amd64/bin/java",
-		"/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
-		"/usr/lib/jvm/default-java/bin/java",
-		"/opt/java/openjdk/bin/java",
-	}
-
-	// Common Java locations on Windows
-	windowsPaths := []string{
-		"C:\\Program Files\\Java\\jdk17\\bin\\java.exe",
-		"C:\\Program Files\\Java\\jdk11\\bin\\java.exe",
-		"C:\\Program Files\\Java\\jdk21\\bin\\java.exe",
-		"C:\\Program Files\\Java\\jre\\bin\\java.exe",
-		"C:\\Program Files (x86)\\Java\\jre\\bin\\java.exe",
-	}
-
-	// Try to find java in PATH
-	var stdout bytes.Buffer
-	cmd := exec.Command("which", "java")
-	cmd.Stdout = &stdout
-	if err := cmd.Run(); err == nil {
-		path := strings.TrimSpace(stdout.String())
-		if path != "" {
-			// Verify it's executable
-			if _, err := exec.LookPath(path); err == nil {
-				return path
-			}
-		}
-	}
-
-	// Check common Linux paths
-	for _, path := range linuxPaths {
-		if _, err := exec.LookPath(path); err == nil {
-			return path
-		}
-	}
-
-	// Check common Windows paths
-	for _, path := range windowsPaths {
-		if _, err := os.Stat(path); err == nil {
-			return path
-		}
-	}
-
-	return ""
 }
 
 // GetDefaultJavaInstallation handles GET /db/java/default
@@ -730,7 +644,7 @@ func (h *DBHandler) UpdateJavaInstallation(c *gin.Context) {
 
 	if req.Path != "" {
 		java.Path = req.Path
-		version, err := detectJavaVersion(req.Path)
+		version, err := services.DetectJavaVersion(req.Path)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Failed to detect Java version: " + err.Error()})
 			return

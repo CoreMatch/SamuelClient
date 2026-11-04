@@ -4,6 +4,7 @@ import (
 	"HRPMLW/internal/config"
 	"HRPMLW/internal/database"
 	"HRPMLW/internal/models"
+	"HRPMLW/internal/repository"
 	"HRPMLW/internal/routes"
 	"HRPMLW/internal/services"
 	"context"
@@ -14,11 +15,22 @@ import (
 )
 
 // App struct
+//
+// ADR-0004: the fields below back the Wails binding methods in bindings.go.
+// The frontend reaches them exclusively through the generated Wails bindings;
+// there is no HTTP hop. The httpClient/router/config fields belong to the
+// legacy Gin boundary being retired and are removed in a later step.
 type App struct {
 	ctx        context.Context
 	httpClient *services.HTTPService
 	router     *routes.Router
 	config     *config.Config
+
+	authService     *services.AuthService
+	bmclService     *services.BMCLAPIService
+	launcherService *services.LauncherService
+	javaRepo        *repository.JavaRepository
+	logRepo         *repository.LogRepository
 }
 
 // NewApp creates a new App application struct
@@ -27,6 +39,12 @@ func NewApp() *App {
 	return &App{
 		config:     cfg,
 		httpClient: services.NewHTTPService("http://localhost:" + cfg.ServerPort),
+
+		authService:     services.NewAuthService(),
+		bmclService:     services.NewBMCLAPIService(),
+		launcherService: services.NewLauncherService(),
+		javaRepo:        repository.NewJavaRepository(),
+		logRepo:         repository.NewLogRepository(),
 	}
 }
 

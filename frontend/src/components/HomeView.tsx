@@ -23,6 +23,13 @@ import {
   Refresh,
 } from '@mui/icons-material';
 import { StoredAccount } from './AccountManager';
+import {
+  GetJavaInstallations,
+  GetInstalledVersions,
+  GetFabricVersions,
+  GetForgeVersions,
+  GetLogs,
+} from '../../wailsjs/go/main/App';
 
 interface InstalledVersion {
   id: string;
@@ -109,9 +116,9 @@ export default function HomeView({
 
   const loadJavaInstallations = async () => {
     try {
-      const response = await fetch('http://localhost:34501/api/v1/db/java');
-      const data = await response.json();
-      if (Array.isArray(data)) {
+      const result = await GetJavaInstallations();
+      if (result.success && Array.isArray(result.data)) {
+        const data = result.data as JavaInstallation[];
         setJavaInstallations(data);
         const defaultJava = data.find((j: JavaInstallation) => j.is_default);
         if (defaultJava) {
@@ -139,10 +146,9 @@ export default function HomeView({
       const local: InstalledVersion[] = stored ? JSON.parse(stored) : [];
 
       try {
-        const res = await fetch('http://localhost:34501/api/v1/launcher/installed-versions');
-        const data = await res.json();
-        if (data?.success && Array.isArray(data.data?.versions)) {
-          const fromDisk: InstalledVersion[] = data.data.versions
+        const result = await GetInstalledVersions();
+        if (result.success && Array.isArray(result.data?.versions)) {
+          const fromDisk: InstalledVersion[] = result.data.versions
             .filter((v: any) => v.has_json && v.has_jar)
             .map((v: any) => ({
               id: v.id,
@@ -186,18 +192,15 @@ export default function HomeView({
 
   const fetchLoaders = async (mcVersion: string) => {
     try {
-      const [fabricRes, forgeRes] = await Promise.all([
-        fetch(`http://localhost:34501/api/v1/fabric/versions?mc=${mcVersion}`),
-        fetch(`http://localhost:34501/api/v1/forge/versions?mc=${mcVersion}`),
+      const [fabricResult, forgeResult] = await Promise.all([
+        GetFabricVersions(mcVersion),
+        GetForgeVersions(mcVersion),
       ]);
-
-      const fabricData = await fabricRes.json();
-      const forgeData = await forgeRes.json();
 
       const loaderList: ModLoader[] = [{ name: 'none', version: '' }];
 
-      if (fabricData.success && Array.isArray(fabricData.data)) {
-        fabricData.data.slice(0, 5).forEach((f: any) => {
+      if (fabricResult.success && Array.isArray(fabricResult.data)) {
+        fabricResult.data.slice(0, 5).forEach((f: any) => {
           loaderList.push({
             name: `fabric-${f.loader.version}`,
             version: f.loader.version,
@@ -205,8 +208,8 @@ export default function HomeView({
         });
       }
 
-      if (forgeData.success && Array.isArray(forgeData.data)) {
-        forgeData.data.slice(0, 5).forEach((f: any) => {
+      if (forgeResult.success && Array.isArray(forgeResult.data)) {
+        forgeResult.data.slice(0, 5).forEach((f: any) => {
           loaderList.push({
             name: `forge-${f.version}`,
             version: f.version,
@@ -223,10 +226,9 @@ export default function HomeView({
   const fetchLogs = async () => {
     setLogsLoading(true);
     try {
-      const response = await fetch('http://localhost:34501/api/v1/db/logs?limit=100');
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        setLogs(data);
+      const result = await GetLogs(100);
+      if (result.success && Array.isArray(result.data)) {
+        setLogs(result.data);
       }
     } catch (err) {
       console.error('Failed to fetch logs:', err);

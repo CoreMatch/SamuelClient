@@ -22,6 +22,7 @@ import {
   Http,
   Refresh,
 } from '@mui/icons-material';
+import { GetAuthlibMeta } from '../../wailsjs/go/main/App';
 
 interface AuthServer {
   id: string;
@@ -84,12 +85,14 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
   const loadAuthServers = async (serverUrl: string) => {
     setLoadingServers(true);
     try {
-      const response = await fetch(`/api/v1/auth/meta?server=${encodeURIComponent(serverUrl)}`);
-      const data = await response.json();
-      if (data.success && data.data) {
+      // ADR-0004: Wails binding instead of the old (dev-only) relative fetch
+      // `/api/v1/auth/meta?server=...`. The metadata document nests the server
+      // name under `meta` (see AuthService.GetAuthlibMeta).
+      const result = await GetAuthlibMeta(serverUrl);
+      if (result.success && result.data) {
         const newServer: AuthServer = {
           id: serverUrl,
-          name: data.data.serverName || serverUrl,
+          name: result.data.meta?.serverName || serverUrl,
           url: serverUrl,
         };
         setAuthServers(prev => {
@@ -98,7 +101,7 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
         });
         setAuthServer(serverUrl);
       } else {
-        setError(data.error || 'Failed to fetch auth server info');
+        setError(result.error || 'Failed to fetch auth server info');
       }
     } catch (err) {
       setError('Failed to connect to auth server');

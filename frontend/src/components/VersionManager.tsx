@@ -26,6 +26,7 @@ import {
   CloudDownload,
   Delete,
 } from '@mui/icons-material';
+import { GetVersions } from '../../wailsjs/go/main/App';
 
 interface MCVersion {
   id: string;
@@ -89,24 +90,23 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('http://localhost:34501/api/v1/versions');
-      const data = await response.json();
-      if (data.success) {
+      const result = await GetVersions();
+      if (result.success) {
         // Handle BMCLAPI version manifest response format
         // The response has { latest: {...}, versions: [...] }
-        if (data.data && Array.isArray(data.data.versions)) {
-          setVersions(data.data.versions);
-        } else if (Array.isArray(data.data)) {
+        if (result.data && Array.isArray(result.data.versions)) {
+          setVersions(result.data.versions);
+        } else if (Array.isArray(result.data)) {
           // Fallback for old format
-          setVersions(data.data);
+          setVersions(result.data);
         } else {
           setError('Invalid version data format');
         }
       } else {
-        setError(data.error || 'Failed to fetch versions');
+        setError(result.error || 'Failed to fetch versions');
       }
     } catch (err) {
-      setError('Network error. Please try again.');
+      setError('Failed to fetch versions. Please try again.');
     } finally {
       setLoading(false);
     }

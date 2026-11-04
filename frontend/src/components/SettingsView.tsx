@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Box, Typography, Card, CardContent, Chip, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Tooltip, Slider, Alert, Snackbar } from '@mui/material';
 import { Add, Delete, Star, Edit, Check, X, Save, Memory } from '@mui/icons-material';
+import { GetLauncherConfig, GetJavaInstallations } from '../../wailsjs/go/main/App';
 
 interface JavaInstallation {
   id: number;
@@ -63,15 +64,14 @@ export default function SettingsView() {
 
   const fetchConfig = async () => {
     try {
-      const response = await fetch(`${API_BASE}/launcher/config`);
-      const data = await response.json();
-      if (data.success && data.data) {
-        setConfig(data.data);
-        setMinMemory(data.data.min_memory ?? 1024);
-        setMaxMemory(data.data.max_memory ?? 4096);
-        setJavaArgs(data.data.java_args ?? '');
-        setGameWidth(data.data.game_width ?? 854);
-        setGameHeight(data.data.game_height ?? 480);
+      const result = await GetLauncherConfig();
+      if (result.success && result.data) {
+        setConfig(result.data);
+        setMinMemory(result.data.min_memory ?? 1024);
+        setMaxMemory(result.data.max_memory ?? 4096);
+        setJavaArgs(result.data.java_args ?? '');
+        setGameWidth(result.data.game_width ?? 854);
+        setGameHeight(result.data.game_height ?? 480);
       }
     } catch (err) {
       console.error('Failed to fetch config:', err);
@@ -82,12 +82,11 @@ export default function SettingsView() {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`${API_BASE}/db/java`);
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        setJavaInstallations(data);
-      } else if (data.error) {
-        setError(data.error);
+      const result = await GetJavaInstallations();
+      if (result.success && Array.isArray(result.data)) {
+        setJavaInstallations(result.data);
+      } else if (result.error) {
+        setError(result.error);
       }
     } catch (err) {
       setError('Failed to fetch Java installations');
