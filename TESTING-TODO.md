@@ -90,6 +90,11 @@ need an owner decision before being acted on.
 
 ## Known behavior documented by tests (no action needed unless disagreed)
 
+- A failed `DownloadFile` (truncated stream) removes the partial file so a
+  retry is not blocked by "already exists" skips. Limitation: there is no
+  cancellation/context plumbing — a hard process kill mid-download can still
+  leave partial files behind; adding `context.Context` to the download path
+  would be a deliberate follow-up if cancellation is ever required.
 - `DownloadLibraries` continues after a failed library and reports the last
   error; `DownloadNatives` never fails (skips broken entries).
 - A second `database.Initialize` in the same process is a no-op (`sync.Once`).
