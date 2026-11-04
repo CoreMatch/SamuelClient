@@ -19,10 +19,14 @@ need an owner decision before being acted on.
 
 ## Decisions needed
 
-1. **LaunchGame success path is untested.** It spawns a real detached game
-   process, which unit tests must not do. Decision: add an integration test
-   that uses a fake `java` (shell script) plus a fixture version JSON, or
-   leave it to manual verification?
+1. **LaunchGame success path — covered by an end-to-end smoke test
+   (2026-11-05, branch `fix/round3-triage`).** `smoke_test.go`
+   (`TestSmokeLoginInstallLaunch`) drives the real bindings through
+   AuthlibLogin (fake Yggdrasil httptest server) → DownloadVersion (fake
+   BMCLAPI httptest server) → LaunchGame (shell-script "java"), then polls
+   the launch log for the process's stdout/stderr lines and clean exit. No
+   real network, accounts, or GUI. Remaining gap: it exercises a fake java,
+   not a real Minecraft client — real-game verification stays manual.
 4. **`database.Transaction` has no production consumer.** It is now covered by
    tests, but nothing calls it. Decision: delete, or keep as infrastructure?
 5. **Wails event emission is not unit-tested.** `launcher:log` /
