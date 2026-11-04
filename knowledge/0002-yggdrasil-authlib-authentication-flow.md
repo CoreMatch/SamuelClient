@@ -56,12 +56,14 @@ SamuelClient authenticates **purely via the Yggdrasil protocol**, not OAuth2:
   `internal/services/mc_services.go:113-156`; JVM injection
   `:1370-1372` (`-javaagent`) and `:1373-1378` (prefetched metadata); reference
   doc `docs/authlib-injector wiki.pdf`; introduced by `19fd6c3`.
-- Endpoint ownership: HRPAuth-Yggdrasil-API `main.go:148` (meta) and
-  `main.go:171-177` (`/authserver/...` routes) match the launcher's calls.
+- Endpoint ownership: HRPAuth-Yggdrasil-API
+  `/home/lnb/Desktop/HA/HRPAuth-Yggdrasil-API/main.go::Meta` (meta) and
+  `/home/lnb/Desktop/HA/HRPAuth-Yggdrasil-API/main.go::authserver`
+  (`/authserver/...` routes) match the launcher's calls.
 - Dead local endpoints / offline UUID mismatch: routes
-  `internal/routes/routes.go:151-158`; frontend offline UUID
+  `internal/routes/routes.go:L151-L158 @ 27745e6`; frontend offline UUID
   `frontend/src/components/LoginView.tsx:136,388-405` vs backend
-  `internal/handlers/mc_handlers.go:598-610`.
+  `internal/handlers/mc_handlers.go:L598-L610 @ 27745e6`.
 - Unimplemented Microsoft login: `internal/services/mc_services.go:1270-1284`
   (`resolveUserType` handles `msa`; no implementation).
 - Commits: `19fd6c3`, `0ad13eb`, `61138ee`, `c08d863` (HRPAUTH support fix,
