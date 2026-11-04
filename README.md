@@ -16,13 +16,13 @@ A cross-platform Minecraft launcher built with [Wails](https://wails.io/) (Go + 
 | Layer    | Technology |
 |----------|------------|
 | Backend  | Go 1.25, [Wails v2](https://wails.io/), [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) |
-| Frontend | React 19, TypeScript 5, [Vite 6](https://vitejs.dev/), [Material UI v6](https://mui.com/) |
+| Frontend | React 19, TypeScript 5, [Vite 6](https://vitejs.dev/), [Material UI v9](https://mui.com/) |
 | Build    | Wails CLI (WebKitGTK 2.41+ on Linux) |
 
 ## Project layout
 
 ```
-HRPML-Wails/
+SamuelClient/
 ├── app.go                  # Wails App struct — entry point for Go ↔ JS bindings
 ├── main.go                 # Wails application bootstrap
 ├── wails.json              # Wails project configuration
@@ -62,8 +62,8 @@ Verify your environment with `wails doctor`.
 Clone the repository and run the app in live development mode (with hot reload for the frontend):
 
 ```bash
-git clone <repo-url> HRPML-Wails
-cd HRPML-Wails
+git clone https://github.com/CoreMatch/SamuelClient.git
+cd SamuelClient
 wails dev
 ```
 
@@ -99,7 +99,7 @@ npm run typecheck
 
 ## License
 
-This project is licensed under the **GNU Affero General Public License v3.0** — see the [LICENSE](file:///home/lnb/HRPML-Wails/LICENSE) file for the full text.
+This project is licensed under the **GNU Affero General Public License v3.0** — see the [LICENSE](./LICENSE) file for the full text.
 
 ## Acknowledgements
 
