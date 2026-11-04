@@ -42,23 +42,23 @@ SamuelClient is a **cross-platform Minecraft launcher built with Wails**:
 
 ## Evidence
 
-- Tech stack: `go.mod:1,3,6-8` (module `HRPMLW`, Gin, Wails v2.12.0, sqlite);
-  `wails.json:3-4` ("Samuel Client"); `frontend/package.json:13-22,38-39`
+- Tech stack: `go.mod:1,3,6-7` (module `HRPMLW`, Wails v2.12.0, sqlite);
+  `wails.json:3-4` ("Samuel Client"); `frontend/package.json:13-20,35`
   (React 19 + MUI + Vite), package name `hrpml-ml` at `:2`.
-- Window title and startup: `main.go:19-20`; `app.go:35-45` (startup init
-  SQLite + Gin), `app.go:55-59` (Gin on `config.ServerPort`); default port
+- Window title and startup: `main.go:19-20`; `app.go:38-45` (startup init
+  SQLite), `app.go:55-59` (Gin on `config.ServerPort`); default port
   `internal/config/config.go:17` (`34501`).
 - Routes: `internal/routes/routes.go:37-74` (route setup), `:135-144` (Java
   CRUD), `:149-194` (MC launcher group).
-- Launch flow: `frontend/src/views/HomeView.tsx:262-294` (`handleLaunch`),
-  `internal/handlers/mc_handlers.go:441-517` (launch handler),
-  `internal/services/mc_services.go:1166-1272` (`BuildLaunchCommand`),
-  `:1285-1356` (`LaunchGame`).
+- Launch flow: `frontend/src/components/HomeView.tsx:269-316` (`handleLaunch`),
+  `bindings.go:295-376` (launch binding),
+  `internal/services/mc_services.go:1304-1410` (`BuildLaunchCommand`),
+  `:1429-1506` (`LaunchGame`).
 - Downloads/mirror: `internal/services/mc_services.go:368-374` (BMCLAPI base
-  URL), `:489-497` (URL rewrite), `:465` (version manifest), `:670,722,744`
+  URL), `:499-507` (URL rewrite), `:475` (version manifest), `:680,732,754`
   (fabric/forge).
-- Java management: `internal/handlers/db_handlers.go:561-641`; auto-detect
-  `internal/services/mc_services.go:968-990`.
+- Java management: `bindings.go:86-108,389-455`; auto-detect
+  `internal/services/java.go:54-103`.
 - README positioning: `README.md:3` ("cross-platform Minecraft launcher built
   with Wails").
 - Commits: `4284748` (full launcher functionality), `23bf03a` (Java management),
@@ -66,8 +66,9 @@ SamuelClient is a **cross-platform Minecraft launcher built with Wails**:
   persistence), `19fd6c3` (rename to Samuel Client + authlib).
 - CMCL residue check (2026-11-04): `git log --all --full-history -- "*cmcl*"`
   shows no `cmcl.jar` was ever committed; the only cmcl-named file ever tracked
-  was `frontend/docs/CMCL_Commands_Report.md` (added in `349774e`, removed in
-  `756cbf0`). The last reference was `frontend/src/variables.ts:12-15`
+  was `frontend/docs/CMCL_Commands_Report.md` (added in `349774e`, moved to
+  `docs/` in `756cbf0`, removed in `7095d3b`). The last reference was
+  `frontend/src/variables.ts:12-15`
   (`CMCL_CONFIG`, `cmclPath` default `java -jar ./cmcl.jar`); a repo-wide
   search found no consumer of `CMCL_CONFIG`/`cmclPath` in code, build scripts,
   README, or CI, and `variables.ts` was deleted during the ADR-0004 cleanup.
