@@ -81,17 +81,22 @@ need an owner decision before being acted on.
      generated version directory and removes the transient installer jar.
      Both emit `download:progress` with stage `"loader"`, clean up fresh
      directories on failure, and are retryable.
-     **Not verified**: against a real Fabric/Forge installer and real JRE
-     (tests use httptest meta + a shell-script installer covering exit 0 /
-     non-zero / timeout). Known limitation: the stock Forge installer
-     targets the platform-default Minecraft directory; `--installClient`
-     without a directory flag cannot be redirected on older installers, so
-     `gameDir` should be the default one. Decision left for the author:
-     whether to add modern-installer `--installDir` handling.
-     UI follow-up (not done this round): the HomeView loader dropdown still
-     only sets `loader_type` on the launch request; it should instead call
-     `InstallFabricLoader`/`InstallForgeLoader` and let the user pick the
-     resulting version from the installed list.
+     **Real-network verified (2026-11-05, branch `chore/loader-ui-and-verify`)**:
+     Fabric 0.20.1 for MC 1.20.4 via the live BMCLAPI mirror — profile JSON
+     on disk, 8 loader libraries downloaded, `GetInstalledVersions`
+     recognizes it, `BuildLaunchCommand` classpath points at the parent
+     files. Forge 1.20.4-49.0.3 — real installer ran on JDK 25 and produced
+     `versions/1.20.4-forge49.0.3/`. The live run exposed and fixed three
+     real bugs: fabric meta libraries without URLs (now derived from maven
+     coordinates via the mirror), mirror CDNs 403-ing Go's default
+     User-Agent (downloads now send a launcher UA), and the forge installer
+     download URL (the old `/forge/.../installer` endpoint 404s; the maven
+     layout works). The installer also needs a `launcher_profiles.json` in
+     the target dir (a minimal one is seeded) and installs into its working
+     directory, so the earlier "install-dir redirection" concern is moot.
+     UI follow-up (done 2026-11-05, `chore/loader-ui-and-verify`): the
+     HomeView loader dropdown now calls `InstallFabricLoader`/
+     `InstallForgeLoader` and refreshes the version list on success.
 9. **`UserRepository`, `TaskRepository`, `FileRepository` retired
    (2026-11-05, branch `fix/round3-triage`).** Zero production callers were
    found (grep across `*.go`), so the repositories, their models
