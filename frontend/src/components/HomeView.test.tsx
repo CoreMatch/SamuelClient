@@ -6,6 +6,10 @@ import { InstalledVersion } from '../types';
 import {
   GetJavaInstallations,
   GetInstalledVersions,
+  GetFabricVersions,
+  GetForgeVersions,
+  InstallFabricLoader,
+  InstallForgeLoader,
   LaunchGame,
 } from '../../wailsjs/go/main/App';
 
@@ -16,6 +20,8 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   GetInstalledVersions: vi.fn(),
   GetFabricVersions: vi.fn(),
   GetForgeVersions: vi.fn(),
+  InstallFabricLoader: vi.fn(),
+  InstallForgeLoader: vi.fn(),
   LaunchGame: vi.fn(),
 }));
 vi.mock('../../wailsjs/runtime/runtime', () => ({
@@ -25,6 +31,10 @@ vi.mock('../../wailsjs/runtime/runtime', () => ({
 
 const mockGetInstalledVersions = vi.mocked(GetInstalledVersions);
 const mockGetJavaInstallations = vi.mocked(GetJavaInstallations);
+const mockGetFabricVersions = vi.mocked(GetFabricVersions);
+const mockGetForgeVersions = vi.mocked(GetForgeVersions);
+const mockInstallFabricLoader = vi.mocked(InstallFabricLoader);
+const mockInstallForgeLoader = vi.mocked(InstallForgeLoader);
 const mockLaunchGame = vi.mocked(LaunchGame);
 
 const account: StoredAccount = {
@@ -41,11 +51,20 @@ const version: InstalledVersion = { id: '1.99', type: 'release', installed: true
 function emptyLists() {
   mockGetInstalledVersions.mockResolvedValue({ success: true, data: { versions: [] }, error: '' });
   mockGetJavaInstallations.mockResolvedValue({ success: true, data: [], error: '' });
+  mockGetFabricVersions.mockResolvedValue({ success: true, data: [], error: '' });
+  mockGetForgeVersions.mockResolvedValue({ success: true, data: [], error: '' });
+}
+
+// Selects the Minecraft version through the MUI select so fetchLoaders runs.
+async function selectVersion(name: string) {
+  fireEvent.mouseDown(screen.getAllByRole('combobox')[0]);
+  fireEvent.click(await screen.findByRole('option', { name }));
 }
 
 describe('HomeView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     emptyLists();
   });
 
@@ -107,5 +126,83 @@ describe('HomeView', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Play' }));
     expect(await screen.findByText('java not found')).toBeTruthy();
+  });
+
+  it('installs a fabric loader through the binding and refreshes versions', async () => {
+    mockGetInstalledVersions.mockResolvedValue({
+      success: true,
+      data: { versions: [{ id: '1.99', type: 'release', has_json: true, has_jar: true }] },
+      error: '',
+    });
+    mockGetFabricVersions.mockResolvedValue({
+      success: true,
+      data: [{ loader: { version: '0.15.0' } }],
+      error: '',
+    });
+    mockInstallFabricLoader.mockResolvedValue({
+      success: true,
+      data: { version_id: 'fabric-loader-0.15.0-1.99' },
+      error: '',
+    });
+
+    render(
+      <HomeView
+        selectedVersion={null}
+        onVersionSelect={vi.fn()}
+        currentAccount={account}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    await selectVersion('1.99');
+
+    // The loader dropdown offers the fabric loader once fetchLoaders resolves;
+    // picking it installs through the binding.
+    await waitFor(() => expect(mockGetFabricVersions).toHaveBeenCalled());
+    fireEvent.mouseDown(screen.getAllByRole('combobox')[1]);
+    fireEvent.click(await screen.findByRole('option', { name: 'fabric 0.15.0' }));
+
+    await waitFor(() =>
+      expect(mockInstallFabricLoader).toHaveBeenCalledWith('1.99', '0.15.0', ''),
+    );
+    expect(mockInstallForgeLoader).not.toHaveBeenCalled();
+    // Success refreshes the installed version list (initial load + reload).
+    await waitFor(() => expect(mockGetInstalledVersions.mock.calls.length).toBe(2));
+  });
+
+  it('surfaces the error when a forge loader install fails', async () => {
+    mockGetInstalledVersions.mockResolvedValue({
+      success: true,
+      data: { versions: [{ id: '1.99', type: 'release', has_json: true, has_jar: true }] },
+      error: '',
+    });
+    mockGetForgeVersions.mockResolvedValue({
+      success: true,
+      data: [{ version: '47.2.0' }],
+      error: '',
+    });
+    mockInstallForgeLoader.mockResolvedValue({
+      success: false,
+      data: null,
+      error: 'forge installer failed',
+    });
+
+    render(
+      <HomeView
+        selectedVersion={null}
+        onVersionSelect={vi.fn()}
+        currentAccount={account}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    await selectVersion('1.99');
+
+    await waitFor(() => expect(mockGetForgeVersions).toHaveBeenCalled());
+    fireEvent.mouseDown(screen.getAllByRole('combobox')[1]);
+    fireEvent.click(await screen.findByRole('option', { name: 'forge 47.2.0' }));
+
+    expect(await screen.findByText('forge installer failed')).toBeTruthy();
+    expect(mockInstallForgeLoader).toHaveBeenCalledWith('1.99', '47.2.0', '');
   });
 });
