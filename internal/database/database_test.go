@@ -65,7 +65,7 @@ func TestMigrationsCreateExpectedTables(t *testing.T) {
 		got[name] = true
 	}
 
-	for _, table := range []string{"users", "settings", "tasks", "files", "java_installations"} {
+	for _, table := range []string{"settings", "java_installations"} {
 		if !got[table] {
 			t.Errorf("expected table %q to be created by migrations", table)
 		}
@@ -82,6 +82,22 @@ func TestMigrationsDoNotCreateLogsTable(t *testing.T) {
 	}
 	if count != 0 {
 		t.Errorf("logs table was created on a fresh database; expected it to be retired")
+	}
+}
+
+func TestMigrationsDoNotCreateRetiredTables(t *testing.T) {
+	// Regression for the 2026-11-05 retirement of the user/task/file
+	// repositories: fresh databases must no longer create these tables.
+	// Existing deployments keep theirs inert on disk (no DROP migration).
+	for _, table := range []string{"users", "tasks", "files"} {
+		var count int
+		err := GetDB().QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&count)
+		if err != nil {
+			t.Fatalf("query sqlite_master for %q: %v", table, err)
+		}
+		if count != 0 {
+			t.Errorf("retired table %q was created on a fresh database", table)
+		}
 	}
 }
 
@@ -102,8 +118,7 @@ func TestMigrationsCreateExpectedIndexes(t *testing.T) {
 	}
 
 	for _, idx := range []string{
-		"idx_users_username", "idx_settings_key", "idx_tasks_status",
-		"idx_files_path", "idx_java_path", "idx_java_default",
+		"idx_settings_key", "idx_java_path", "idx_java_default",
 	} {
 		if !got[idx] {
 			t.Errorf("expected index %q to be created by migrations", idx)

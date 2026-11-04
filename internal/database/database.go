@@ -78,45 +78,12 @@ func Close() error {
 // runMigrations runs database migrations
 func runMigrations() error {
 	migrations := []string{
-		`CREATE TABLE IF NOT EXISTS users (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			username TEXT UNIQUE NOT NULL,
-			email TEXT UNIQUE,
-			password_hash TEXT,
-			role TEXT DEFAULT 'user',
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)`,
 		`CREATE TABLE IF NOT EXISTS settings (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			key TEXT UNIQUE NOT NULL,
 			value TEXT,
 			type TEXT DEFAULT 'string',
 			description TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE TABLE IF NOT EXISTS tasks (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL,
-			description TEXT,
-			status TEXT DEFAULT 'pending',
-			priority INTEGER DEFAULT 0,
-			progress INTEGER DEFAULT 0,
-			result TEXT,
-			error TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			completed_at DATETIME
-		)`,
-		`CREATE TABLE IF NOT EXISTS files (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL,
-			path TEXT NOT NULL,
-			size INTEGER DEFAULT 0,
-			mime_type TEXT,
-			checksum TEXT,
-			metadata TEXT,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
@@ -129,15 +96,17 @@ func runMigrations() error {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`,
 		`CREATE INDEX IF NOT EXISTS idx_settings_key ON settings(key)`,
 		// The logs table and its indexes are no longer created: nothing writes
 		// or reads it anymore (live launch logs stream over Wails events,
 		// ADR-0004 follow-up). No DROP is issued on purpose — databases that
 		// already contain a logs table keep it inert on disk, which avoids any
 		// destructive migration.
-		`CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)`,
+		//
+		// The users, tasks and files tables (and their indexes) are retired the
+		// same way: the repositories that used them were deleted because no
+		// launcher feature reads or writes them. Fresh databases no longer
+		// create them; existing deployments keep their copies inert on disk.
 		`CREATE INDEX IF NOT EXISTS idx_java_path ON java_installations(path)`,
 		`CREATE INDEX IF NOT EXISTS idx_java_default ON java_installations(is_default)`,
 	}

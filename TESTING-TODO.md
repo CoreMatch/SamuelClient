@@ -45,10 +45,15 @@ need an owner decision before being acted on.
    launch eventually needs asset downloads). Kept this round because they are
    tested and on the documented launcher path. Decision: wire them into
    bindings/`InstallVersion`, or delete?
-9. **`UserRepository`, `TaskRepository`, `FileRepository` (and the `users`,
-   `tasks`, `files` tables) have no production caller** — only tests use them.
-   Kept this round as a conservative choice. Decision: retire them like the
-   `logs` table (ADR-0004 follow-up), or keep for planned features?
+9. **`UserRepository`, `TaskRepository`, `FileRepository` retired
+   (2026-11-05, branch `fix/round3-triage`).** Zero production callers were
+   found (grep across `*.go`), so the repositories, their models
+   (`User`/`Task`/`File`, plus the never-referenced `Mod`/`ModLoader`/
+   `DownloadTask` models and related constants) and their tests were deleted.
+   Handled exactly like the `logs` table: fresh databases no longer create
+   `users`/`tasks`/`files`; no DROP migration is issued, so existing
+   deployments keep the old tables inert on disk. Regression test:
+   `TestMigrationsDoNotCreateRetiredTables`.
 10. **Seven pre-existing frontend lint warnings remain** (four
     `no-explicit-any`, one `react-hooks/exhaustive-deps`, one
     `react-refresh/only-export-components`, plus related). Fixing them means
@@ -60,8 +65,9 @@ need an owner decision before being acted on.
 - `DownloadLibraries` continues after a failed library and reports the last
   error; `DownloadNatives` never fails (skips broken entries).
 - A second `database.Initialize` in the same process is a no-op (`sync.Once`).
-- The retired `logs` table is not created on fresh databases; existing tables
-  in already-deployed databases stay inert (ADR-0004 follow-up).
+- The retired `logs`, `users`, `tasks` and `files` tables are not created on
+  fresh databases; existing tables in already-deployed databases stay inert
+  (ADR-0004 follow-ups).
 - A failed `InstallVersion` removes a freshly created version directory but
   never touches a pre-existing one; `JavaRepository.Delete`/`SetDefault`
   fail with a wrapped `sql.ErrNoRows` for unknown ids.
