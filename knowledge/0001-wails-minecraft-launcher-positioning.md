@@ -8,9 +8,9 @@
 > `/api/v1/...` routes, `SERVER_PORT`, and the frontend→Gin HTTP calls were
 > all retired by [ADR-0004](0004-local-http-boundary.md). Every backend call
 > now goes through a Wails binding, and the process opens no listening port.
-> Evidence lines below citing `internal/routes`, `internal/handlers`,
-> `internal/config`, or `frontend/src/views` refer to files that no longer
-> exist; they are kept as the historical record.
+> Evidence lines below citing `internal/routes`, `internal/config`, or
+> `frontend/src/variables.ts` refer to files that no longer exist; they are
+> kept as the historical record (time-point anchored).
 
 ## Context
 
@@ -52,23 +52,30 @@ SamuelClient is a **cross-platform Minecraft launcher built with Wails**:
 ## Evidence
 
 - Tech stack: `go.mod:1,3,6-7` (module `HRPMLW`, Wails v2.12.0, sqlite);
-  `wails.json:3-4` ("Samuel Client"); `frontend/package.json:13-20,35`
-  (React 19 + MUI + Vite), package name `hrpml-ml` at `:2`.
+  `wails.json:3-4` ("Samuel Client");
+  `frontend/package.json (field: "dependencies")` (React 19 + MUI) and
+  `frontend/package.json (field: "vite")` (Vite), package name `hrpml-ml` at
+  `:2`.
 - Window title and startup: `main.go:19-20`; `app.go:38-45` (startup init
   SQLite), `app.go:L55-L59 @ 27745e6` (Gin on `config.ServerPort`); default
   port `internal/config/config.go:L17 @ 27745e6` (`34501`).
 - Routes: `internal/routes/routes.go:L37-L74 @ 27745e6` (route setup),
   `internal/routes/routes.go:L135-L144 @ 27745e6` (Java CRUD),
   `internal/routes/routes.go:L149-L194 @ 27745e6` (MC launcher group).
-- Launch flow: `frontend/src/components/HomeView.tsx:269-316` (`handleLaunch`),
-  `bindings.go:295-376` (launch binding),
-  `internal/services/mc_services.go:1304-1410` (`BuildLaunchCommand`),
-  `:1429-1506` (`LaunchGame`).
-- Downloads/mirror: `internal/services/mc_services.go:368-374` (BMCLAPI base
-  URL), `:499-507` (URL rewrite), `:475` (version manifest), `:680,732,754`
-  (fabric/forge).
-- Java management: `bindings.go:86-108,389-455`; auto-detect
-  `internal/services/java.go:54-103`.
+- Launch flow: `frontend/src/components/HomeView.tsx::handleLaunch`,
+  `bindings.go::LaunchGame` (launch binding),
+  `internal/services/mc_services.go::BuildLaunchCommand`,
+  `internal/services/mc_services.go::LaunchGame`.
+- Downloads/mirror: `internal/services/mc_services.go::NewBMCLAPIService`
+  (BMCLAPI base URL), `internal/services/mc_services.go::toBMCLAPI` (URL
+  rewrite), `internal/services/mc_services.go::GetVersionList` (version
+  manifest), `internal/services/mc_services.go::GetFabricVersions`,
+  `internal/services/mc_services.go::GetForgeVersions`,
+  `internal/services/mc_services.go::DownloadForgeInstaller` (fabric/forge).
+- Java management: `bindings.go::GetJavaInstallations`,
+  `bindings.go::AddJavaInstallation`, `bindings.go::UpdateJavaInstallation`,
+  `bindings.go::DeleteJavaInstallation`, `bindings.go::SetDefaultJavaInstallation`;
+  auto-detect `internal/services/java.go:54-103`.
 - README positioning: `README.md:3` ("cross-platform Minecraft launcher built
   with Wails").
 - Commits: `4284748` (full launcher functionality), `23bf03a` (Java management),
