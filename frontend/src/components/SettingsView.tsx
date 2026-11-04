@@ -94,7 +94,7 @@ export default function SettingsView() {
       } else if (result.error) {
         setError(result.error);
       }
-    } catch (err) {
+    } catch {
       setError('Failed to fetch Java installations');
     } finally {
       setLoading(false);
@@ -167,7 +167,7 @@ export default function SettingsView() {
       } else {
         setSaveError(result.error || 'Failed to save settings');
       }
-    } catch (err) {
+    } catch {
       setSaveError('Failed to save settings');
     } finally {
       setSavingConfig(false);
@@ -202,7 +202,7 @@ export default function SettingsView() {
       } else {
         setDialogError(result.error || 'Failed to add Java installation');
       }
-    } catch (err) {
+    } catch {
       setDialogError('Failed to add Java installation');
     }
   };
@@ -226,7 +226,7 @@ export default function SettingsView() {
       } else {
         setDialogError(result.error || 'Failed to update Java installation');
       }
-    } catch (err) {
+    } catch {
       setDialogError('Failed to update Java installation');
     }
   };
@@ -241,7 +241,7 @@ export default function SettingsView() {
       } else {
         setError(result.error || 'Failed to delete Java installation');
       }
-    } catch (err) {
+    } catch {
       setError('Failed to delete Java installation');
     }
   };
@@ -254,7 +254,7 @@ export default function SettingsView() {
       } else {
         setError(result.error || 'Failed to set default Java');
       }
-    } catch (err) {
+    } catch {
       setError('Failed to set default Java');
     }
   };

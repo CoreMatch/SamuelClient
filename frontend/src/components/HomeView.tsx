@@ -308,7 +308,7 @@ export default function HomeView({
       } else {
         setError(result.error || 'Failed to launch game');
       }
-    } catch (err) {
+    } catch {
       setError('Failed to launch game. Please try again.');
     } finally {
       setLaunching(false);

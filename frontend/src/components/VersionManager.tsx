@@ -125,7 +125,7 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
       } else {
         setError(result.error || 'Failed to fetch versions');
       }
-    } catch (err) {
+    } catch {
       setError('Failed to fetch versions. Please try again.');
     } finally {
       setLoading(false);
@@ -152,7 +152,7 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
       } else {
         setError(result.error || 'Download failed');
       }
-    } catch (err) {
+    } catch {
       setError('Download failed. Please try again.');
     } finally {
       setDownloading(null);
