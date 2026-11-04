@@ -1,8 +1,6 @@
 package database
 
 import (
-	"database/sql"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -136,41 +134,5 @@ func TestDefaultConfigPath(t *testing.T) {
 	want := filepath.Join(home, ".hrpml", "data.db")
 	if cfg.Path != want {
 		t.Errorf("DefaultConfig().Path = %q, want %q", cfg.Path, want)
-	}
-}
-
-func TestTransactionCommitAndRollback(t *testing.T) {
-	// Commit path: the insert survives.
-	err := Transaction(func(tx *sql.Tx) error {
-		_, err := tx.Exec(`INSERT INTO settings (key, value, type) VALUES ('tx_commit', '1', 'string')`)
-		return err
-	})
-	if err != nil {
-		t.Fatalf("commit transaction failed: %v", err)
-	}
-	var count int
-	if err := GetDB().QueryRow(`SELECT COUNT(*) FROM settings WHERE key = 'tx_commit'`).Scan(&count); err != nil {
-		t.Fatalf("count query: %v", err)
-	}
-	if count != 1 {
-		t.Errorf("committed row missing: count = %d, want 1", count)
-	}
-
-	// Rollback path: returning an error discards the insert.
-	wantErr := errors.New("boom")
-	err = Transaction(func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`INSERT INTO settings (key, value, type) VALUES ('tx_rollback', '1', 'string')`); err != nil {
-			return err
-		}
-		return wantErr
-	})
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("Transaction returned %v, want the propagated error %v", err, wantErr)
-	}
-	if err := GetDB().QueryRow(`SELECT COUNT(*) FROM settings WHERE key = 'tx_rollback'`).Scan(&count); err != nil {
-		t.Fatalf("count query: %v", err)
-	}
-	if count != 0 {
-		t.Errorf("rolled-back row survived: count = %d, want 0", count)
 	}
 }

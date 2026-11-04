@@ -27,14 +27,20 @@ need an owner decision before being acted on.
    the launch log for the process's stdout/stderr lines and clean exit. No
    real network, accounts, or GUI. Remaining gap: it exercises a fake java,
    not a real Minecraft client — real-game verification stays manual.
-4. **`database.Transaction` has no production consumer.** It is now covered by
-   tests, but nothing calls it. Decision: delete, or keep as infrastructure?
-5. **Wails event emission is not unit-tested.** `launcher:log` /
-   `download:progress` emission needs a real Wails runtime context
-   (`runtime.EventsEmit`), which unit tests cannot create. The emit call sites
-   are exercised (with nil context they no-op), but delivery to the frontend
-   is only verified by reading the code. Decision: accept, or add a `wails
-   dev`-based smoke test?
+4. **`database.Transaction` deleted (2026-11-05, branch
+   `feat/loader-install`).** It had no production consumer (grep-verified;
+   only its own test called it), so per the standing "do not keep dead
+   code" policy the helper and `TestTransactionCommitAndRollback` were
+   removed. `JavaRepository.SetDefault` keeps its own explicit transaction,
+   which is the only transactional code path.
+5. **Wails event emission: NOT unit-tested — accepted.**
+   `launcher:log` / `download:progress` emission needs a real Wails runtime
+   context (`runtime.EventsEmit`), which unit tests cannot create.
+   Mitigations in place: the emit call sites are exercised with a nil
+   context (no-op path), the payload contract is documented in `bindings.go`
+   and README, the smoke test verifies the underlying log/download paths,
+   and delivery was manually confirmed on a `wails build` artifact.
+   Reopening only makes sense if the frontend gains an integration harness.
 6. **`GetJavaPath` fallback branches are environment-dependent.** Only the
    JAVA_HOME branch is tested deterministically; the common-paths/`"java"`
    fallback depends on the machine. Decision: accept partial coverage?
@@ -96,6 +102,21 @@ need an owner decision before being acted on.
     was added, and `saveAccount`/`StoredAccount` moved to
     `src/accountStorage.ts` so component files only export components
     (react-refresh).
+11. **Process lifecycle: no cancellation plumbing (author confirmation
+    wanted).** Recorded 2026-11-05 (branch `feat/loader-install`).
+    - Impact: an in-flight `DownloadVersion` or Forge installer run cannot
+      be cancelled from the UI — the Forge run is bounded only by its
+      10-minute timeout; a user "retry" can run two installs concurrently;
+      the launched game is detached on purpose (survives the launcher) and
+      is not meant to be killable from the launcher.
+    - Minimal change (NOT implemented — alters the binding surface):
+      thread `context.Context` through `DownloadFile`/`InstallVersion`/
+      `InstallForgeLoader` (requests via `http.NewRequestWithContext`,
+      processes via `exec.CommandContext`/`cmd.Cancel`), keep per-version
+      cancel funcs in `App`, add a `CancelInstall(versionID)` binding and a
+      cancel button in the UI.
+    - Decision needed: accept the status quo (timeouts + retry tolerance) or
+      schedule the cancellation work.
 
 ## Known behavior documented by tests (no action needed unless disagreed)
 
