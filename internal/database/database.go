@@ -96,14 +96,6 @@ func runMigrations() error {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
-		`CREATE TABLE IF NOT EXISTS logs (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			level TEXT DEFAULT 'info',
-			message TEXT NOT NULL,
-			source TEXT,
-			metadata TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)`,
 		`CREATE TABLE IF NOT EXISTS tasks (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
@@ -139,8 +131,11 @@ func runMigrations() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`,
 		`CREATE INDEX IF NOT EXISTS idx_settings_key ON settings(key)`,
-		`CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level)`,
-		`CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at)`,
+		// The logs table and its indexes are no longer created: nothing writes
+		// or reads it anymore (live launch logs stream over Wails events,
+		// ADR-0004 follow-up). No DROP is issued on purpose — databases that
+		// already contain a logs table keep it inert on disk, which avoids any
+		// destructive migration.
 		`CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)`,
 		`CREATE INDEX IF NOT EXISTS idx_java_path ON java_installations(path)`,

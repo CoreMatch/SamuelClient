@@ -8,7 +8,7 @@ A cross-platform Minecraft launcher built with [Wails](https://wails.io/) (Go + 
 - **Version management** — browse and download vanilla Minecraft versions, plus Fabric and Forge mod loaders
 - **Mod management** — open the `mods` folder for the active profile directly from the UI
 - **Java management** — track installed Java runtimes and set a default per profile
-- **Persistent storage** — embedded [SQLite](https://www.sqlite.org/) database for users, settings, logs, tasks, file records, and Java installations
+- **Persistent storage** — embedded [SQLite](https://www.sqlite.org/) database for users, settings, tasks, file records, and Java installations
 - **Cross-platform** — Windows, macOS, and Linux builds via Wails
 
 ## Tech stack

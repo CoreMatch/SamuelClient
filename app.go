@@ -22,7 +22,6 @@ type App struct {
 	bmclService     *services.BMCLAPIService
 	launcherService *services.LauncherService
 	javaRepo        *repository.JavaRepository
-	logRepo         *repository.LogRepository
 }
 
 // NewApp creates a new App application struct
@@ -32,7 +31,6 @@ func NewApp() *App {
 		bmclService:     services.NewBMCLAPIService(),
 		launcherService: services.NewLauncherService(),
 		javaRepo:        repository.NewJavaRepository(),
-		logRepo:         repository.NewLogRepository(),
 	}
 }
 
