@@ -33,6 +33,12 @@ SamuelClient is a **cross-platform Minecraft launcher built with Wails**:
   no frontend caller (see entry 0002).
 - Cost: module/package names (`HRPMLW`, `hrpml-ml`) were never renamed to match
   the "Samuel Client" branding; only `wails.json` and the window title changed.
+- CMCL residue: `cmcl.jar` (an external Minecraft CLI launcher) is a leftover
+  from the frontend rewrite; it was **never committed to version control**, so
+  there is no file to remove. The only remaining reference is the dead
+  `CMCL_CONFIG` block in `frontend/src/variables.ts` (zero consumers anywhere
+  in the repo). Per the task guardrail "stop when references exist", that block
+  was left untouched as of 2026-11-04 and awaits an explicit removal decision.
 
 ## Evidence
 
@@ -58,4 +64,11 @@ SamuelClient is a **cross-platform Minecraft launcher built with Wails**:
 - Commits: `4284748` (full launcher functionality), `23bf03a` (Java management),
   `da69467` (auto-detected system Java), `f87dea6` (launcher config
   persistence), `19fd6c3` (rename to Samuel Client + authlib).
+- CMCL residue check (2026-11-04): `git log --all --full-history -- "*cmcl*"`
+  shows no `cmcl.jar` was ever committed; the only cmcl-named file ever tracked
+  was `frontend/docs/CMCL_Commands_Report.md` (added in `349774e`, removed in
+  `756cbf0`). The remaining reference is `frontend/src/variables.ts:12-15`
+  (`CMCL_CONFIG`, `cmclPath` default `java -jar ./cmcl.jar`); a repo-wide
+  search found no consumer of `CMCL_CONFIG`/`cmclPath` in code, build scripts,
+  README, or CI.
 - Not verified: none material to the positioning claim.
