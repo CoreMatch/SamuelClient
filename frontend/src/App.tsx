@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Box, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, AppBar, Toolbar, Typography, IconButton } from '@mui/material';
-import { Gamepad, Home, Settings, Group, Layers, Menu, BugReport, ArrowBack } from '@mui/icons-material';
+import { Gamepad, Home, Settings, Group, Layers, Menu, ArrowBack } from '@mui/icons-material';
 import HomeView from './components/HomeView';
 import VersionManager from './components/VersionManager';
 import AccountManager, { StoredAccount, saveAccount } from './components/AccountManager';
 import ModManager from './components/ModManager';
 import SettingsView from './components/SettingsView';
-import DebugView from './components/DebugView';
 import LoginView, { LoggedInAccount } from './components/LoginView';
 
 const drawerWidth = 240;
@@ -23,7 +22,6 @@ const navItems: NavItem[] = [
   { id: 'accounts', label: 'Accounts', icon: Group },
   { id: 'mods', label: 'Mods', icon: Layers },
   { id: 'settings', label: 'Settings', icon: Settings },
-  { id: 'debug', label: 'Debug', icon: BugReport },
 ];
 
 export default function App() {
@@ -120,8 +118,6 @@ export default function App() {
         return <ModManager onOpenModsFolder={handleOpenModsFolder} />;
       case 'settings':
         return <SettingsView />;
-      case 'debug':
-        return <DebugView />;
       default:
         return (
           <HomeView

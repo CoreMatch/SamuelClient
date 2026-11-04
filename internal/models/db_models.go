@@ -24,16 +24,6 @@ type Setting struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-// Log represents a log entry in the database
-type Log struct {
-	ID        int64     `json:"id"`
-	Level     string    `json:"level"`
-	Message   string    `json:"message"`
-	Source    string    `json:"source,omitempty"`
-	Metadata  string    `json:"metadata,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
 // Task represents a task in the database
 type Task struct {
 	ID          int64      `json:"id"`
@@ -69,14 +59,6 @@ const (
 	TaskStatusCompleted = "completed"
 	TaskStatusFailed    = "failed"
 	TaskStatusCancelled = "cancelled"
-)
-
-// Log level constants
-const (
-	LogLevelDebug = "debug"
-	LogLevelInfo  = "info"
-	LogLevelWarn  = "warn"
-	LogLevelError = "error"
 )
 
 // User role constants

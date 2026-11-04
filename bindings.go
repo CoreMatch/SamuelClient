@@ -176,20 +176,6 @@ func (a *App) GetInstalledVersions() *models.ApiResponse {
 	}
 }
 
-// ==================== Logs (read) ====================
-
-// GetLogs returns the most recent entries of the local log table.
-func (a *App) GetLogs(limit int) *models.ApiResponse {
-	if limit <= 0 {
-		limit = 100
-	}
-	logs, err := a.logRepo.GetAll("", limit, 0)
-	if err != nil {
-		return &models.ApiResponse{Success: false, Error: err.Error()}
-	}
-	return &models.ApiResponse{Success: true, Data: logs}
-}
-
 // ==================== Auth (write / sensitive) ====================
 //
 // These carry credentials or session tokens. They run in-process via the

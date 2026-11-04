@@ -3,7 +3,6 @@ package repository
 import (
 	"database/sql"
 	"fmt"
-	"time"
 
 	"HRPMLW/internal/database"
 	"HRPMLW/internal/models"
@@ -141,65 +140,6 @@ func (r *SettingRepository) GetAll() ([]models.Setting, error) {
 func (r *SettingRepository) Delete(key string) error {
 	query := `DELETE FROM settings WHERE key = ?`
 	_, err := database.GetDB().Exec(query, key)
-	return err
-}
-
-// LogRepository handles log database operations
-type LogRepository struct{}
-
-// NewLogRepository creates a new LogRepository
-func NewLogRepository() *LogRepository {
-	return &LogRepository{}
-}
-
-// Create creates a new log entry
-func (r *LogRepository) Create(log *models.Log) error {
-	query := `INSERT INTO logs (level, message, source, metadata) VALUES (?, ?, ?, ?)`
-	result, err := database.GetDB().Exec(query, log.Level, log.Message, log.Source, log.Metadata)
-	if err != nil {
-		return fmt.Errorf("failed to create log: %w", err)
-	}
-	log.ID, _ = result.LastInsertId()
-	return nil
-}
-
-// GetAll retrieves logs with optional filtering
-func (r *LogRepository) GetAll(level string, limit, offset int) ([]models.Log, error) {
-	var query string
-	var args []interface{}
-
-	if level != "" {
-		query = `SELECT id, level, message, source, metadata, created_at FROM logs WHERE level = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`
-		args = []interface{}{level, limit, offset}
-	} else {
-		query = `SELECT id, level, message, source, metadata, created_at FROM logs ORDER BY created_at DESC LIMIT ? OFFSET ?`
-		args = []interface{}{limit, offset}
-	}
-
-	rows, err := database.GetDB().Query(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get logs: %w", err)
-	}
-	defer rows.Close()
-
-	var logs []models.Log
-	for rows.Next() {
-		var log models.Log
-		var source, metadata sql.NullString
-		if err := rows.Scan(&log.ID, &log.Level, &log.Message, &source, &metadata, &log.CreatedAt); err != nil {
-			return nil, err
-		}
-		log.Source = source.String
-		log.Metadata = metadata.String
-		logs = append(logs, log)
-	}
-	return logs, nil
-}
-
-// DeleteOld deletes logs older than specified days
-func (r *LogRepository) DeleteOld(days int) error {
-	query := `DELETE FROM logs WHERE created_at < datetime('now', '-' || ? || ' days')`
-	_, err := database.GetDB().Exec(query, days)
 	return err
 }
 
@@ -513,104 +453,3 @@ func (r *JavaRepository) Delete(id int64) error {
 	_, err := database.GetDB().Exec(query, id)
 	return err
 }
-
-// Stats returns database statistics
-func Stats() (map[string]int64, error) {
-	stats := make(map[string]int64)
-
-	queries := map[string]string{
-		"users":    "SELECT COUNT(*) FROM users",
-		"settings": "SELECT COUNT(*) FROM settings",
-		"logs":     "SELECT COUNT(*) FROM logs",
-		"tasks":    "SELECT COUNT(*) FROM tasks",
-		"files":    "SELECT COUNT(*) FROM files",
-	}
-
-	for name, query := range queries {
-		var count int64
-		err := database.GetDB().QueryRow(query).Scan(&count)
-		if err != nil {
-			return nil, err
-		}
-		stats[name] = count
-	}
-
-	return stats, nil
-}
-
-// Cleanup performs database cleanup (VACUUM, etc.)
-func Cleanup() error {
-	_, err := database.GetDB().Exec("VACUUM")
-	return err
-}
-
-// Backup creates a backup of the database
-func Backup(backupPath string) error {
-	// For SQLite, we can use the backup API or simply copy the file
-	// Here we'll use a simple approach by exporting all data
-	db := database.GetDB()
-
-	// Create backup database
-	backupDB, err := sql.Open("sqlite", backupPath)
-	if err != nil {
-		return fmt.Errorf("failed to create backup database: %w", err)
-	}
-	defer backupDB.Close()
-
-	// Copy schema and data
-	// This is a simplified backup - in production, use SQLite's backup API
-	tables := []string{"users", "settings", "logs", "tasks", "files"}
-
-	for _, table := range tables {
-		// Get create table statement
-		var createStmt string
-		err := db.QueryRow(fmt.Sprintf("SELECT sql FROM sqlite_master WHERE type='table' AND name='%s'", table)).Scan(&createStmt)
-		if err != nil {
-			continue
-		}
-
-		// Create table in backup
-		_, err = backupDB.Exec(createStmt)
-		if err != nil {
-			return fmt.Errorf("failed to create table %s in backup: %w", table, err)
-		}
-
-		// Copy data
-		rows, err := db.Query(fmt.Sprintf("SELECT * FROM %s", table))
-		if err != nil {
-			continue
-		}
-		defer rows.Close()
-
-		columns, _ := rows.Columns()
-		values := make([]interface{}, len(columns))
-		valuePtrs := make([]interface{}, len(columns))
-		for i := range values {
-			valuePtrs[i] = &values[i]
-		}
-
-		for rows.Next() {
-			rows.Scan(valuePtrs...)
-			placeholders := ""
-			args := make([]interface{}, len(values))
-			for i, v := range values {
-				if i > 0 {
-					placeholders += ", "
-				}
-				placeholders += "?"
-				args[i] = v
-			}
-			backupDB.Exec(fmt.Sprintf("INSERT INTO %s VALUES (%s)", table, placeholders), args...)
-		}
-	}
-
-	return nil
-}
-
-// GetDBStats returns database connection statistics
-func GetDBStats() sql.DBStats {
-	return database.GetDB().Stats()
-}
-
-// SetNow sets the current time for testing
-var Now = time.Now

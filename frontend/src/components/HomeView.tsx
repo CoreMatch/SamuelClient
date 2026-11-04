@@ -20,7 +20,6 @@ import {
   Settings,
   ExpandMore,
   ExpandLess,
-  Refresh,
 } from '@mui/icons-material';
 import { StoredAccount } from './AccountManager';
 import {
@@ -28,7 +27,6 @@ import {
   GetInstalledVersions,
   GetFabricVersions,
   GetForgeVersions,
-  GetLogs,
   LaunchGame,
 } from '../../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
@@ -54,16 +52,8 @@ interface JavaInstallation {
   is_default: boolean;
 }
 
-interface LogEntry {
-  id: number;
-  level: string;
-  message: string;
-  source?: string;
-  created_at: string;
-}
-
 // LiveLogLine is one line of game output streamed over the "launcher:log"
-// Wails event (ADR-0004), rendered ahead of the persisted DB logs.
+// Wails event (ADR-0004).
 interface LiveLogLine {
   source: string;
   line: string;
@@ -112,10 +102,8 @@ export default function HomeView({
   const [showSettings, setShowSettings] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState('');
-  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [liveLogs, setLiveLogs] = useState<LiveLogLine[]>([]);
   const [showLogs, setShowLogs] = useState(false);
-  const [logsLoading, setLogsLoading] = useState(false);
   const [javaInstallations, setJavaInstallations] = useState<JavaInstallation[]>([]);
   const [selectedJava, setSelectedJava] = useState<JavaInstallation | null>(null);
 
@@ -254,20 +242,6 @@ export default function HomeView({
     }
   };
 
-  const fetchLogs = async () => {
-    setLogsLoading(true);
-    try {
-      const result = await GetLogs(100);
-      if (result.success && Array.isArray(result.data)) {
-        setLogs(result.data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch logs:', err);
-    } finally {
-      setLogsLoading(false);
-    }
-  };
-
   const handleVersionChange = (versionId: string) => {
     const version = versions.find(v => v.id === versionId);
     setCurrentVersion(version || null);
@@ -338,7 +312,6 @@ export default function HomeView({
       setError('Failed to launch game. Please try again.');
     } finally {
       setLaunching(false);
-      fetchLogs();
     }
   };
 
@@ -349,21 +322,6 @@ export default function HomeView({
     { value: 4096, label: '4GB' },
     { value: 8192, label: '8GB' },
   ];
-
-  const getLogLevelColor = (level: string) => {
-    switch (level.toLowerCase()) {
-      case 'error':
-        return '#ef4444';
-      case 'warn':
-        return '#f59e0b';
-      case 'info':
-        return '#3b82f6';
-      case 'debug':
-        return '#8b5cf6';
-      default:
-        return '#9ca3af';
-    }
-  };
 
   return (
     <Box>
@@ -573,22 +531,10 @@ export default function HomeView({
             <Typography variant="h6" sx={{ color: 'white' }}>
               Logs
             </Typography>
-            <Button
-              startIcon={<Refresh />}
-              onClick={fetchLogs}
-              disabled={logsLoading}
-              sx={{ color: '#9ca3af', textTransform: 'none' }}
-            >
-              Refresh
-            </Button>
           </Box>
 
           <Box sx={{ height: 200, backgroundColor: '#1f2937', borderRadius: 1, overflowY: 'auto', p: 2 }}>
-              {logsLoading ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                  <CircularProgress size={24} />
-                </Box>
-              ) : liveLogs.length > 0 ? (
+              {liveLogs.length > 0 ? (
                 // ADR-0004: live game output streamed over "launcher:log".
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   {liveLogs.map((l, i) => (
@@ -601,27 +547,10 @@ export default function HomeView({
                     </Box>
                   ))}
                 </Box>
-              ) : logs.length === 0 ? (
+              ) : (
                 <Typography sx={{ color: '#6b7280', textAlign: 'center', py: 4 }}>
                   No logs available
                 </Typography>
-              ) : (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  {logs.map((log) => (
-                    <Box key={log.id} sx={{ display: 'flex', gap: 2, fontSize: '0.875rem' }}>
-                      <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>
-                        {new Date(log.created_at).toLocaleTimeString()}
-                      </span>
-                      <span style={{ color: getLogLevelColor(log.level), fontWeight: 'bold' }}>
-                        [{log.level.toUpperCase()}]
-                      </span>
-                      <span style={{ color: '#e5e7eb' }}>
-                        {log.source && <span style={{ color: '#9ca3af' }}>[{log.source}]</span>}
-                        {log.message}
-                      </span>
-                    </Box>
-                  ))}
-                </Box>
               )}
           </Box>
         </Paper>

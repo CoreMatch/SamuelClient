@@ -8,7 +8,7 @@ A cross-platform Minecraft launcher built with [Wails](https://wails.io/) (Go + 
 - **Version management** — browse and download vanilla Minecraft versions, plus Fabric and Forge mod loaders
 - **Mod management** — open the `mods` folder for the active profile directly from the UI
 - **Java management** — track installed Java runtimes and set a default per profile
-- **Persistent storage** — embedded [SQLite](https://www.sqlite.org/) database for users, settings, logs, tasks, file records, and Java installations
+- **Persistent storage** — embedded [SQLite](https://www.sqlite.org/) database for users, settings, tasks, file records, and Java installations
 - **Cross-platform** — Windows, macOS, and Linux builds via Wails
 
 ## Tech stack
@@ -34,7 +34,7 @@ HRPML-Wails/
 │   └── services/           # Auth, download, and launcher services
 ├── frontend/
 │   ├── src/
-│   │   ├── components/     # React views (Home, Versions, Accounts, Mods, Settings, Debug, Login)
+│   │   ├── components/     # React views (Home, Versions, Accounts, Mods, Settings, Login)
 │   │   ├── App.tsx         # Main app shell with navigation drawer
 │   │   └── main.tsx        # React entry point
 │   ├── index.html
@@ -88,7 +88,6 @@ The UI is a single-page React app written in TypeScript and built with Vite. Mat
 - **Accounts** — add and switch between offline and Yggdrasil accounts
 - **Mods** — open the active profile's `mods` folder
 - **Settings** — application preferences
-- **Debug** — database diagnostics
 
 Run frontend-only checks:
 
