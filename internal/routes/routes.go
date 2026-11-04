@@ -20,10 +20,14 @@ func NewRouter() *Router {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 
-	// Apply global middleware
+	// Apply global middleware.
+	// ADR-0004 step 2: the CORS middleware was removed. It set
+	// Access-Control-Allow-Origin: * for every caller, which let any web page
+	// in any browser call this API. The server now only listens on loopback,
+	// and the frontend is being migrated onto Wails bindings, which are not
+	// subject to browser CORS at all.
 	engine.Use(middleware.Recovery())
 	engine.Use(middleware.Logger())
-	engine.Use(middleware.CORS())
 
 	return &Router{
 		Engine:  engine,

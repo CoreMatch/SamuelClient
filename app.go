@@ -55,7 +55,10 @@ func (a *App) shutdown(ctx context.Context) {
 func (a *App) startGinServer() {
 	a.router = routes.NewRouter()
 	a.router.Setup()
-	a.router.GetEngine().Run(":" + a.config.ServerPort)
+	// ADR-0004 step 2: bind to loopback only. The launcher is single-user and
+	// has no legitimate remote caller; listening on all interfaces exposed the
+	// API (and its then-unauthenticated routes) to the whole LAN.
+	a.router.GetEngine().Run("127.0.0.1:" + a.config.ServerPort)
 }
 
 // Greet returns a greeting for the given name
