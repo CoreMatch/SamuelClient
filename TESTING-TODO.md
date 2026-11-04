@@ -38,13 +38,34 @@ need an owner decision before being acted on.
    `package.json`). This round only guarantees `tsc` + `vite build` (plus a
    working `npm run lint`). Decision: introduce Vitest (or similar) for the
    React views?
-8. **Tested but unwired service methods.** `DownloadAssets`,
-   `GetFabricInstaller`, `DownloadForgeInstaller`, `Unzip`, `VerifyMD5`, and
-   the thin `RefreshAuthlibToken` wrapper have no production caller (they are
-   building blocks for flows the bindings do not expose yet; note that a full
-   launch eventually needs asset downloads). Kept this round because they are
-   tested and on the documented launcher path. Decision: wire them into
-   bindings/`InstallVersion`, or delete?
+8. **Triage of the unwired service methods (2026-11-05, branch
+   `fix/round3-triage`).** Each method was grep'd for callers and classified:
+   - `DownloadAssets` — **WIRED** into `InstallVersion` as stage 5. Reason:
+     `BuildLaunchCommand` passes `--assetsDir <gameDir>/assets`, but nothing
+     ever populated it, so every fresh install launched without textures or
+     sounds — a user-visible feature gap, one wiring step away. The
+     `download:progress` event gains the `"asset"` stage (contract updated in
+     `bindings.go` and README). Tests: happy path now asserts the asset
+     requests/files/progress stage; `TestInstallVersionAssetFailureCleansUp`
+     asserts no residue on asset-stage failure.
+   - `VerifyMD5` — **DELETED** (with its test). No caller; the ecosystem
+     checksums in version/library manifests are SHA-1, so an MD5 helper fits
+     no current or planned verification path.
+   - `Unzip` — **DELETED** (with its test). Only useful for Forge installer
+     extraction, which is not implemented (see below); kept dead code only
+     inflates coverage.
+   - `RefreshAuthlibToken` — **DELETED**. Thin wrapper with no caller; the
+     binding calls `RefreshAuthlibTokenWithProfile` directly (the no-profile
+     case is tested by passing `""`).
+   - `GetFabricInstaller` / `DownloadForgeInstaller` — **NEED AUTHOR
+     DECISION**. These only download installer jars. The UI offers a
+     Fabric/Forge loader dropdown and `LaunchGameRequest` carries
+     loader_type/loader_version, but nothing installs the loader (no
+     installer execution, no loader version JSON generation), so modded
+     launch is a feature gap bigger than one wiring step: it needs a design
+     (run installer via detected Java, or merge loader profiles into the
+     version JSON). Options: (a) design and implement loader installation,
+     (b) hide the loader dropdown until then, (c) delete the two downloaders.
 9. **`UserRepository`, `TaskRepository`, `FileRepository` retired
    (2026-11-05, branch `fix/round3-triage`).** Zero production callers were
    found (grep across `*.go`), so the repositories, their models

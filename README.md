@@ -101,7 +101,7 @@ Live data is pushed from Go to the frontend via Wails runtime events:
 - `launcher:log` — one event per output line of the launched game process.
   Payload: `{ "source": "stdout" | "stderr", "line": string }`.
 - `download:progress` — progress while `DownloadVersion` installs a version.
-  Payload: `{ "version_id": string, "stage": "jar" | "library" | "native", "name": string, "downloaded": number, "total": number }`.
+  Payload: `{ "version_id": string, "stage": "jar" | "library" | "native" | "asset", "name": string, "downloaded": number, "total": number }`.
 
 ## Frontend
 

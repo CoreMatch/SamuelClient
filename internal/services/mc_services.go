@@ -3,9 +3,7 @@ package services
 import (
 	"archive/zip"
 	"bufio"
-	"crypto/md5"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -248,20 +246,16 @@ func (a *AuthService) AuthenticateWithAuthlib(authServerURL, username, password,
 	return &models.ApiResponse{Success: true, Data: authResp}
 }
 
-// RefreshAuthlibToken refreshes an authlib-injector access token.
+// RefreshAuthlibTokenWithProfile refreshes an authlib-injector access token.
 //
 // Per the wiki, the refresh request:
 //   - sets `requestUser: true` so the launcher receives the user object
 //   - may include `selectedProfile` to perform a profile-selection refresh
 //     (required when the user has multiple profiles and login returned no
-//     selectedProfile).
-func (a *AuthService) RefreshAuthlibToken(authServerURL, accessToken, clientToken string) *models.ApiResponse {
-	return a.RefreshAuthlibTokenWithProfile(authServerURL, accessToken, clientToken, "")
-}
-
-// RefreshAuthlibTokenWithProfile is the full form of RefreshAuthlibToken. If
-// selectedProfileID is non-empty it is sent as `selectedProfile.id` so the
-// server binds the new token to that profile.
+//     selectedProfile)
+//
+// If selectedProfileID is non-empty it is sent as `selectedProfile.id` so
+// the server binds the new token to that profile; pass "" to omit it.
 func (a *AuthService) RefreshAuthlibTokenWithProfile(authServerURL, accessToken, clientToken, selectedProfileID string) *models.ApiResponse {
 	url := strings.TrimSuffix(authServerURL, "/") + "/authserver/refresh"
 
@@ -954,11 +948,13 @@ func (b *BMCLAPIService) extractNatives(jarPath, destDir string) error {
 //  2. downloads the version JAR
 //  3. downloads every library listed in the version JSON
 //  4. extracts natives to <gameDir>/versions/<id>/natives
+//  5. downloads the asset objects into <gameDir>/assets (the --assetsDir the
+//     launch command passes; without them the game has no textures/sounds)
 //
 // progress, when non-nil, is invoked as each stage advances so callers can
-// surface live progress. stage is one of "jar", "library" or "native"; name
-// identifies the artifact; downloaded/total are byte counts. The Wails
-// binding forwards these as "download:progress" events.
+// surface live progress. stage is one of "jar", "library", "native" or
+// "asset"; name identifies the artifact; downloaded/total are byte counts.
+// The Wails binding forwards these as "download:progress" events.
 func (b *BMCLAPIService) InstallVersion(versionID, gameDir string, progress func(stage, name string, downloaded, total int64)) *models.ApiResponse {
 	// First get the version list to find the version URL
 	listResult := b.GetVersionList()
@@ -1077,6 +1073,22 @@ func (b *BMCLAPIService) InstallVersion(versionID, gameDir string, progress func
 		return fail(nativesDownload)
 	}
 
+	// 5. Download assets into <gameDir>/assets. BuildLaunchCommand points
+	//    --assetsDir there; without the objects the game starts but has no
+	//    textures or sounds. Versions whose manifest carries no asset index
+	//    URL skip this stage.
+	assetsDir := gameDir + "/assets"
+	if versionJSON.AssetIndex.URL != "" {
+		var assetProgress func(name string, downloaded, total int64)
+		if progress != nil {
+			assetProgress = func(name string, downloaded, total int64) { progress("asset", name, downloaded, total) }
+		}
+		assetsDownload := b.DownloadAssets(&versionJSON.AssetIndex, assetsDir, assetProgress)
+		if !assetsDownload.Success {
+			return fail(assetsDownload)
+		}
+	}
+
 	return &models.ApiResponse{
 		Success: true,
 		Data: map[string]interface{}{
@@ -1086,6 +1098,7 @@ func (b *BMCLAPIService) InstallVersion(versionID, gameDir string, progress func
 			"version_jar":   jarPath,
 			"libraries_dir": librariesDir,
 			"natives_dir":   nativesDir,
+			"assets_dir":    assetsDir,
 		},
 	}
 }
@@ -1545,68 +1558,6 @@ func shellQuote(s string) string {
 		return s
 	}
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
-// ==================== File Utility Service ====================
-
-// VerifyMD5 checks file MD5
-func VerifyMD5(filePath, expectedMD5 string) bool {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return false
-	}
-	defer file.Close()
-
-	hash := md5.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return false
-	}
-
-	actualMD5 := hex.EncodeToString(hash.Sum(nil))
-	return actualMD5 == expectedMD5
-}
-
-// Unzip extracts a zip archive
-func Unzip(src, dest string) error {
-	reader, err := zip.OpenReader(src)
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-
-	if err := os.MkdirAll(dest, 0755); err != nil {
-		return err
-	}
-
-	for _, file := range reader.File {
-		path := filepath.Join(dest, file.Name)
-		if file.FileInfo().IsDir() {
-			os.MkdirAll(path, 0755)
-			continue
-		}
-
-		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-			return err
-		}
-
-		w, err := os.Create(path)
-		if err != nil {
-			return err
-		}
-		defer w.Close()
-
-		rc, err := file.Open()
-		if err != nil {
-			return err
-		}
-		defer rc.Close()
-
-		if _, err := io.Copy(w, rc); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 // ==================== Launcher Config Persistence ====================
