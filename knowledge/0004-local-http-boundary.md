@@ -254,6 +254,37 @@ section above.
   loopback binding become permanent security-critical configuration that must
   be maintained and reviewed with every route change.
 
+## Follow-up Decisions (2026-11-05)
+
+After the migration landed, the owner decided a second round of reductions:
+
+1. **`express`/`cors` npm packages removed.** They were never imported by the
+   frontend (leftover from the retired local-HTTP design); `package.json` and
+   the lockfile were regenerated and the frontend build re-verified.
+2. **The `logs` table and `GetLogs` are retired.** Nothing ever wrote to the
+   table — live launch logs stream over `launcher:log` events instead. The
+   `CREATE TABLE`/index migrations, `LogRepository`, the `Log` model and
+   `LogLevel` constants, the `GetLogs` binding, and the HomeView Refresh/
+   DB-log panel are deleted, together with the orphaned `Stats`/`Cleanup`/
+   `Backup`/`GetDBStats` helpers that still referenced the table.
+   **Existing deployments**: no `DROP TABLE` is issued on purpose — an already
+   created `logs` table stays inert on disk (never read, never written, never
+   created again). A destructive migration was judged to cost more (irreversible
+   data deletion, upgrade-path risk) than it could ever save, since no code
+   path inserts into the table.
+3. **DebugView removed**, together with everything that only served it: the
+   `GetDBPath`/`GetDBSchema` bindings and the `database.GetSchema` helper, the
+   Debug navigation entry/route, and the README mentions. The binding surface
+   is now exactly the launcher business methods.
+4. **Two intentional behavior fixes from the migration — do not treat them as
+   suspicious drift**:
+   - LoginView reads the custom auth-server name from `meta.serverName` (the
+     documented shape of `AuthService.GetAuthlibMeta`); the old code read a
+     top-level `serverName` that was always undefined, and the fetch itself
+     only ever worked in dev mode.
+   - `clientToken` generation now uses `crypto/rand`; the old HTTP handler
+   produced a deterministic, non-random placeholder string.
+
 ## Evidence
 
 - All-interfaces listener: `app.go:55-59` (`Run(":" + a.config.ServerPort)`);
