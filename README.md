@@ -8,7 +8,7 @@ A cross-platform Minecraft launcher built with [Wails](https://wails.io/) (Go + 
 - **Version management** — browse and download vanilla Minecraft versions, plus Fabric and Forge mod loaders
 - **Mod management** — open the `mods` folder for the active profile directly from the UI
 - **Java management** — track installed Java runtimes and set a default per profile
-- **Local HTTP API** — embedded [Gin](https://gin-gonic.com/) server exposing launcher functionality (auth, versions, downloads, launch, file & shell utilities, system info)
+- **Local HTTP API** — embedded [Gin](https://gin-gonic.com/) server exposing launcher functionality (auth, versions, downloads, launch, system info)
 - **Persistent storage** — embedded [SQLite](https://www.sqlite.org/) database for users, settings, logs, tasks, file records, and Java installations
 - **Cross-platform** — Windows, macOS, and Linux builds via Wails
 
@@ -95,7 +95,6 @@ Selected routes (all under `/api/v1`, plus a few legacy unprefixed routes for ba
 |---------------|-------------------|
 | Health        | `GET /health`, `GET /ping`, `GET /hello/:name` |
 | Utility       | `POST /echo`, `GET /sysinfo` |
-| Shell / file  | `POST /shell/execute`, `POST /file/operation` |
 | Database      | `GET/POST/PUT/DELETE /db/users`, `/db/settings`, `/db/logs`, `/db/tasks`, `/db/files`, `/db/java` |
 | Auth          | `GET /auth/meta`, `POST /auth/login`, `/auth/refresh`, `/auth/validate`, `/auth/offline` |
 | Versions      | `GET /versions`, `GET /versions/:id` |

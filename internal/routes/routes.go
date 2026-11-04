@@ -47,18 +47,6 @@ func (r *Router) Setup() {
 		v1.POST("/echo", r.Handler.Echo)
 		v1.GET("/sysinfo", r.Handler.SysInfo)
 
-		// Shell routes
-		shell := v1.Group("/shell")
-		{
-			shell.POST("/execute", r.Handler.Shell)
-		}
-
-		// File routes
-		file := v1.Group("/file")
-		{
-			file.POST("/operation", r.Handler.FileOperation)
-		}
-
 		// Database routes
 		r.setupDatabaseRoutes(v1)
 
@@ -199,8 +187,6 @@ func (r *Router) setupLegacyRoutes() {
 	r.Engine.GET("/ping", r.Handler.Ping)
 	r.Engine.GET("/hello/:name", r.Handler.Hello)
 	r.Engine.POST("/echo", r.Handler.Echo)
-	r.Engine.POST("/shell", r.Handler.Shell)
-	r.Engine.POST("/file", r.Handler.FileOperation)
 	r.Engine.GET("/sysinfo", r.Handler.SysInfo)
 }
 
@@ -213,8 +199,6 @@ func (r *Router) SetupWithGroup(prefix string) {
 		group.GET("/hello/:name", r.Handler.Hello)
 		group.POST("/echo", r.Handler.Echo)
 		group.GET("/sysinfo", r.Handler.SysInfo)
-		group.POST("/shell", r.Handler.Shell)
-		group.POST("/file", r.Handler.FileOperation)
 	}
 }
 
