@@ -26,6 +26,8 @@ import {
   CloudDownload,
   Delete,
 } from '@mui/icons-material';
+import { GetVersions, DownloadVersion } from '../../wailsjs/go/main/App';
+import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 
 interface MCVersion {
   id: string;
@@ -56,6 +58,7 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
   const [installedVersions, setInstalledVersions] = useState<InstalledVersion[]>([]);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [tabValue, setTabValue] = useState(0);
   const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -63,6 +66,24 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
   useEffect(() => {
     loadInstalledVersions();
     fetchVersions();
+  }, []);
+
+  // ADR-0004: download progress is pushed by the backend as
+  // "download:progress" events ({version_id, stage, name, downloaded,
+  // total}); subscribe once and unsubscribe on unmount. No HTTP polling.
+  useEffect(() => {
+    EventsOn('download:progress', (p: { version_id?: string; stage?: string; downloaded?: number; total?: number }) => {
+      if (!p || !p.version_id) return;
+      let label = p.stage || '';
+      if (p.total && p.total > 0 && typeof p.downloaded === 'number') {
+        const pct = Math.min(100, Math.floor((p.downloaded / p.total) * 100));
+        label = `${p.stage || ''} ${pct}%`;
+      }
+      setDownloadProgress(prev => ({ ...prev, [p.version_id as string]: label }));
+    });
+    return () => {
+      EventsOff('download:progress');
+    };
   }, []);
 
   const loadInstalledVersions = () => {
@@ -89,24 +110,23 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('http://localhost:34501/api/v1/versions');
-      const data = await response.json();
-      if (data.success) {
+      const result = await GetVersions();
+      if (result.success) {
         // Handle BMCLAPI version manifest response format
         // The response has { latest: {...}, versions: [...] }
-        if (data.data && Array.isArray(data.data.versions)) {
-          setVersions(data.data.versions);
-        } else if (Array.isArray(data.data)) {
+        if (result.data && Array.isArray(result.data.versions)) {
+          setVersions(result.data.versions);
+        } else if (Array.isArray(result.data)) {
           // Fallback for old format
-          setVersions(data.data);
+          setVersions(result.data);
         } else {
           setError('Invalid version data format');
         }
       } else {
-        setError(data.error || 'Failed to fetch versions');
+        setError(result.error || 'Failed to fetch versions');
       }
     } catch (err) {
-      setError('Network error. Please try again.');
+      setError('Failed to fetch versions. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -116,13 +136,10 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
     setDownloading(version.id);
     setError('');
     try {
-      const response = await fetch('http://localhost:34501/api/v1/download/version', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ version_id: version.id }),
-      });
-      const data = await response.json();
-      if (data.success) {
+      // ADR-0004: install runs through the in-process Wails binding; progress
+      // arrives over "download:progress" events (see subscription above).
+      const result = await DownloadVersion(version.id, '');
+      if (result.success) {
         // Mark as installed
         const newInstalled: InstalledVersion = {
           id: version.id,
@@ -133,12 +150,17 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
         updated.unshift(newInstalled);
         saveInstalledVersions(updated);
       } else {
-        setError(data.error || 'Download failed');
+        setError(result.error || 'Download failed');
       }
     } catch (err) {
       setError('Download failed. Please try again.');
     } finally {
       setDownloading(null);
+      setDownloadProgress(prev => {
+        const next = { ...prev };
+        delete next[version.id];
+        return next;
+      });
     }
   };
 
@@ -359,7 +381,14 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
               />
               <ListItemSecondaryAction>
                 {downloading === version.id ? (
-                  <CircularProgress size={24} sx={{ color: '#4CAF50' }} />
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {downloadProgress[version.id] && (
+                      <Typography variant="caption" sx={{ color: '#9ca3af', fontSize: '0.7rem' }}>
+                        {downloadProgress[version.id]}
+                      </Typography>
+                    )}
+                    <CircularProgress size={24} sx={{ color: '#4CAF50' }} />
+                  </Box>
                 ) : isInstalled(version.id) ? (
                   <Chip
                     size="small"
@@ -430,7 +459,14 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
                   />
                   <ListItemSecondaryAction>
                     {downloading === id ? (
-                      <CircularProgress size={24} sx={{ color: '#4CAF50' }} />
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {downloadProgress[id] && (
+                          <Typography variant="caption" sx={{ color: '#9ca3af', fontSize: '0.7rem' }}>
+                            {downloadProgress[id]}
+                          </Typography>
+                        )}
+                        <CircularProgress size={24} sx={{ color: '#4CAF50' }} />
+                      </Box>
                     ) : isInstalled(id) ? (
                       <Chip
                         size="small"

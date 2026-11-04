@@ -23,6 +23,15 @@ import {
   Refresh,
 } from '@mui/icons-material';
 import { StoredAccount } from './AccountManager';
+import {
+  GetJavaInstallations,
+  GetInstalledVersions,
+  GetFabricVersions,
+  GetForgeVersions,
+  GetLogs,
+  LaunchGame,
+} from '../../wailsjs/go/main/App';
+import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 
 interface InstalledVersion {
   id: string;
@@ -51,6 +60,14 @@ interface LogEntry {
   message: string;
   source?: string;
   created_at: string;
+}
+
+// LiveLogLine is one line of game output streamed over the "launcher:log"
+// Wails event (ADR-0004), rendered ahead of the persisted DB logs.
+interface LiveLogLine {
+  source: string;
+  line: string;
+  ts: string;
 }
 
 interface HomeViewProps {
@@ -96,6 +113,7 @@ export default function HomeView({
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState('');
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [liveLogs, setLiveLogs] = useState<LiveLogLine[]>([]);
   const [showLogs, setShowLogs] = useState(false);
   const [logsLoading, setLogsLoading] = useState(false);
   const [javaInstallations, setJavaInstallations] = useState<JavaInstallation[]>([]);
@@ -107,11 +125,31 @@ export default function HomeView({
     loadJavaInstallations();
   }, []);
 
+  // ADR-0004: live launch logs are pushed by the backend as "launcher:log"
+  // events ({source: "stdout"|"stderr", line: string}); subscribe once and
+  // unsubscribe on unmount. No HTTP polling involved.
+  useEffect(() => {
+    EventsOn('launcher:log', (payload: { source?: string; line?: string }) => {
+      if (!payload) return;
+      setLiveLogs(prev => [
+        ...prev,
+        {
+          source: payload.source || 'stdout',
+          line: payload.line || '',
+          ts: new Date().toLocaleTimeString(),
+        },
+      ]);
+    });
+    return () => {
+      EventsOff('launcher:log');
+    };
+  }, []);
+
   const loadJavaInstallations = async () => {
     try {
-      const response = await fetch('http://localhost:34501/api/v1/db/java');
-      const data = await response.json();
-      if (Array.isArray(data)) {
+      const result = await GetJavaInstallations();
+      if (result.success && Array.isArray(result.data)) {
+        const data = result.data as JavaInstallation[];
         setJavaInstallations(data);
         const defaultJava = data.find((j: JavaInstallation) => j.is_default);
         if (defaultJava) {
@@ -139,10 +177,9 @@ export default function HomeView({
       const local: InstalledVersion[] = stored ? JSON.parse(stored) : [];
 
       try {
-        const res = await fetch('http://localhost:34501/api/v1/launcher/installed-versions');
-        const data = await res.json();
-        if (data?.success && Array.isArray(data.data?.versions)) {
-          const fromDisk: InstalledVersion[] = data.data.versions
+        const result = await GetInstalledVersions();
+        if (result.success && Array.isArray(result.data?.versions)) {
+          const fromDisk: InstalledVersion[] = result.data.versions
             .filter((v: any) => v.has_json && v.has_jar)
             .map((v: any) => ({
               id: v.id,
@@ -186,18 +223,15 @@ export default function HomeView({
 
   const fetchLoaders = async (mcVersion: string) => {
     try {
-      const [fabricRes, forgeRes] = await Promise.all([
-        fetch(`http://localhost:34501/api/v1/fabric/versions?mc=${mcVersion}`),
-        fetch(`http://localhost:34501/api/v1/forge/versions?mc=${mcVersion}`),
+      const [fabricResult, forgeResult] = await Promise.all([
+        GetFabricVersions(mcVersion),
+        GetForgeVersions(mcVersion),
       ]);
-
-      const fabricData = await fabricRes.json();
-      const forgeData = await forgeRes.json();
 
       const loaderList: ModLoader[] = [{ name: 'none', version: '' }];
 
-      if (fabricData.success && Array.isArray(fabricData.data)) {
-        fabricData.data.slice(0, 5).forEach((f: any) => {
+      if (fabricResult.success && Array.isArray(fabricResult.data)) {
+        fabricResult.data.slice(0, 5).forEach((f: any) => {
           loaderList.push({
             name: `fabric-${f.loader.version}`,
             version: f.loader.version,
@@ -205,8 +239,8 @@ export default function HomeView({
         });
       }
 
-      if (forgeData.success && Array.isArray(forgeData.data)) {
-        forgeData.data.slice(0, 5).forEach((f: any) => {
+      if (forgeResult.success && Array.isArray(forgeResult.data)) {
+        forgeResult.data.slice(0, 5).forEach((f: any) => {
           loaderList.push({
             name: `forge-${f.version}`,
             version: f.version,
@@ -223,10 +257,9 @@ export default function HomeView({
   const fetchLogs = async () => {
     setLogsLoading(true);
     try {
-      const response = await fetch('http://localhost:34501/api/v1/db/logs?limit=100');
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        setLogs(data);
+      const result = await GetLogs(100);
+      if (result.success && Array.isArray(result.data)) {
+        setLogs(result.data);
       }
     } catch (err) {
       console.error('Failed to fetch logs:', err);
@@ -268,36 +301,38 @@ export default function HomeView({
     setLaunching(true);
     setError('');
     setShowLogs(true);
+    setLiveLogs([]);
 
     try {
-      const response = await fetch('http://localhost:34501/api/v1/launcher/launch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          version_id: currentVersion.id,
-          version_type: currentVersion.type,
-          username: currentAccount.username,
-          uuid: currentAccount.uuid,
-          access_token: currentAccount.accessToken,
-          client_token: currentAccount.clientToken,
-          auth_type: currentAccount.authType,
-          auth_server: currentAccount.authServer || '',
-          authlib_jar: localStorage.getItem('authlib_jar_path') || '',
-          loader_type: settings.selectedLoader === 'none' ? '' : settings.selectedLoader.split('-')[0],
-          loader_version: settings.loaderVersion,
-          max_memory: settings.maxMemory,
-          min_memory: settings.minMemory,
-          java_args: settings.javaArgs,
-          game_width: settings.gameWidth,
-          game_height: settings.gameHeight,
-        }),
+      // ADR-0004: the launch request (including access/client tokens) goes
+      // through the in-process Wails binding, not a local HTTP socket. Live
+      // game output arrives separately over "launcher:log" events.
+      const result = await LaunchGame({
+        version_id: currentVersion.id,
+        version_type: currentVersion.type,
+        username: currentAccount.username,
+        uuid: currentAccount.uuid,
+        access_token: currentAccount.accessToken,
+        client_token: currentAccount.clientToken,
+        auth_type: currentAccount.authType,
+        auth_server: currentAccount.authServer || '',
+        authlib_jar: localStorage.getItem('authlib_jar_path') || '',
+        authlib_meta: '',
+        game_dir: '',
+        java_path: '',
+        loader_type: settings.selectedLoader === 'none' ? '' : settings.selectedLoader.split('-')[0],
+        loader_version: settings.loaderVersion,
+        max_memory: settings.maxMemory,
+        min_memory: settings.minMemory,
+        java_args: settings.javaArgs,
+        game_width: settings.gameWidth,
+        game_height: settings.gameHeight,
       });
 
-      const data = await response.json();
-      if (data.success) {
-        console.log('Game launched with PID:', data.data?.pid);
+      if (result.success) {
+        console.log('Game launched with PID:', result.data?.pid);
       } else {
-        setError(data.error || 'Failed to launch game');
+        setError(result.error || 'Failed to launch game');
       }
     } catch (err) {
       setError('Failed to launch game. Please try again.');
@@ -552,6 +587,19 @@ export default function HomeView({
               {logsLoading ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
                   <CircularProgress size={24} />
+                </Box>
+              ) : liveLogs.length > 0 ? (
+                // ADR-0004: live game output streamed over "launcher:log".
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {liveLogs.map((l, i) => (
+                    <Box key={i} sx={{ display: 'flex', gap: 2, fontSize: '0.875rem' }}>
+                      <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>{l.ts}</span>
+                      <span style={{ color: l.source === 'stderr' ? '#f59e0b' : '#3b82f6', fontWeight: 'bold' }}>
+                        [{l.source.toUpperCase()}]
+                      </span>
+                      <span style={{ color: '#e5e7eb', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{l.line}</span>
+                    </Box>
+                  ))}
                 </Box>
               ) : logs.length === 0 ? (
                 <Typography sx={{ color: '#6b7280', textAlign: 'center', py: 4 }}>

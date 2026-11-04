@@ -22,6 +22,7 @@ import {
   Http,
   Refresh,
 } from '@mui/icons-material';
+import { GetAuthlibMeta, AuthlibLogin } from '../../wailsjs/go/main/App';
 
 interface AuthServer {
   id: string;
@@ -84,12 +85,14 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
   const loadAuthServers = async (serverUrl: string) => {
     setLoadingServers(true);
     try {
-      const response = await fetch(`/api/v1/auth/meta?server=${encodeURIComponent(serverUrl)}`);
-      const data = await response.json();
-      if (data.success && data.data) {
+      // ADR-0004: Wails binding instead of the old (dev-only) relative fetch
+      // `/api/v1/auth/meta?server=...`. The metadata document nests the server
+      // name under `meta` (see AuthService.GetAuthlibMeta).
+      const result = await GetAuthlibMeta(serverUrl);
+      if (result.success && result.data) {
         const newServer: AuthServer = {
           id: serverUrl,
-          name: data.data.serverName || serverUrl,
+          name: result.data.meta?.serverName || serverUrl,
           url: serverUrl,
         };
         setAuthServers(prev => {
@@ -98,7 +101,7 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
         });
         setAuthServer(serverUrl);
       } else {
-        setError(data.error || 'Failed to fetch auth server info');
+        setError(result.error || 'Failed to fetch auth server info');
       }
     } catch (err) {
       setError('Failed to connect to auth server');
@@ -154,19 +157,12 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
         }
 
         const serverUrl = authServer;
-        const response = await fetch('http://localhost:34501/api/v1/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            server: serverUrl,
-            username: username.trim(),
-            password: password,
-          }),
-        });
+        // ADR-0004: the plaintext password travels only through the in-process
+        // Wails binding to the auth service — never over a local HTTP socket.
+        const result = await AuthlibLogin(serverUrl, username.trim(), password, '');
 
-        const data = await response.json();
-        if (data.success && data.data) {
-          const profile = data.data.selectedProfile || data.data.availableProfiles?.[0];
+        if (result.success && result.data) {
+          const profile = result.data.selectedProfile || result.data.availableProfiles?.[0];
           if (!profile) {
             setError('No profile found');
             setLoading(false);
@@ -175,17 +171,17 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
           onLoginSuccess({
             username: profile.name,
             uuid: profile.id,
-            accessToken: data.data.accessToken,
-            clientToken: data.data.clientToken || generateClientToken(),
+            accessToken: result.data.accessToken,
+            clientToken: result.data.clientToken || generateClientToken(),
             authType: 'authlib-injector',
             authServer: serverUrl,
           });
         } else {
-          setError(data.error || 'Login failed');
+          setError(result.error || 'Login failed');
         }
       }
     } catch (err) {
-      setError('Network error. Please try again.');
+      setError('Login failed. Please try again.');
     } finally {
       setLoading(false);
     }
