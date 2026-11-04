@@ -8,10 +8,18 @@ import (
 	"strings"
 )
 
-// DetectJavaVersion runs `java -version` against javaPath and extracts the
+// DetectJavaVersion and DetectSystemJava are function variables (instead of
+// plain functions) so tests can replace them: both touch the outside world
+// (spawning `java -version`, probing machine-specific paths) and must stay
+// fakeable in headless/CI environments. Call sites are unaffected.
+var DetectJavaVersion = detectJavaVersion
+
+var DetectSystemJava = detectSystemJava
+
+// detectJavaVersion runs `java -version` against javaPath and extracts the
 // version string from its output. Java prints the version banner to stderr,
 // so stderr is read first and stdout is used as a fallback.
-func DetectJavaVersion(javaPath string) (string, error) {
+func detectJavaVersion(javaPath string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command(javaPath, "-version")
 	cmd.Stdout = &stdout
@@ -40,10 +48,10 @@ func DetectJavaVersion(javaPath string) (string, error) {
 	return "Unknown", nil
 }
 
-// DetectSystemJava attempts to find the system Java executable, trying PATH
+// detectSystemJava attempts to find the system Java executable, trying PATH
 // first and then common installation locations on Linux and Windows. Returns
 // an empty string when no Java can be found.
-func DetectSystemJava() string {
+func detectSystemJava() string {
 	// Common Java locations on Linux
 	linuxPaths := []string{
 		"/usr/bin/java",
