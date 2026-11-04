@@ -1,30 +1,22 @@
 package main
 
 import (
-	"HRPMLW/internal/config"
 	"HRPMLW/internal/database"
 	"HRPMLW/internal/models"
 	"HRPMLW/internal/repository"
-	"HRPMLW/internal/routes"
 	"HRPMLW/internal/services"
 	"context"
 	"fmt"
-	"io"
-	"net/http"
-	"time"
 )
 
 // App struct
 //
-// ADR-0004: the fields below back the Wails binding methods in bindings.go.
-// The frontend reaches them exclusively through the generated Wails bindings;
-// there is no HTTP hop. The httpClient/router/config fields belong to the
-// legacy Gin boundary being retired and are removed in a later step.
+// ADR-0004: the frontend reaches the backend exclusively through the Wails
+// binding methods in bindings.go. There is no local HTTP listener; the
+// previous embedded Gin server, its routes/middleware, the HTTP client, and
+// the SERVER_PORT configuration have all been retired.
 type App struct {
-	ctx        context.Context
-	httpClient *services.HTTPService
-	router     *routes.Router
-	config     *config.Config
+	ctx context.Context
 
 	authService     *services.AuthService
 	bmclService     *services.BMCLAPIService
@@ -35,11 +27,7 @@ type App struct {
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	cfg := config.Load()
 	return &App{
-		config:     cfg,
-		httpClient: services.NewHTTPService("http://localhost:" + cfg.ServerPort),
-
 		authService:     services.NewAuthService(),
 		bmclService:     services.NewBMCLAPIService(),
 		launcherService: services.NewLauncherService(),
@@ -57,9 +45,6 @@ func (a *App) startup(ctx context.Context) {
 	if err := database.Initialize(database.DefaultConfig()); err != nil {
 		fmt.Printf("Failed to initialize database: %v\n", err)
 	}
-
-	// Start the Gin server in a goroutine
-	go a.startGinServer()
 }
 
 // shutdown is called when the app is closing
@@ -70,65 +55,16 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 }
 
-func (a *App) startGinServer() {
-	a.router = routes.NewRouter()
-	a.router.Setup()
-	// ADR-0004 step 2: bind to loopback only. The launcher is single-user and
-	// has no legitimate remote caller; listening on all interfaces exposed the
-	// API (and its then-unauthenticated routes) to the whole LAN.
-	a.router.GetEngine().Run("127.0.0.1:" + a.config.ServerPort)
-}
-
-// Greet returns a greeting for the given name
-func (a *App) Greet(name string) string {
-	return fmt.Sprintf("Hello %s, It's show time!", name)
-}
-
-// TestHealthCheck calls the backend health check API
-func (a *App) TestHealthCheck() *models.ApiResponse {
-	return a.httpClient.Get("/")
-}
-
-// TestPing calls the backend ping API
-func (a *App) TestPing() *models.ApiResponse {
-	return a.httpClient.Get("/ping")
-}
-
-// TestAPICall makes a generic API call
-func (a *App) TestAPICall(endpoint string) *models.ApiResponse {
-	start := time.Now()
-	resp, err := http.Get("http://localhost:" + a.config.ServerPort + endpoint)
-	if err != nil {
-		return &models.ApiResponse{
-			Success: false,
-			Error:   err.Error(),
-			Time:    time.Since(start).Milliseconds(),
-		}
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return &models.ApiResponse{
-			Success: false,
-			Error:   err.Error(),
-			Time:    time.Since(start).Milliseconds(),
-		}
-	}
-
-	return &models.ApiResponse{
-		Success: resp.StatusCode >= 200 && resp.StatusCode < 300,
-		Data:    string(body),
-		Time:    time.Since(start).Milliseconds(),
-	}
-}
-
 // GetDBPath returns the database path
 func (a *App) GetDBPath() string {
 	return database.DefaultConfig().Path
 }
 
-// GetDBSchema calls the backend API to get the database schema
+// GetDBSchema returns the SQLite schema directly (no HTTP hop, ADR-0004).
 func (a *App) GetDBSchema() *models.ApiResponse {
-	return a.httpClient.Get("/api/v1/db/schema")
+	schema, err := database.GetSchema()
+	if err != nil {
+		return &models.ApiResponse{Success: false, Error: err.Error()}
+	}
+	return &models.ApiResponse{Success: true, Data: schema}
 }
