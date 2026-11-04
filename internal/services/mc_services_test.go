@@ -1508,6 +1508,92 @@ func TestBuildLaunchCommandOffline(t *testing.T) {
 	contains("768")
 }
 
+// A loader version (Fabric/Forge style) declares inheritsFrom: the launch
+// command must use the child's mainClass and libraries, but the parent's
+// client jar, natives dir and asset index.
+func TestBuildLaunchCommandInheritsFromParent(t *testing.T) {
+	gameDir := t.TempDir()
+	writeVersionJSON(t, gameDir, "1.99", testVersionJSON)
+	// Parent jar must exist for the inherited classpath entry.
+	parentDir := filepath.Join(gameDir, "versions", "1.99")
+	if err := os.WriteFile(filepath.Join(parentDir, "1.99.jar"), []byte("jar"), 0644); err != nil {
+		t.Fatalf("write parent jar: %v", err)
+	}
+
+	childJSON := `{
+		"id": "fabric-loader-0.15.0-1.99",
+		"inheritsFrom": "1.99",
+		"mainClass": "net.fabricmc.loader.impl.launch.knot.KnotClient",
+		"libraries": [
+			{"name": "net.fabricmc:fabric-loader:0.15.0", "downloads": {"artifact": {"path": "net/fabricmc/fabric-loader/0.15.0/fabric-loader-0.15.0.jar"}}}
+		]
+	}`
+	writeVersionJSON(t, gameDir, "fabric-loader-0.15.0-1.99", childJSON)
+
+	svc := NewLauncherService()
+	args, err := svc.BuildLaunchCommand(
+		models.LauncherConfig{JavaPath: "/opt/java/bin/java", GameDir: gameDir},
+		&models.MinecraftVersion{VersionID: "fabric-loader-0.15.0-1.99"},
+		&models.MinecraftAccount{Username: "Steve", UUID: "u", AccessToken: "at", ClientToken: "ct", AuthType: "offline"},
+	)
+	if err != nil {
+		t.Fatalf("BuildLaunchCommand: %v", err)
+	}
+
+	joined := strings.Join(args, "\x00")
+	contains := func(want string) {
+		t.Helper()
+		if !strings.Contains(joined, want) {
+			t.Errorf("args missing %q\nfull args: %v", want, args)
+		}
+	}
+
+	// Child's mainClass wins.
+	contains("net.fabricmc.loader.impl.launch.knot.KnotClient")
+	// Parent's jar and natives are used.
+	contains(filepath.Join(parentDir, "1.99.jar"))
+	contains("-Djava.library.path=" + filepath.Join(parentDir, "natives"))
+	// Parent's asset index is inherited.
+	contains("--assetIndex")
+
+	cpIdx := -1
+	for i, a := range args {
+		if a == "-cp" {
+			cpIdx = i
+		}
+	}
+	if cpIdx == -1 || cpIdx+1 >= len(args) {
+		t.Fatalf("-cp not found in args: %v", args)
+	}
+	cp := args[cpIdx+1]
+	// Child library leads, parent library follows.
+	childLib := filepath.Join(gameDir, "libraries", "net", "fabricmc", "fabric-loader", "0.15.0", "fabric-loader-0.15.0.jar")
+	parentLib := filepath.Join(gameDir, "libraries", "com", "example", "lib", "1.0", "lib-1.0.jar")
+	childIdx, parentIdx := strings.Index(cp, childLib), strings.Index(cp, parentLib)
+	if childIdx == -1 || parentIdx == -1 {
+		t.Fatalf("classpath missing loader or parent library: %q", cp)
+	}
+	if childIdx > parentIdx {
+		t.Errorf("loader library must lead the parent's on the classpath: %q", cp)
+	}
+}
+
+// A loader version whose parent is missing must fail with a clear error.
+func TestBuildLaunchCommandInheritsFromMissingParent(t *testing.T) {
+	gameDir := t.TempDir()
+	writeVersionJSON(t, gameDir, "fabric-loader-x", `{"id": "fabric-loader-x", "inheritsFrom": "no-such-version", "mainClass": "Main"}`)
+
+	svc := NewLauncherService()
+	_, err := svc.BuildLaunchCommand(
+		models.LauncherConfig{JavaPath: "/opt/java/bin/java", GameDir: gameDir},
+		&models.MinecraftVersion{VersionID: "fabric-loader-x"},
+		&models.MinecraftAccount{Username: "Steve", UUID: "u", AccessToken: "at", ClientToken: "ct", AuthType: "offline"},
+	)
+	if err == nil || !strings.Contains(err.Error(), "no-such-version") {
+		t.Errorf("err = %v, want a missing-parent error naming no-such-version", err)
+	}
+}
+
 func TestBuildLaunchCommandAuthlibInjector(t *testing.T) {
 	gameDir := t.TempDir()
 	writeVersionJSON(t, gameDir, "1.99", testVersionJSON)

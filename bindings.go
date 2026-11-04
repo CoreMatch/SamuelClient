@@ -157,14 +157,27 @@ func (a *App) GetInstalledVersions() *models.ApiResponse {
 			hasJAR = true
 		}
 		vType := "release"
+		inheritsFrom := ""
 		if hasJSON {
 			if data, err := os.ReadFile(jsonPath); err == nil {
 				var meta struct {
-					Type string `json:"type"`
+					Type         string `json:"type"`
+					InheritsFrom string `json:"inheritsFrom"`
 				}
-				if json.Unmarshal(data, &meta) == nil && meta.Type != "" {
-					vType = meta.Type
+				if json.Unmarshal(data, &meta) == nil {
+					if meta.Type != "" {
+						vType = meta.Type
+					}
+					inheritsFrom = meta.InheritsFrom
 				}
+			}
+		}
+		// Loader versions (Fabric/Forge) inherit the parent's client jar, so
+		// they count as installed when the parent jar exists.
+		if !hasJAR && inheritsFrom != "" {
+			parentJar := filepath.Join(versionsDir, inheritsFrom, inheritsFrom+".jar")
+			if fi, err := os.Stat(parentJar); err == nil && !fi.IsDir() {
+				hasJAR = true
 			}
 		}
 		out = append(out, InstalledVersion{ID: id, Type: vType, HasJSON: hasJSON, HasJAR: hasJAR})

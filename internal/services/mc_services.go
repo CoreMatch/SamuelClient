@@ -396,6 +396,7 @@ type BMCLVersion struct {
 // BMCLVersionJSON represents version.json
 type BMCLVersionJSON struct {
 	ID                     string                  `json:"id"`
+	InheritsFrom           string                  `json:"inheritsFrom,omitempty"`
 	AssetIndex             BMCLAssetIndex          `json:"assetIndex"`
 	Assets                 string                  `json:"assets"`
 	ComplianceLevel        int                     `json:"complianceLevel"`
@@ -1296,6 +1297,27 @@ func (l *LauncherService) loadVersionJSON(versionID, gameDir string) (*BMCLVersi
 	return &versionJSON, nil
 }
 
+// mergeInheritedVersion folds the parent (vanilla) version JSON into a child
+// loader version JSON per the inheritsFrom semantics: the child keeps its own
+// id, mainClass and libraries, and inherits everything it does not define.
+// The parent's libraries are appended after the child's so the loader's own
+// jars lead the classpath.
+func mergeInheritedVersion(child, parent *BMCLVersionJSON) {
+	if child.MainClass == "" {
+		child.MainClass = parent.MainClass
+	}
+	if child.AssetIndex.ID == "" {
+		child.AssetIndex = parent.AssetIndex
+	}
+	if child.Assets == "" {
+		child.Assets = parent.Assets
+	}
+	if len(child.Downloads) == 0 {
+		child.Downloads = parent.Downloads
+	}
+	child.Libraries = append(child.Libraries, parent.Libraries...)
+}
+
 // buildLibraryClasspath assembles the classpath from the version's libraries,
 // honouring OS rules and skipping natives (which are loaded via -Djava.library.path).
 func buildLibraryClasspath(versionJSON *BMCLVersionJSON, librariesDir string) string {
@@ -1377,19 +1399,32 @@ func (l *LauncherService) BuildLaunchCommand(config models.LauncherConfig, versi
 		gameDir = l.GetMinecraftDir()
 	}
 
-	versionDir := filepath.Join(gameDir, "versions", version.VersionID)
-	jarPath := filepath.Join(versionDir, version.VersionID+".jar")
-	nativesDir := filepath.Join(versionDir, "natives")
 	librariesDir := filepath.Join(gameDir, "libraries")
-
-	if err := os.MkdirAll(nativesDir, 0755); err != nil {
-		return nil, fmt.Errorf("create natives dir: %w", err)
-	}
 
 	// Load the version JSON; fall back to safe defaults if it cannot be read.
 	versionJSON, err := l.loadVersionJSON(version.VersionID, gameDir)
 	if err != nil {
 		return nil, err
+	}
+
+	// Loader versions (Fabric/Forge) declare inheritsFrom: merge the parent
+	// version into the child and use the parent's client jar and natives
+	// (loader profiles carry neither of their own).
+	jarVersionID := version.VersionID
+	if versionJSON.InheritsFrom != "" {
+		parent, err := l.loadVersionJSON(versionJSON.InheritsFrom, gameDir)
+		if err != nil {
+			return nil, fmt.Errorf("load parent version %q: %w", versionJSON.InheritsFrom, err)
+		}
+		mergeInheritedVersion(versionJSON, parent)
+		jarVersionID = versionJSON.InheritsFrom
+	}
+
+	jarPath := filepath.Join(gameDir, "versions", jarVersionID, jarVersionID+".jar")
+	nativesDir := filepath.Join(gameDir, "versions", jarVersionID, "natives")
+
+	if err := os.MkdirAll(nativesDir, 0755); err != nil {
+		return nil, fmt.Errorf("create natives dir: %w", err)
 	}
 
 	mainClass := versionJSON.MainClass
