@@ -54,11 +54,14 @@ need an owner decision before being acted on.
    `users`/`tasks`/`files`; no DROP migration is issued, so existing
    deployments keep the old tables inert on disk. Regression test:
    `TestMigrationsDoNotCreateRetiredTables`.
-10. **Seven pre-existing frontend lint warnings remain** (four
-    `no-explicit-any`, one `react-hooks/exhaustive-deps`, one
-    `react-refresh/only-export-components`, plus related). Fixing them means
-    typing Wails response payloads and touching hook dependencies. Decision:
-    fix, or accept as warnings?
+10. **Frontend lint warnings fixed (2026-11-05, branch `fix/round3-triage`).**
+    `npm run lint` now reports 0 errors / 0 warnings without any
+    `eslint-disable`: the `any` usages got real interfaces
+    (`BackendInstalledVersion`, `FabricLoaderEntry`, `ForgeVersionEntry`,
+    shared `InstalledVersion` in `src/types.ts`), the `useEffect` dependency
+    was added, and `saveAccount`/`StoredAccount` moved to
+    `src/accountStorage.ts` so component files only export components
+    (react-refresh).
 
 ## Known behavior documented by tests (no action needed unless disagreed)
 

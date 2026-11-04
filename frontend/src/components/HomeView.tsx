@@ -21,7 +21,8 @@ import {
   ExpandMore,
   ExpandLess,
 } from '@mui/icons-material';
-import { StoredAccount } from './AccountManager';
+import { StoredAccount } from '../accountStorage';
+import { InstalledVersion } from '../types';
 import {
   GetJavaInstallations,
   GetInstalledVersions,
@@ -31,16 +32,24 @@ import {
 } from '../../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 
-interface InstalledVersion {
-  id: string;
-  type: string;
-  installed: boolean;
-  loaderType?: string;
-  loaderVersion?: string;
-}
-
 interface ModLoader {
   name: string;
+  version: string;
+}
+
+// Shapes of the backend payloads consumed below (see bindings.go).
+interface BackendInstalledVersion {
+  id: string;
+  type: string;
+  has_json: boolean;
+  has_jar: boolean;
+}
+
+interface FabricLoaderEntry {
+  loader: { version: string };
+}
+
+interface ForgeVersionEntry {
   version: string;
 }
 
@@ -155,7 +164,7 @@ export default function HomeView({
     if (currentVersion) {
       onVersionSelect(currentVersion);
     }
-  }, [currentVersion]);
+  }, [currentVersion, onVersionSelect]);
 
   const loadVersions = async () => {
     try {
@@ -167,9 +176,10 @@ export default function HomeView({
       try {
         const result = await GetInstalledVersions();
         if (result.success && Array.isArray(result.data?.versions)) {
-          const fromDisk: InstalledVersion[] = result.data.versions
-            .filter((v: any) => v.has_json && v.has_jar)
-            .map((v: any) => ({
+          const backendVersions = result.data.versions as BackendInstalledVersion[];
+          const fromDisk: InstalledVersion[] = backendVersions
+            .filter(v => v.has_json && v.has_jar)
+            .map(v => ({
               id: v.id,
               type: v.type || 'release',
               installed: true,
@@ -219,7 +229,7 @@ export default function HomeView({
       const loaderList: ModLoader[] = [{ name: 'none', version: '' }];
 
       if (fabricResult.success && Array.isArray(fabricResult.data)) {
-        fabricResult.data.slice(0, 5).forEach((f: any) => {
+        (fabricResult.data as FabricLoaderEntry[]).slice(0, 5).forEach(f => {
           loaderList.push({
             name: `fabric-${f.loader.version}`,
             version: f.loader.version,
@@ -228,7 +238,7 @@ export default function HomeView({
       }
 
       if (forgeResult.success && Array.isArray(forgeResult.data)) {
-        forgeResult.data.slice(0, 5).forEach((f: any) => {
+        (forgeResult.data as ForgeVersionEntry[]).slice(0, 5).forEach(f => {
           loaderList.push({
             name: `forge-${f.version}`,
             version: f.version,

@@ -3,10 +3,12 @@ import { Box, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText
 import { Gamepad, Home, Settings, Group, Layers, Menu, ArrowBack } from '@mui/icons-material';
 import HomeView from './components/HomeView';
 import VersionManager from './components/VersionManager';
-import AccountManager, { StoredAccount, saveAccount } from './components/AccountManager';
+import AccountManager from './components/AccountManager';
 import ModManager from './components/ModManager';
 import SettingsView from './components/SettingsView';
 import LoginView, { LoggedInAccount } from './components/LoginView';
+import { StoredAccount, saveAccount } from './accountStorage';
+import { InstalledVersion } from './types';
 
 const drawerWidth = 240;
 
@@ -26,7 +28,7 @@ const navItems: NavItem[] = [
 
 export default function App() {
   const [selectedView, setSelectedView] = useState<string>('home');
-  const [selectedVersion, setSelectedVersion] = useState<any>(null);
+  const [selectedVersion, setSelectedVersion] = useState<InstalledVersion | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [currentAccount, setCurrentAccount] = useState<StoredAccount | null>(null);
   const [showLogin, setShowLogin] = useState(false);

@@ -28,6 +28,7 @@ import {
 } from '@mui/icons-material';
 import { GetVersions, DownloadVersion } from '../../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
+import { InstalledVersion } from '../types';
 
 interface MCVersion {
   id: string;
@@ -35,14 +36,6 @@ interface MCVersion {
   url?: string;
   time?: string;
   releaseTime?: string;
-}
-
-interface InstalledVersion {
-  id: string;
-  type: string;
-  installed: boolean;
-  loaderType?: string;
-  loaderVersion?: string;
 }
 
 interface VersionManagerProps {
