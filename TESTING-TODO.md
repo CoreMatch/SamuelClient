@@ -88,6 +88,10 @@ need an owner decision before being acted on.
      without a directory flag cannot be redirected on older installers, so
      `gameDir` should be the default one. Decision left for the author:
      whether to add modern-installer `--installDir` handling.
+     UI follow-up (not done this round): the HomeView loader dropdown still
+     only sets `loader_type` on the launch request; it should instead call
+     `InstallFabricLoader`/`InstallForgeLoader` and let the user pick the
+     resulting version from the installed list.
 9. **`UserRepository`, `TaskRepository`, `FileRepository` retired
    (2026-11-05, branch `fix/round3-triage`).** Zero production callers were
    found (grep across `*.go`), so the repositories, their models
