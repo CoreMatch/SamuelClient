@@ -44,25 +44,25 @@ SamuelClient authenticates **purely via the Yggdrasil protocol**, not OAuth2:
 
 - Authenticate call: `internal/services/mc_services.go:206`
   (`{server}/authserver/authenticate`), request body `:70-79,208-215`; login
-  handler `internal/handlers/mc_handlers.go:61-78`; frontend login
-  `frontend/src/views/LoginView.tsx:157-165`.
+  binding `bindings.go:187-198`; frontend login
+  `frontend/src/components/LoginView.tsx:159-162`.
 - Refresh/validate: `internal/services/mc_services.go:266,273-275` (refresh,
   optional `selectedProfile.id`), `:317,343-347` (validate, 204 valid / 403
   invalid).
-- Default auth server: `frontend/src/views/LoginView.tsx:48,51`
+- Default auth server: `frontend/src/components/LoginView.tsx:49,52`
   (`https://backend.auth.samuelcheston.com/`); introduced/changed by `0ad13eb`
   and `61138ee` (`DEFAULT_HRPAUTH_URL`, "Login with HRPAUTH").
 - authlib-injector: metadata fetch with ALI redirect
   `internal/services/mc_services.go:113-156`; JVM injection
-  `:1233-1234` (`-javaagent`) and `:1239-1241` (prefetched metadata); reference
+  `:1370-1372` (`-javaagent`) and `:1373-1378` (prefetched metadata); reference
   doc `docs/authlib-injector wiki.pdf`; introduced by `19fd6c3`.
-- Endpoint ownership: HRPAuth-Yggdrasil-API `main.go:147` (meta) and
-  `main.go:164-171` (`/authserver/...` routes) match the launcher's calls.
+- Endpoint ownership: HRPAuth-Yggdrasil-API `main.go:148` (meta) and
+  `main.go:171-177` (`/authserver/...` routes) match the launcher's calls.
 - Dead local endpoints / offline UUID mismatch: routes
   `internal/routes/routes.go:151-158`; frontend offline UUID
-  `frontend/src/views/LoginView.tsx:133,392-409` vs backend
+  `frontend/src/components/LoginView.tsx:136,388-405` vs backend
   `internal/handlers/mc_handlers.go:598-610`.
-- Unimplemented Microsoft login: `internal/services/mc_services.go:1137-1146`
+- Unimplemented Microsoft login: `internal/services/mc_services.go:1270-1284`
   (`resolveUserType` handles `msa`; no implementation).
 - Commits: `19fd6c3`, `0ad13eb`, `61138ee`, `c08d863` (HRPAUTH support fix,
   `/auth/validate`, ALI meta, refresh with selectedProfile).
