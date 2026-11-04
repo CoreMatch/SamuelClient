@@ -417,3 +417,32 @@ func TestJavaRepositorySetDefaultMissingID(t *testing.T) {
 		t.Errorf("default ID = %d, want %d (failed SetDefault must not clear the existing default)", def.ID, seed.ID)
 	}
 }
+
+// DeleteOld purges only files older than the retention window.
+func TestFileRepositoryDeleteOld(t *testing.T) {
+	repo := NewFileRepository()
+
+	file := &models.File{Name: "retention.txt", Path: "/tmp/retention.txt", Size: 3}
+	if err := repo.Create(file); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// Freshly created: must survive a 30-day purge.
+	if err := repo.DeleteOld(30); err != nil {
+		t.Fatalf("DeleteOld: %v", err)
+	}
+	if _, err := repo.GetByID(file.ID); err != nil {
+		t.Errorf("fresh file deleted by DeleteOld(30): %v", err)
+	}
+
+	// Backdate beyond the window: must be purged.
+	if _, err := database.GetDB().Exec(`UPDATE files SET created_at = datetime('now', '-31 days') WHERE id = ?`, file.ID); err != nil {
+		t.Fatalf("backdate created_at: %v", err)
+	}
+	if err := repo.DeleteOld(30); err != nil {
+		t.Fatalf("DeleteOld after backdate: %v", err)
+	}
+	if _, err := repo.GetByID(file.ID); err == nil {
+		t.Error("backdated file must be deleted by DeleteOld(30)")
+	}
+}

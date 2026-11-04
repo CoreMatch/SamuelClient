@@ -8,6 +8,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -182,6 +183,66 @@ func TestDeleteJavaInstallationMissingID(t *testing.T) {
 func TestSetDefaultJavaInstallationMissingID(t *testing.T) {
 	app := newTestApp()
 	wantFailure(t, app.SetDefaultJavaInstallation(999999), "")
+}
+
+// Updating the path must re-detect the version through the seam.
+func TestUpdateJavaInstallationRedetectsVersion(t *testing.T) {
+	app := newTestApp()
+	clearJavaTable(t)
+	fakeJavaDetections(t, "", "17.0.9")
+
+	added := app.AddJavaInstallation("/opt/jdk-old/bin/java", "Old JDK")
+	if !added.Success {
+		t.Fatalf("AddJavaInstallation failed: %s", added.Error)
+	}
+	id := int(added.Data.(*models.JavaInstallation).ID)
+	t.Cleanup(func() { _ = app.javaRepo.Delete(int64(id)) })
+
+	// The seam now reports a different version for the new path.
+	fakeJavaDetections(t, "", "21.0.5")
+	upd := app.UpdateJavaInstallation(id, "/opt/jdk-new/bin/java", "")
+	if !upd.Success {
+		t.Fatalf("UpdateJavaInstallation failed: %s", upd.Error)
+	}
+	updated := upd.Data.(*models.JavaInstallation)
+	if updated.Path != "/opt/jdk-new/bin/java" {
+		t.Errorf("Path = %q, want the new path", updated.Path)
+	}
+	if updated.Version != "21.0.5" {
+		t.Errorf("Version = %q, want re-detected 21.0.5", updated.Version)
+	}
+	if updated.FriendlyName != "Old JDK" {
+		t.Errorf("FriendlyName = %q, want unchanged Old JDK", updated.FriendlyName)
+	}
+}
+
+// A failing version detection must surface as an error, for both add and update.
+func TestJavaInstallationDetectionFailure(t *testing.T) {
+	app := newTestApp()
+	clearJavaTable(t)
+
+	orig := services.DetectJavaVersion
+	t.Cleanup(func() { services.DetectJavaVersion = orig })
+
+	services.DetectJavaVersion = func(path string) (string, error) { return "17", nil }
+	added := app.AddJavaInstallation("/opt/jdk-ok/bin/java", "OK JDK")
+	if !added.Success {
+		t.Fatalf("AddJavaInstallation failed: %s", added.Error)
+	}
+	id := int(added.Data.(*models.JavaInstallation).ID)
+	t.Cleanup(func() { _ = app.javaRepo.Delete(int64(id)) })
+
+	services.DetectJavaVersion = func(path string) (string, error) { return "", fmt.Errorf("exec exploded") }
+
+	result := app.AddJavaInstallation("/opt/jdk-bad/bin/java", "Bad JDK")
+	if result.Success || !strings.Contains(result.Error, "Failed to detect Java version") {
+		t.Errorf("Add with failing detection: Success=%v Error=%q", result.Success, result.Error)
+	}
+
+	result = app.UpdateJavaInstallation(id, "/opt/jdk-other/bin/java", "")
+	if result.Success || !strings.Contains(result.Error, "Failed to detect Java version") {
+		t.Errorf("Update with failing detection: Success=%v Error=%q", result.Success, result.Error)
+	}
 }
 
 // ==================== HTTP-backed bindings against httptest ====================
