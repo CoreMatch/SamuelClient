@@ -28,6 +28,8 @@ import {
   GetInstalledVersions,
   GetFabricVersions,
   GetForgeVersions,
+  InstallFabricLoader,
+  InstallForgeLoader,
   LaunchGame,
 } from '../../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
@@ -115,6 +117,7 @@ export default function HomeView({
   const [showLogs, setShowLogs] = useState(false);
   const [javaInstallations, setJavaInstallations] = useState<JavaInstallation[]>([]);
   const [selectedJava, setSelectedJava] = useState<JavaInstallation | null>(null);
+  const [installingLoader, setInstallingLoader] = useState<string | null>(null);
 
   useEffect(() => {
     loadVersions();
@@ -260,13 +263,41 @@ export default function HomeView({
     }
   };
 
-  const handleLoaderChange = (loaderName: string) => {
+  const handleLoaderChange = async (loaderName: string) => {
     const loader = loaders.find(l => l.name === loaderName);
     saveSettings({
       ...settings,
       selectedLoader: loaderName,
       loaderVersion: loader?.version || '',
     });
+
+    if (!loader || loader.name === 'none' || !loader.version) {
+      return;
+    }
+    if (!currentVersion) {
+      setError('Please select a Minecraft version first');
+      return;
+    }
+
+    // Loader versions install through the dedicated bindings: Fabric writes a
+    // profile JSON inheriting the vanilla version, Forge runs its installer.
+    // The resulting version shows up in the version list afterwards.
+    setError('');
+    setInstallingLoader(loaderName);
+    try {
+      const result = loader.name.startsWith('fabric-')
+        ? await InstallFabricLoader(currentVersion.id, loader.version, '')
+        : await InstallForgeLoader(currentVersion.id, loader.version, '');
+      if (result.success) {
+        await loadVersions();
+      } else {
+        setError(result.error || 'Failed to install loader');
+      }
+    } catch {
+      setError('Failed to install loader. Please try again.');
+    } finally {
+      setInstallingLoader(null);
+    }
   };
 
   const handleSettingChange = (key: keyof LauncherSettings, value: number | string) => {
@@ -382,6 +413,7 @@ export default function HomeView({
               value={settings.selectedLoader}
               onChange={(e) => handleLoaderChange(e.target.value)}
               label="Mod Loader"
+              disabled={installingLoader !== null}
               sx={{
                 color: 'white',
                 '.MuiOutlinedInput-notchedOutline': { borderColor: '#4a5568' },
