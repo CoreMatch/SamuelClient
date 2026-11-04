@@ -151,44 +151,6 @@ func runMigrations() error {
 	return nil
 }
 
-// GetSchema returns the database schema information
-func GetSchema() ([]map[string]string, error) {
-	if db == nil {
-		return nil, fmt.Errorf("database not initialized")
-	}
-
-	rows, err := db.Query(`
-		SELECT name, type, sql 
-		FROM sqlite_master 
-		WHERE type IN ('table', 'index') 
-		ORDER BY type, name
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query schema: %w", err)
-	}
-	defer rows.Close()
-
-	var schema []map[string]string
-	for rows.Next() {
-		var name, typ string
-		var sql sql.NullString
-		if err := rows.Scan(&name, &typ, &sql); err != nil {
-			return nil, fmt.Errorf("failed to scan schema row: %w", err)
-		}
-		schema = append(schema, map[string]string{
-			"name": name,
-			"type": typ,
-			"sql":  sql.String,
-		})
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows iteration error: %w", err)
-	}
-
-	return schema, nil
-}
-
 // Transaction executes a function within a transaction
 func Transaction(fn func(*sql.Tx) error) error {
 	tx, err := db.Begin()

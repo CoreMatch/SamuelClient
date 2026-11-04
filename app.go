@@ -2,7 +2,6 @@ package main
 
 import (
 	"HRPMLW/internal/database"
-	"HRPMLW/internal/models"
 	"HRPMLW/internal/repository"
 	"HRPMLW/internal/services"
 	"context"
@@ -51,18 +50,4 @@ func (a *App) shutdown(ctx context.Context) {
 	if err := database.Close(); err != nil {
 		fmt.Printf("Failed to close database: %v\n", err)
 	}
-}
-
-// GetDBPath returns the database path
-func (a *App) GetDBPath() string {
-	return database.DefaultConfig().Path
-}
-
-// GetDBSchema returns the SQLite schema directly (no HTTP hop, ADR-0004).
-func (a *App) GetDBSchema() *models.ApiResponse {
-	schema, err := database.GetSchema()
-	if err != nil {
-		return &models.ApiResponse{Success: false, Error: err.Error()}
-	}
-	return &models.ApiResponse{Success: true, Data: schema}
 }

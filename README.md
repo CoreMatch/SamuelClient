@@ -34,7 +34,7 @@ HRPML-Wails/
 │   └── services/           # Auth, download, and launcher services
 ├── frontend/
 │   ├── src/
-│   │   ├── components/     # React views (Home, Versions, Accounts, Mods, Settings, Debug, Login)
+│   │   ├── components/     # React views (Home, Versions, Accounts, Mods, Settings, Login)
 │   │   ├── App.tsx         # Main app shell with navigation drawer
 │   │   └── main.tsx        # React entry point
 │   ├── index.html
@@ -88,7 +88,6 @@ The UI is a single-page React app written in TypeScript and built with Vite. Mat
 - **Accounts** — add and switch between offline and Yggdrasil accounts
 - **Mods** — open the active profile's `mods` folder
 - **Settings** — application preferences
-- **Debug** — database diagnostics
 
 Run frontend-only checks:
 
