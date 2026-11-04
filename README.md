@@ -79,6 +79,30 @@ wails build
 
 The output binary is written to `build/bin/` (`SamuelClient` / `SamuelClient.exe`). Cross-compilation is supported via `wails build -platform windows/amd64` etc. — see the [Wails CLI reference](https://wails.io/docs/reference/cli#build).
 
+## Backend interface
+
+The frontend talks to the backend exclusively through Wails bindings (there is
+no local HTTP listener). All bound methods return one uniform response shape:
+`{ success, data, error }`.
+
+| Area | Bindings |
+|------|----------|
+| Auth (read) | `GetAuthlibMeta` |
+| Versions (read) | `GetVersions`, `GetFabricVersions`, `GetForgeVersions`, `GetInstalledVersions` |
+| Java (read) | `GetJavaInstallations` |
+| Config (read) | `GetLauncherConfig` |
+| Auth (write) | `AuthlibLogin`, `AuthlibRefresh`, `AuthlibValidate` |
+| Install / launch | `DownloadVersion`, `LaunchGame` |
+| Config (write) | `UpdateLauncherConfig` |
+| Java (write) | `AddJavaInstallation`, `UpdateJavaInstallation`, `DeleteJavaInstallation`, `SetDefaultJavaInstallation` |
+
+Live data is pushed from Go to the frontend via Wails runtime events:
+
+- `launcher:log` — one event per output line of the launched game process.
+  Payload: `{ "source": "stdout" | "stderr", "line": string }`.
+- `download:progress` — progress while `DownloadVersion` installs a version.
+  Payload: `{ "version_id": string, "stage": "jar" | "library" | "native", "name": string, "downloaded": number, "total": number }`.
+
 ## Frontend
 
 The UI is a single-page React app written in TypeScript and built with Vite. Material UI provides the component library. Views are organized around a left navigation drawer:
@@ -96,6 +120,10 @@ cd frontend
 npm run lint
 npm run typecheck
 ```
+
+Both need the generated Wails bindings (`frontend/wailsjs`, not committed).
+Run `wails generate module` once from the repository root to create them;
+`wails dev` and `wails build` regenerate them automatically.
 
 ## License
 

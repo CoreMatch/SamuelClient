@@ -3,6 +3,15 @@
 - **Status**: accepted
 - **Date**: 2026-11-04
 
+> **Supersession note (2026-11-05):** the positioning in this entry still
+> stands, but its HTTP-boundary details do not: the Gin server, the
+> `/api/v1/...` routes, `SERVER_PORT`, and the frontend→Gin HTTP calls were
+> all retired by [ADR-0004](0004-local-http-boundary.md). Every backend call
+> now goes through a Wails binding, and the process opens no listening port.
+> Evidence lines below citing `internal/routes`, `internal/handlers`,
+> `internal/config`, or `frontend/src/views` refer to files that no longer
+> exist; they are kept as the historical record.
+
 ## Context
 
 The project needed a desktop Minecraft launcher that manages game versions,
