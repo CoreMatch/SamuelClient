@@ -7,47 +7,58 @@
 
 SamuelClient's React frontend does not use Wails bindings for business
 functionality. Instead, every view calls the embedded Gin server directly over
-plain HTTP at a hardcoded `http://localhost:34501` (see Evidence). The author's
+plain HTTP at a hardcoded `localhost:34501` (see Evidence). The author's
 assessment: "这个现状需要一个更加安全和便利的替代" — this arrangement needs a
 more secure and more convenient replacement. Verified problems with the status
 quo:
 
 1. **No caller authentication at all.** The Gin engine installs only Recovery,
    Logger, and CORS middleware; there is no token, session, or origin check on
-   any route (`internal/routes/routes.go:24-26`).
+   any route (`internal/routes/routes.go:L24-L26 @ 27745e6`).
 2. **The server binds all network interfaces.** It listens on `":34501"`
-   (`app.go:58`), not `127.0.0.1:34501`, so the API is reachable from the LAN,
-   not just the local machine.
+   (`app.go:L58 @ 27745e6`), not `127.0.0.1:34501`, so the API is reachable
+   from the LAN, not just the local machine.
 3. **CORS is fully open.** `Access-Control-Allow-Origin: *` with credentials
    and all methods allowed, and OPTIONS short-circuits to 204
-   (`internal/middleware/middleware.go:32-46`). Combined with (1), any web page
-   the user visits in any browser can issue cross-origin requests to the
-   launcher API and read the responses (drive-by calls).
+   (`internal/middleware/middleware.go:L32-L46 @ 27745e6`). Combined with
+   (1), any web page the user visits in any browser can issue cross-origin
+   requests to the launcher API and read the responses (drive-by calls).
 4. **The exposed surface includes arbitrary code execution and file writes.**
    `POST /api/v1/shell/execute` and legacy `POST /shell` run arbitrary shell
-   commands (`internal/routes/routes.go:51-54,202`,
-   `internal/handlers/handlers.go:64-111`); `POST /api/v1/file/operation` and
-   legacy `POST /file` create/delete/overwrite arbitrary files
-   (`internal/routes/routes.go:57-60,203`,
-   `internal/handlers/handlers.go:114-155`). Neither endpoint has any frontend
-   caller — they are pure attack surface.
+   commands (`internal/routes/routes.go:L51-L54 @ 27745e6`,
+   `internal/routes/routes.go:L202 @ 27745e6`,
+   `internal/handlers/handlers.go:L64-L111 @ 27745e6`);
+   `POST /api/v1/file/operation` and legacy `POST /file`
+   create/delete/overwrite arbitrary files
+   (`internal/routes/routes.go:L57-L60 @ 27745e6`,
+   `internal/routes/routes.go:L203 @ 27745e6`,
+   `internal/handlers/handlers.go:L114-L155 @ 27745e6`). Neither endpoint has
+   any frontend caller — they are pure attack surface.
 5. **Credentials cross the wire in clear text.** The login flow POSTs
    username + plaintext password to `/api/v1/auth/login`
-   (`frontend/src/components/LoginView.tsx:157-165`,
-   `internal/handlers/mc_handlers.go:57,61-78`), and the launch flow sends the
-   Yggdrasil `access_token`/`client_token` to `/api/v1/launcher/launch`
-   (`frontend/src/components/HomeView.tsx:273-294`,
-   `internal/handlers/mc_handlers.go:424-425`). Harmless on true loopback, but
-   compounded by (2).
+   (`frontend/src/components/LoginView.tsx:L157-L165 @ 27745e6`,
+   `internal/handlers/mc_handlers.go:L57 @ 27745e6`,
+   `internal/handlers/mc_handlers.go:L61-L78 @ 27745e6`), and the launch flow
+   sends the Yggdrasil `access_token`/`client_token` to
+   `/api/v1/launcher/launch`
+   (`frontend/src/components/HomeView.tsx:L273-L294 @ 27745e6`,
+   `internal/handlers/mc_handlers.go:L424-L425 @ 27745e6`). Harmless on true
+   loopback, but compounded by (2).
 6. **The Wails binding layer exists but is a demo.** Only six methods are bound
    (`Greet`, `TestHealthCheck`, `TestPing`, `TestAPICall`, `GetDBPath`,
-   `GetDBSchema`; `app.go:62-113`), the only frontend consumer is DebugView
-   (`frontend/src/components/DebugView.tsx:4,24,45,66`), and all but two of the
-   bound methods merely proxy back into Gin over HTTP (`app.go:29,67-103,111-113`).
+   `GetDBSchema`; `app.go:L62-L113 @ 27745e6`), the only frontend consumer is
+   DebugView (`frontend/src/components/DebugView.tsx:L4 @ 27745e6`,
+   `frontend/src/components/DebugView.tsx:L24 @ 27745e6`,
+   `frontend/src/components/DebugView.tsx:L45 @ 27745e6`,
+   `frontend/src/components/DebugView.tsx:L66 @ 27745e6`), and all but two of
+   the bound methods merely proxy back into Gin over HTTP
+   (`app.go:L29 @ 27745e6`, `app.go:L67-L103 @ 27745e6`,
+   `app.go:L111-L113 @ 27745e6`).
 7. **Fragile dev/prod split.** One call uses a relative URL
-   (`frontend/src/components/LoginView.tsx:87`) that only resolves in dev mode
-   through the Vite proxy (`frontend/vite.config.ts:7-12`); the production
-   asset server has no proxy configured (`main.go:23-25`), so that call is
+   (`frontend/src/components/LoginView.tsx:L87 @ 27745e6`) that only resolves
+   in dev mode through the Vite proxy
+   (`frontend/vite.config.ts:L7-L12 @ 27745e6`); the production asset server
+   has no proxy configured (`main.go:L23-L25 @ 27745e6`), so that call is
    expected to fail in packaged builds (production behavior not verified).
 
 Threat model summary: any local process, and any web page rendered in any
@@ -104,9 +115,10 @@ kept only if a future ADR justifies an external API).
   `frontend/wailsjs` (already gitignored and CLI-generated).
 - **Migration cost**: medium but mechanical; handlers are thin wrappers over
   services, so binding methods reuse the same logic. Streaming-style responses
-  (the spawn-shell chunked path, `internal/handlers/handlers.go:88-111`) would
-  need Wails runtime events if ever required by the UI; today no frontend code
-  calls those endpoints, so nothing is lost.
+  (the spawn-shell chunked path,
+  `internal/handlers/handlers.go:L88-L111 @ 27745e6`) would need Wails runtime
+  events if ever required by the UI; today no frontend code calls those
+  endpoints, so nothing is lost.
 - **Platform differences**: none material — Wails bindings behave identically
   on Linux (WebKitGTK 2.41+), Windows (WebView2), and macOS (WKWebView), all
   already required by this project. Removing the listener additionally avoids
@@ -114,9 +126,9 @@ kept only if a future ADR justifies an external API).
   app specifically) and keeps future macOS sandboxing feasible.
 - **Known risks**: breaks any hypothetical external consumer of the HTTP API
   (README advertises "Local HTTP API" as a feature; the dead `shellApiUrl`
-  constant in `frontend/src/variables.ts:14` hints at a historical CMCL
-  integration — no live consumer found in-repo). Binding surface becomes the
-  only API, so its signatures must be reviewed as seriously as HTTP routes.
+  constant in `frontend/src/variables.ts:L14 @ 27745e6` hints at a historical
+  CMCL integration — no live consumer found in-repo). Binding surface becomes
+  the only API, so its signatures must be reviewed as seriously as HTTP routes.
 
 ### Option B — Keep local HTTP, add one-time handshake credential + Origin/Referer checks + loopback-only listener
 
@@ -287,36 +299,61 @@ After the migration landed, the owner decided a second round of reductions:
 
 ## Evidence
 
-- All-interfaces listener: `app.go:55-59` (`Run(":" + a.config.ServerPort)`);
-  default port `34501`, `internal/config/config.go:17`.
-- Middleware set (no auth): `internal/routes/routes.go:24-26`; open CORS,
-  `internal/middleware/middleware.go:32-46`.
-- Shell/file execution surface: `internal/routes/routes.go:51-54,57-60`
-  (v1 routes) and `:197-205` (legacy); handlers
-  `internal/handlers/handlers.go:64-111` (shell, incl. chunked spawn
-  `:88-111`), `:114-155` (file operations).
-- Direct frontend fetches to `http://localhost:34501`:
-  `frontend/src/components/LoginView.tsx:157-165` (login incl. plaintext
-  password), `frontend/src/components/VersionManager.tsx:92,119`,
-  `frontend/src/components/HomeView.tsx:112,142,190-191,226,273-294` (launch
-  body carries `access_token`/`client_token`),
-  `frontend/src/components/SettingsView.tsx:25,66,85,138,188,216,244,261`;
-  display-only base URL `frontend/src/components/DebugView.tsx:19`.
-- Dev-only relative fetch: `frontend/src/components/LoginView.tsx:87` with
-  Vite proxy `frontend/vite.config.ts:7-12`; production asset server has no
-  proxy (`main.go:23-25`) — production behavior not verified.
-- Binding layer: `main.go:28-30` (Bind), `app.go:62-113` (six methods;
+- All-interfaces listener: `app.go:L55-L59 @ 27745e6`
+  (`Run(":" + a.config.ServerPort)`); default port `34501`,
+  `internal/config/config.go:L17 @ 27745e6`.
+- Middleware set (no auth): `internal/routes/routes.go:L24-L26 @ 27745e6`;
+  open CORS, `internal/middleware/middleware.go:L32-L46 @ 27745e6`.
+- Shell/file execution surface: `internal/routes/routes.go:L51-L54 @ 27745e6`,
+  `internal/routes/routes.go:L57-L60 @ 27745e6` (v1 routes) and
+  `internal/routes/routes.go:L197-L205 @ 27745e6` (legacy); handlers
+  `internal/handlers/handlers.go:L64-L111 @ 27745e6` (shell, incl. chunked
+  spawn `internal/handlers/handlers.go:L88-L111 @ 27745e6`),
+  `internal/handlers/handlers.go:L114-L155 @ 27745e6` (file operations).
+- Direct frontend fetches to `localhost:34501`:
+  `frontend/src/components/LoginView.tsx:L157-L165 @ 27745e6` (login incl.
+  plaintext password),
+  `frontend/src/components/VersionManager.tsx:L92 @ 27745e6`,
+  `frontend/src/components/VersionManager.tsx:L119 @ 27745e6`,
+  `frontend/src/components/HomeView.tsx:L112 @ 27745e6`,
+  `frontend/src/components/HomeView.tsx:L142 @ 27745e6`,
+  `frontend/src/components/HomeView.tsx:L190-L191 @ 27745e6`,
+  `frontend/src/components/HomeView.tsx:L226 @ 27745e6`,
+  `frontend/src/components/HomeView.tsx:L273-L294 @ 27745e6` (launch body
+  carries `access_token`/`client_token`),
+  `frontend/src/components/SettingsView.tsx:L25 @ 27745e6`,
+  `frontend/src/components/SettingsView.tsx:L66 @ 27745e6`,
+  `frontend/src/components/SettingsView.tsx:L85 @ 27745e6`,
+  `frontend/src/components/SettingsView.tsx:L138 @ 27745e6`,
+  `frontend/src/components/SettingsView.tsx:L188 @ 27745e6`,
+  `frontend/src/components/SettingsView.tsx:L216 @ 27745e6`,
+  `frontend/src/components/SettingsView.tsx:L244 @ 27745e6`,
+  `frontend/src/components/SettingsView.tsx:L261 @ 27745e6`;
+  display-only base URL `frontend/src/components/DebugView.tsx:L19 @ 27745e6`.
+- Dev-only relative fetch:
+  `frontend/src/components/LoginView.tsx:L87 @ 27745e6` with Vite proxy
+  `frontend/vite.config.ts:L7-L12 @ 27745e6`; production asset server has no
+  proxy (`main.go:L23-L25 @ 27745e6`) — production behavior not verified.
+- Binding layer: `main.go:L28-L30 @ 27745e6` (Bind),
+  `app.go:L62-L113 @ 27745e6` (six methods;
   `TestHealthCheck`/`TestPing`/`TestAPICall`/`GetDBSchema` proxy into Gin via
-  `app.go:29,67-103,111-113`); sole consumer
-  `frontend/src/components/DebugView.tsx:4,24,45,66`; bindings are generated,
-  not committed (`.gitignore`, `frontend/wailsjs/`).
+  `app.go:L29 @ 27745e6`, `app.go:L67-L103 @ 27745e6`,
+  `app.go:L111-L113 @ 27745e6`); sole consumer
+  `frontend/src/components/DebugView.tsx:L4 @ 27745e6`,
+  `frontend/src/components/DebugView.tsx:L24 @ 27745e6`,
+  `frontend/src/components/DebugView.tsx:L45 @ 27745e6`,
+  `frontend/src/components/DebugView.tsx:L66 @ 27745e6`; bindings are
+  generated, not committed (`.gitignore`, `frontend/wailsjs/`).
 - No frontend callers of shell/file/echo/sysinfo routes or of the `Greet` /
   `TestAPICall` bindings: grep over `frontend/src` returns zero matches.
-- Dead external-integration trace: `frontend/src/variables.ts:14`
+- Dead external-integration trace: `frontend/src/variables.ts:L14 @ 27745e6`
   (`shellApiUrl`) is exported but imported nowhere.
-- Sensitive-data endpoints: `internal/handlers/mc_handlers.go:57,61-78`
-  (login), `:83-103` (refresh), `:110-128` (validate), `:424-425,441-517`
-  (launch with tokens).
+- Sensitive-data endpoints: `internal/handlers/mc_handlers.go:L57 @ 27745e6`,
+  `internal/handlers/mc_handlers.go:L61-L78 @ 27745e6` (login),
+  `internal/handlers/mc_handlers.go:L83-L103 @ 27745e6` (refresh),
+  `internal/handlers/mc_handlers.go:L110-L128 @ 27745e6` (validate),
+  `internal/handlers/mc_handlers.go:L424-L425 @ 27745e6`,
+  `internal/handlers/mc_handlers.go:L441-L517 @ 27745e6` (launch with tokens).
 - Not verified: whether the packaged production build actually fails the
   relative `/api/v1/auth/meta` call (no packaged build was executed); whether
   any out-of-repo tool calls `:34501` (cannot be proven from this repository);
