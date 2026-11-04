@@ -237,6 +237,9 @@ func TestRefreshAndValidateBindingSuccess(t *testing.T) {
 	mux.HandleFunc("/authserver/validate", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"meta": {"serverName": "BindingTestAuth"}, "signaturePublickey": "pk", "skinDomains": []}`)
+	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
@@ -246,6 +249,19 @@ func TestRefreshAndValidateBindingSuccess(t *testing.T) {
 	}
 	if result := app.AuthlibValidate(srv.URL, "at", "ct"); !result.Success {
 		t.Fatalf("AuthlibValidate failed: %s", result.Error)
+	}
+
+	meta := app.GetAuthlibMeta(srv.URL)
+	if !meta.Success {
+		t.Fatalf("GetAuthlibMeta failed: %s", meta.Error)
+	}
+	data, ok := meta.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("meta Data is %T, want map", meta.Data)
+	}
+	serverMeta, ok := data["meta"].(*services.AuthlibServerMeta)
+	if !ok || serverMeta.Meta.ServerName != "BindingTestAuth" {
+		t.Errorf("meta payload = %+v, want serverName BindingTestAuth", data["meta"])
 	}
 }
 
