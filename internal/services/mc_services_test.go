@@ -698,6 +698,30 @@ func TestDownloadFileWritesContentAndReportsProgress(t *testing.T) {
 	}
 }
 
+// A truncated response (fewer bytes than Content-Length) must fail and remove
+// the partial file: DownloadLibraries/DownloadAssets skip existing files, so
+// a leftover truncated file would block every retry.
+func TestDownloadFileFailureRemovesPartial(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		io.WriteString(w, "partial")
+		// Handler returns: connection closes with bytes still promised, so the
+		// client read fails with an unexpected EOF.
+	}))
+	defer srv.Close()
+
+	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
+	destPath := filepath.Join(t.TempDir(), "sub", "partial.jar")
+
+	result := svc.DownloadFile(srv.URL+"/x.jar", destPath, 100, nil)
+	if result.Success {
+		t.Fatal("expected failure for a truncated response")
+	}
+	if _, err := os.Stat(destPath); !os.IsNotExist(err) {
+		t.Errorf("partial file must be removed after a failed download, stat err = %v", err)
+	}
+}
+
 func TestDownloadFileHTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "gone", http.StatusNotFound)

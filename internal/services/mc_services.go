@@ -577,7 +577,16 @@ func (b *BMCLAPIService) DownloadFile(url, destPath string, expectedSize int64, 
 	if err != nil {
 		return &models.ApiResponse{Success: false, Error: err.Error()}
 	}
-	defer file.Close()
+	// A failed download must not leave a truncated file behind: callers such
+	// as DownloadLibraries/DownloadAssets treat an existing file as already
+	// downloaded and would skip it forever.
+	failed := true
+	defer func() {
+		file.Close()
+		if failed {
+			os.Remove(destPath)
+		}
+	}()
 
 	downloaded := int64(0)
 	buf := make([]byte, 32*1024)
@@ -600,6 +609,7 @@ func (b *BMCLAPIService) DownloadFile(url, destPath string, expectedSize int64, 
 		}
 	}
 
+	failed = false
 	return &models.ApiResponse{Success: true, Data: map[string]interface{}{
 		"path": destPath,
 		"size": downloaded,
@@ -711,13 +721,20 @@ func (b *BMCLAPIService) GetFabricInstaller(mcVersion, loaderVersion, targetDir 
 	if err != nil {
 		return &models.ApiResponse{Success: false, Error: err.Error()}
 	}
-	defer file.Close()
+	failed := true
+	defer func() {
+		file.Close()
+		if failed {
+			os.Remove(destPath)
+		}
+	}()
 
 	_, err = io.Copy(file, resp.Body)
 	if err != nil {
 		return &models.ApiResponse{Success: false, Error: err.Error()}
 	}
 
+	failed = false
 	return &models.ApiResponse{Success: true, Data: map[string]string{"path": destPath}}
 }
 
@@ -762,13 +779,20 @@ func (b *BMCLAPIService) DownloadForgeInstaller(mcVersion, forgeVersion, targetD
 	if err != nil {
 		return &models.ApiResponse{Success: false, Error: err.Error()}
 	}
-	defer file.Close()
+	failed := true
+	defer func() {
+		file.Close()
+		if failed {
+			os.Remove(destPath)
+		}
+	}()
 
 	_, err = io.Copy(file, resp.Body)
 	if err != nil {
 		return &models.ApiResponse{Success: false, Error: err.Error()}
 	}
 
+	failed = false
 	return &models.ApiResponse{Success: true, Data: map[string]string{"path": destPath}}
 }
 
@@ -1040,8 +1064,14 @@ func (b *BMCLAPIService) InstallVersion(versionID, gameDir string, progress func
 		return fail(&models.ApiResponse{Success: false, Error: "failed to parse JAR data"})
 	}
 
-	jarURL := jarData["url"].(string)
-	jarSize := jarData["size"].(int64)
+	jarURL, ok := jarData["url"].(string)
+	if !ok {
+		return fail(&models.ApiResponse{Success: false, Error: "JAR data missing url"})
+	}
+	jarSize, ok := jarData["size"].(int64)
+	if !ok {
+		return fail(&models.ApiResponse{Success: false, Error: "JAR data missing size"})
+	}
 
 	var jarProgress func(downloaded, total int64)
 	if progress != nil {
@@ -1510,15 +1540,26 @@ func (l *LauncherService) LaunchGame(config models.LauncherConfig, version *mode
 	// Stream game output into the log file in the background. When a
 	// logCallback is supplied (ADR-0004 Wails binding path) each complete
 	// line is additionally forwarded so the UI can render live launch logs.
+	// Both streamers must finish before the trailing marker is written and
+	// the file is closed, otherwise the stdout goroutine could race the
+	// close.
 	go func() {
 		defer logFile.Close()
+		stdoutDone := make(chan struct{})
 		if logCallback != nil {
-			go streamLines(logFile, stdout, "stdout", logCallback)
+			go func() {
+				streamLines(logFile, stdout, "stdout", logCallback)
+				close(stdoutDone)
+			}()
 			streamLines(logFile, stderr, "stderr", logCallback)
 		} else {
-			go io.Copy(logFile, stdout)
+			go func() {
+				io.Copy(logFile, stdout)
+				close(stdoutDone)
+			}()
 			io.Copy(logFile, stderr)
 		}
+		<-stdoutDone
 		cmd.Wait()
 		fmt.Fprintf(logFile, "\n# Process exited\n")
 	}()

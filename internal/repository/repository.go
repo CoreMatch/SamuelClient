@@ -28,7 +28,10 @@ func (r *SettingRepository) Set(key, value, settingType, description string) err
 	query := `INSERT INTO settings (key, value, type, description) VALUES (?, ?, ?, ?)
 		ON CONFLICT(key) DO UPDATE SET value = ?, type = ?, description = ?, updated_at = CURRENT_TIMESTAMP`
 	_, err := database.GetDB().Exec(query, key, value, settingType, description, value, settingType, description)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to set setting %q: %w", key, err)
+	}
+	return nil
 }
 
 // Get retrieves a setting by key
@@ -67,8 +70,10 @@ func (r *SettingRepository) GetAll() ([]models.Setting, error) {
 // Delete deletes a setting
 func (r *SettingRepository) Delete(key string) error {
 	query := `DELETE FROM settings WHERE key = ?`
-	_, err := database.GetDB().Exec(query, key)
-	return err
+	if _, err := database.GetDB().Exec(query, key); err != nil {
+		return fmt.Errorf("failed to delete setting %q: %w", key, err)
+	}
+	return nil
 }
 
 // JavaRepository handles Java installation database operations
@@ -139,8 +144,10 @@ func (r *JavaRepository) GetDefault() (*models.JavaInstallation, error) {
 // Update updates a Java installation
 func (r *JavaRepository) Update(java *models.JavaInstallation) error {
 	query := `UPDATE java_installations SET path = ?, friendly_name = ?, version = ?, is_default = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-	_, err := database.GetDB().Exec(query, java.Path, java.FriendlyName, java.Version, java.IsDefault, java.ID)
-	return err
+	if _, err := database.GetDB().Exec(query, java.Path, java.FriendlyName, java.Version, java.IsDefault, java.ID); err != nil {
+		return fmt.Errorf("failed to update java installation %d: %w", java.ID, err)
+	}
+	return nil
 }
 
 // SetDefault sets a Java installation as the default. It fails if the id
@@ -149,24 +156,24 @@ func (r *JavaRepository) Update(java *models.JavaInstallation) error {
 func (r *JavaRepository) SetDefault(id int64) error {
 	tx, err := database.GetDB().Begin()
 	if err != nil {
-		return err
+		return fmt.Errorf("begin transaction: %w", err)
 	}
 
 	_, err = tx.Exec(`UPDATE java_installations SET is_default = 0`)
 	if err != nil {
 		tx.Rollback()
-		return err
+		return fmt.Errorf("clear default flags: %w", err)
 	}
 
 	result, err := tx.Exec(`UPDATE java_installations SET is_default = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
 	if err != nil {
 		tx.Rollback()
-		return err
+		return fmt.Errorf("set default flag: %w", err)
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
 		tx.Rollback()
-		return err
+		return fmt.Errorf("rows affected: %w", err)
 	}
 	if affected == 0 {
 		tx.Rollback()
@@ -181,11 +188,11 @@ func (r *JavaRepository) Delete(id int64) error {
 	query := `DELETE FROM java_installations WHERE id = ?`
 	result, err := database.GetDB().Exec(query, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to delete java installation %d: %w", id, err)
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return fmt.Errorf("rows affected: %w", err)
 	}
 	if affected == 0 {
 		return fmt.Errorf("java installation not found: %w", sql.ErrNoRows)
