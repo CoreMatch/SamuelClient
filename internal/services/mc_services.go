@@ -358,10 +358,28 @@ type BMCLAPIService struct {
 	baseURL string
 }
 
+// userAgentTransport gives mirror requests a descriptive User-Agent. Some
+// CDNs in the BMCLAPI redirect chain answer Go's default client UA with 403
+// (observed live on mirrors.ustc.edu.cn), which broke library downloads.
+type userAgentTransport struct {
+	base http.RoundTripper
+}
+
+func (t userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.UserAgent() == "" {
+		req = req.Clone(req.Context())
+		req.Header.Set("User-Agent", "SamuelClient/1.0 (Minecraft launcher)")
+	}
+	return t.base.RoundTrip(req)
+}
+
 // NewBMCLAPIService creates a new BMCLAPIService
 func NewBMCLAPIService() *BMCLAPIService {
 	return &BMCLAPIService{
-		client:  &http.Client{Timeout: 60 * time.Second},
+		client: &http.Client{
+			Timeout:   60 * time.Second,
+			Transport: userAgentTransport{base: http.DefaultTransport},
+		},
 		mirrors: []string{"https://bmclapi2.bangbang93.com", "https://bmclapi.ggsdream.com"},
 		baseURL: "https://bmclapi2.bangbang93.com",
 	}
@@ -762,8 +780,10 @@ func (b *BMCLAPIService) GetForgeVersions(mcVersion string) *models.ApiResponse 
 }
 
 // DownloadForgeInstaller downloads Forge installer
+// BMCLAPI serves the installer through its maven mirror (the historical
+// /forge/minecraft/<mc>/<ver>/installer endpoint 404s; verified live).
 func (b *BMCLAPIService) DownloadForgeInstaller(mcVersion, forgeVersion, targetDir string) *models.ApiResponse {
-	url := fmt.Sprintf("%s/forge/minecraft/%s/%s/installer", b.baseURL, mcVersion, forgeVersion)
+	url := fmt.Sprintf("%s/maven/net/minecraftforge/forge/%s-%s/forge-%s-%s-installer.jar", b.baseURL, mcVersion, forgeVersion, mcVersion, forgeVersion)
 
 	resp, err := b.client.Get(url)
 	if err != nil {
@@ -862,6 +882,9 @@ func (b *BMCLAPIService) InstallFabricLoader(mcVersion, loaderVersion, gameDir s
 	if progress != nil {
 		libProgress = func(name string, downloaded, total int64) { progress("loader", name, downloaded, total) }
 	}
+	// Fabric meta omits artifact URLs for its own maven artifacts; derive
+	// them from the maven coordinates (verified against the live API).
+	b.fillMavenURLs(profile.Libraries)
 	libDownload := b.DownloadLibraries(profile.Libraries, filepath.Join(gameDir, "libraries"), libProgress)
 	if !libDownload.Success {
 		return fail(libDownload)
@@ -875,6 +898,26 @@ func (b *BMCLAPIService) InstallFabricLoader(mcVersion, loaderVersion, gameDir s
 	}}
 }
 
+// fillMavenURLs derives download URLs for libraries that carry maven
+// coordinates but no URL. The live Fabric meta API returns such entries for
+// its own artifacts; the URL is the maven layout under the BMCLAPI mirror.
+func (b *BMCLAPIService) fillMavenURLs(libraries []BMCLLibrary) {
+	for i := range libraries {
+		artifact := &libraries[i].Downloads.Artifact
+		if artifact.URL != "" {
+			continue
+		}
+		parts := strings.Split(libraries[i].Name, ":")
+		if len(parts) != 3 {
+			continue
+		}
+		if artifact.Path == "" {
+			artifact.Path = strings.ReplaceAll(parts[0], ".", "/") + "/" + parts[1] + "/" + parts[2] + "/" + parts[1] + "-" + parts[2] + ".jar"
+		}
+		artifact.URL = b.baseURL + "/maven/" + artifact.Path
+	}
+}
+
 // forgeInstallTimeout bounds the Forge installer run. It is a variable (like
 // the java detection seams) so tests can shrink it; 10 minutes matches the
 // slowest real-world installer runs on cold caches.
@@ -882,16 +925,19 @@ var forgeInstallTimeout = 10 * time.Minute
 
 // InstallForgeLoader installs the Forge loader for a Minecraft version:
 //  1. downloads the installer jar into gameDir (transient, always removed)
-//  2. runs `java -jar <installer> --installClient` headless with a timeout,
-//     streaming the installer's output line-by-line to logCallback
-//  3. verifies the generated version directory
-//     (<gameDir>/versions/<mc>-forge-<forgeVersion>/)
+//  2. ensures <gameDir>/launcher_profiles.json exists (the installer refuses
+//     to run without a launcher profile file; a minimal one is created)
+//  3. runs `java -jar <installer> --installClient` headless with a timeout,
+//     streaming the installer's output line-by-line to logCallback; the
+//     installer targets its working directory, which is gameDir
+//  4. locates the generated version directory under
+//     <gameDir>/versions/<mcVersion>-forge* (the installer chooses the exact
+//     id, e.g. 1.20.4-forge49.0.3) and verifies its version JSON
 //
 // On any failure a freshly created version directory is removed again (same
 // semantics as InstallVersion). logCallback may be invoked concurrently
-// (stdout and stderr are streamed in parallel). Note: the stock installer
-// targets the platform-default Minecraft directory; callers should pass that
-// directory as gameDir (see TESTING-TODO for the redirection limitation).
+// (stdout and stderr are streamed in parallel). Verified against the real
+// 1.20.4 / 49.0.3 installer from the BMCLAPI mirror on JDK 25.
 func (b *BMCLAPIService) InstallForgeLoader(mcVersion, forgeVersion, gameDir, javaPath string, logCallback func(source, line string), progress func(stage, name string, downloaded, total int64)) *models.ApiResponse {
 	installerName := "forge-installer-" + forgeVersion + ".jar"
 	if progress != nil {
@@ -904,6 +950,16 @@ func (b *BMCLAPIService) InstallForgeLoader(mcVersion, forgeVersion, gameDir, ja
 	installerPath := filepath.Join(gameDir, installerName)
 	// The installer jar is transient: remove it on every exit path.
 	defer os.Remove(installerPath)
+
+	// The installer requires a launcher profile file in the target directory
+	// ("There is no minecraft launcher profile in ..."). Third-party
+	// launchers seed a minimal one; do the same.
+	profilesPath := filepath.Join(gameDir, "launcher_profiles.json")
+	if _, err := os.Stat(profilesPath); err != nil {
+		if err := os.WriteFile(profilesPath, []byte(`{"profiles": {}}`), 0644); err != nil {
+			return &models.ApiResponse{Success: false, Error: fmt.Sprintf("create launcher_profiles.json: %v", err)}
+		}
+	}
 
 	if javaPath == "" {
 		javaPath = "java"
@@ -941,13 +997,26 @@ func (b *BMCLAPIService) InstallForgeLoader(mcVersion, forgeVersion, gameDir, ja
 	waitErr := make(chan error, 1)
 	go func() { waitErr <- cmd.Wait() }()
 
-	versionID := mcVersion + "-forge-" + forgeVersion
-	versionDir := filepath.Join(gameDir, "versions", versionID)
-	_, statErr := os.Stat(versionDir)
-	preExisting := statErr == nil
+	// The installer chooses the exact version id itself (e.g.
+	// 1.20.4-forge49.0.3), so the result is discovered under
+	// versions/<mcVersion>-forge* instead of guessed. Directories that
+	// existed before the run are never touched by the failure cleanup.
+	versionsRoot := filepath.Join(gameDir, "versions")
+	preExistingDirs := map[string]bool{}
+	if entries, err := os.ReadDir(versionsRoot); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				preExistingDirs[e.Name()] = true
+			}
+		}
+	}
 	fail := func(resp *models.ApiResponse) *models.ApiResponse {
-		if !preExisting {
-			_ = os.RemoveAll(versionDir)
+		if entries, err := os.ReadDir(versionsRoot); err == nil {
+			for _, e := range entries {
+				if e.IsDir() && strings.HasPrefix(e.Name(), mcVersion+"-forge") && !preExistingDirs[e.Name()] {
+					_ = os.RemoveAll(filepath.Join(versionsRoot, e.Name()))
+				}
+			}
 		}
 		return resp
 	}
@@ -966,17 +1035,36 @@ func (b *BMCLAPIService) InstallForgeLoader(mcVersion, forgeVersion, gameDir, ja
 	}
 
 	// Verify the generated version directory.
-	versionJSONPath := filepath.Join(versionDir, versionID+".json")
-	if _, err := os.Stat(versionJSONPath); err != nil {
-		return fail(&models.ApiResponse{Success: false, Error: fmt.Sprintf("forge installer did not produce %s", versionJSONPath)})
+	versionID, versionDir, found := findForgeVersionDir(versionsRoot, mcVersion)
+	if !found {
+		return fail(&models.ApiResponse{Success: false, Error: fmt.Sprintf("forge installer did not produce a %s-forge* version directory", mcVersion)})
 	}
 
 	return &models.ApiResponse{Success: true, Data: map[string]interface{}{
 		"version_id":    versionID,
 		"version_dir":   versionDir,
-		"version_json":  versionJSONPath,
+		"version_json":  filepath.Join(versionDir, versionID+".json"),
 		"inherits_from": mcVersion,
 	}}
+}
+
+// findForgeVersionDir locates the version directory the Forge installer
+// generated: the first <mcVersion>-forge* directory containing its version
+// JSON.
+func findForgeVersionDir(versionsRoot, mcVersion string) (id, dir string, found bool) {
+	entries, err := os.ReadDir(versionsRoot)
+	if err != nil {
+		return "", "", false
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), mcVersion+"-forge") {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(versionsRoot, e.Name(), e.Name()+".json")); err == nil {
+			return e.Name(), filepath.Join(versionsRoot, e.Name()), true
+		}
+	}
+	return "", "", false
 }
 
 // DownloadAssets downloads game assets

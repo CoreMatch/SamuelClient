@@ -106,7 +106,7 @@ func TestGetFabricInstaller(t *testing.T) {
 
 func TestDownloadForgeInstaller(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/forge/minecraft/1.12.2/14.23.5.2859/installer" {
+		if r.URL.Path == "/maven/net/minecraftforge/forge/1.12.2-14.23.5.2859/forge-1.12.2-14.23.5.2859-installer.jar" {
 			io.WriteString(w, "forge-bytes")
 			return
 		}

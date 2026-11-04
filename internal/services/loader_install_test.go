@@ -146,6 +146,30 @@ func TestInstallFabricLoaderLibraryFailureCleansUp(t *testing.T) {
 	}
 }
 
+// The live Fabric meta API returns libraries without URLs; fillMavenURLs
+// must derive the mirror maven URL from the coordinates and leave explicit
+// URLs untouched.
+func TestFillMavenURLs(t *testing.T) {
+	svc := NewBMCLAPIServiceWithBaseURL("https://mirror.example")
+	libs := []BMCLLibrary{
+		{Name: "net.fabricmc:fabric-loader:0.20.1"},
+		{Name: "org.example:has-url:1.0", Downloads: BMCLLibraryDownloads{Artifact: BMCLArtifact{URL: "https://keep.example/x.jar"}}},
+		{Name: "not-maven-coordinates"},
+	}
+	svc.fillMavenURLs(libs)
+
+	want := "https://mirror.example/maven/net/fabricmc/fabric-loader/0.20.1/fabric-loader-0.20.1.jar"
+	if libs[0].Downloads.Artifact.URL != want {
+		t.Errorf("derived URL = %q, want %q", libs[0].Downloads.Artifact.URL, want)
+	}
+	if libs[0].Downloads.Artifact.Path != "net/fabricmc/fabric-loader/0.20.1/fabric-loader-0.20.1.jar" {
+		t.Errorf("derived Path = %q", libs[0].Downloads.Artifact.Path)
+	}
+	if libs[1].Downloads.Artifact.URL != "https://keep.example/x.jar" {
+		t.Errorf("explicit URL changed: %q", libs[1].Downloads.Artifact.URL)
+	}
+}
+
 // ==================== Forge ====================
 
 // fakeForgeInstaller writes a shell script standing in for
@@ -175,7 +199,7 @@ printf '{"id": "1.99-forge-47.2.0", "inheritsFrom": "1.99"}' > "versions/1.99-fo
 func forgeInstallerFixture(t *testing.T, status int) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/forge/minecraft/1.99/47.2.0/installer" {
+		if r.URL.Path != "/maven/net/minecraftforge/forge/1.99-47.2.0/forge-1.99-47.2.0-installer.jar" {
 			http.NotFound(w, r)
 			return
 		}
