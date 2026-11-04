@@ -937,6 +937,134 @@ func (b *BMCLAPIService) extractNatives(jarPath, destDir string) error {
 	return nil
 }
 
+// InstallVersion performs a full install of a Minecraft version per the
+// launcher standard. It is the service-layer orchestration that previously
+// lived inside the HTTP handler (ADR-0004):
+//  1. writes <gameDir>/versions/<id>/<id>.json (required by BuildLaunchCommand)
+//  2. downloads the version JAR
+//  3. downloads every library listed in the version JSON
+//  4. extracts natives to <gameDir>/versions/<id>/natives
+//
+// progress, when non-nil, is invoked as each stage advances so callers can
+// surface live progress. stage is one of "jar", "library" or "native"; name
+// identifies the artifact; downloaded/total are byte counts. The Wails
+// binding forwards these as "download:progress" events.
+func (b *BMCLAPIService) InstallVersion(versionID, gameDir string, progress func(stage, name string, downloaded, total int64)) *models.ApiResponse {
+	// First get the version list to find the version URL
+	listResult := b.GetVersionList()
+	if !listResult.Success {
+		return listResult
+	}
+
+	manifest, ok := listResult.Data.(BMCLVersionManifestResponse)
+	if !ok {
+		return &models.ApiResponse{Success: false, Error: "failed to parse version list"}
+	}
+
+	// Find the version URL
+	var versionURL string
+	for _, v := range manifest.Versions {
+		if v.ID == versionID {
+			versionURL = v.URL
+			break
+		}
+	}
+
+	if versionURL == "" {
+		return &models.ApiResponse{Success: false, Error: "version not found"}
+	}
+
+	// Get version manifest
+	manifestResult := b.GetVersionManifest(versionURL)
+	if !manifestResult.Success {
+		return manifestResult
+	}
+
+	versionJSON, ok := manifestResult.Data.(BMCLVersionJSON)
+	if !ok {
+		return &models.ApiResponse{Success: false, Error: "failed to parse manifest"}
+	}
+
+	versionDir := gameDir + "/versions/" + versionID
+	jarPath := versionDir + "/" + versionID + ".jar"
+	versionJSONPath := versionDir + "/" + versionID + ".json"
+	nativesDir := versionDir + "/natives"
+	librariesDir := gameDir + "/libraries"
+
+	for _, dir := range []string{versionDir, librariesDir, nativesDir} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return &models.ApiResponse{Success: false, Error: fmt.Sprintf("create %s: %v", dir, err)}
+		}
+	}
+
+	// 1. Persist the version JSON. This is the file BuildLaunchCommand reads to
+	//    obtain mainClass, assetIndex, libraries, etc. Without it the game
+	//    cannot be launched.
+	jsonData, err := json.MarshalIndent(versionJSON, "", "  ")
+	if err != nil {
+		return &models.ApiResponse{Success: false, Error: "marshal version json: " + err.Error()}
+	}
+	if err := os.WriteFile(versionJSONPath, jsonData, 0644); err != nil {
+		return &models.ApiResponse{Success: false, Error: "write version json: " + err.Error()}
+	}
+
+	// 2. Download the version JAR
+	jarResult := b.GetVersionJAR(&versionJSON)
+	if !jarResult.Success {
+		return jarResult
+	}
+
+	jarData, ok := jarResult.Data.(map[string]interface{})
+	if !ok {
+		return &models.ApiResponse{Success: false, Error: "failed to parse JAR data"}
+	}
+
+	jarURL := jarData["url"].(string)
+	jarSize := jarData["size"].(int64)
+
+	var jarProgress func(downloaded, total int64)
+	if progress != nil {
+		jarProgress = func(downloaded, total int64) { progress("jar", versionID+".jar", downloaded, total) }
+	}
+	jarDownload := b.DownloadFile(jarURL, jarPath, jarSize, jarProgress)
+	if !jarDownload.Success {
+		return jarDownload
+	}
+
+	// 3. Download every library. Required for the -cp classpath the launcher
+	//    builds in BuildLaunchCommand.
+	var libProgress func(name string, downloaded, total int64)
+	if progress != nil {
+		libProgress = func(name string, downloaded, total int64) { progress("library", name, downloaded, total) }
+	}
+	libDownload := b.DownloadLibraries(versionJSON.Libraries, librariesDir, libProgress)
+	if !libDownload.Success {
+		return libDownload
+	}
+
+	// 4. Extract natives (used by -Djava.library.path).
+	var nativeProgress func(name string, downloaded, total int64)
+	if progress != nil {
+		nativeProgress = func(name string, downloaded, total int64) { progress("native", name, downloaded, total) }
+	}
+	nativesDownload := b.DownloadNatives(versionJSON.Libraries, nativesDir, nativeProgress)
+	if !nativesDownload.Success {
+		return nativesDownload
+	}
+
+	return &models.ApiResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"version_id":    versionID,
+			"version_dir":   versionDir,
+			"version_json":  versionJSONPath,
+			"version_jar":   jarPath,
+			"libraries_dir": librariesDir,
+			"natives_dir":   nativesDir,
+		},
+	}
+}
+
 // ==================== Minecraft Launcher Service ====================
 
 // LauncherService handles Minecraft game launching
@@ -1282,7 +1410,13 @@ func stripDashes(s string) string {
 // launcher (Wails) process exiting. stdout/stderr are streamed to a log file
 // under <gameDir>/logs and the live file path is returned alongside the PID
 // so the frontend can tail it.
-func (l *LauncherService) LaunchGame(config models.LauncherConfig, version *models.MinecraftVersion, account *models.MinecraftAccount) *models.ApiResponse {
+//
+// ADR-0004: when logCallback is non-nil, every line the game process writes
+// to stdout/stderr is also forwarded to it (source is "stdout" or "stderr").
+// The Wails binding supplies a callback that re-emits each line as a
+// "launcher:log" event so the UI can render live launch logs without any
+// HTTP polling.
+func (l *LauncherService) LaunchGame(config models.LauncherConfig, version *models.MinecraftVersion, account *models.MinecraftAccount, logCallback func(source, line string)) *models.ApiResponse {
 	args, err := l.BuildLaunchCommand(config, version, account)
 	if err != nil {
 		return &models.ApiResponse{Success: false, Error: err.Error()}
@@ -1335,12 +1469,18 @@ func (l *LauncherService) LaunchGame(config models.LauncherConfig, version *mode
 		return &models.ApiResponse{Success: false, Error: fmt.Sprintf("start game: %v", err)}
 	}
 
-	// Stream game output into the log file in the background.
+	// Stream game output into the log file in the background. When a
+	// logCallback is supplied (ADR-0004 Wails binding path) each complete
+	// line is additionally forwarded so the UI can render live launch logs.
 	go func() {
 		defer logFile.Close()
-		mw := io.MultiWriter(logFile)
-		go io.Copy(mw, stdout)
-		io.Copy(mw, stderr)
+		if logCallback != nil {
+			go streamLines(logFile, stdout, "stdout", logCallback)
+			streamLines(logFile, stderr, "stderr", logCallback)
+		} else {
+			go io.Copy(logFile, stdout)
+			io.Copy(logFile, stderr)
+		}
 		cmd.Wait()
 		fmt.Fprintf(logFile, "\n# Process exited\n")
 	}()
@@ -1352,6 +1492,21 @@ func (l *LauncherService) LaunchGame(config models.LauncherConfig, version *mode
 			"args":     args,
 			"log_path": logPath,
 		},
+	}
+}
+
+// streamLines copies r into w and forwards each complete line to logCallback
+// labelled with source ("stdout" or "stderr"). Used by LaunchGame to feed the
+// live launch-log event stream (ADR-0004).
+func streamLines(w io.Writer, r io.Reader, source string, logCallback func(source, line string)) {
+	scanner := bufio.NewScanner(r)
+	// Give the scanner headroom beyond the default 64 KiB token limit; game
+	// output occasionally contains very long lines.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		fmt.Fprintln(w, line)
+		logCallback(source, line)
 	}
 }
 

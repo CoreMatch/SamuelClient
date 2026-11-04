@@ -267,120 +267,14 @@ func (h *MCHandler) DownloadVersion(c *gin.Context) {
 		gameDir = h.launcherService.GetMinecraftDir()
 	}
 
-	// First get the version list to find the version URL
-	listResult := h.bmclService.GetVersionList()
-	if !listResult.Success {
-		c.JSON(http.StatusBadRequest, listResult)
-		return
+	// ADR-0004: orchestration lives in BMCLAPIService.InstallVersion so the
+	// Wails binding and this (temporary) HTTP route share one implementation.
+	result := h.bmclService.InstallVersion(req.VersionID, gameDir, nil)
+	if result.Success {
+		c.JSON(http.StatusOK, result)
+	} else {
+		c.JSON(http.StatusBadRequest, result)
 	}
-
-	manifest, ok := listResult.Data.(services.BMCLVersionManifestResponse)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to parse version list"})
-		return
-	}
-
-	// Find the version URL
-	var versionURL string
-	for _, v := range manifest.Versions {
-		if v.ID == req.VersionID {
-			versionURL = v.URL
-			break
-		}
-	}
-
-	if versionURL == "" {
-		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "version not found"})
-		return
-	}
-
-	// Get version manifest
-	manifestResult := h.bmclService.GetVersionManifest(versionURL)
-	if !manifestResult.Success {
-		c.JSON(http.StatusBadRequest, manifestResult)
-		return
-	}
-
-	versionJSON, ok := manifestResult.Data.(services.BMCLVersionJSON)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to parse manifest"})
-		return
-	}
-
-	versionDir := gameDir + "/versions/" + req.VersionID
-	jarPath := versionDir + "/" + req.VersionID + ".jar"
-	versionJSONPath := versionDir + "/" + req.VersionID + ".json"
-	nativesDir := versionDir + "/natives"
-	librariesDir := gameDir + "/libraries"
-
-	for _, dir := range []string{versionDir, librariesDir, nativesDir} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: fmt.Sprintf("create %s: %v", dir, err)})
-			return
-		}
-	}
-
-	// 1. Persist the version JSON. This is the file BuildLaunchCommand reads to
-	//    obtain mainClass, assetIndex, libraries, etc. Without it the game
-	//    cannot be launched.
-	jsonData, err := json.MarshalIndent(versionJSON, "", "  ")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "marshal version json: " + err.Error()})
-		return
-	}
-	if err := os.WriteFile(versionJSONPath, jsonData, 0644); err != nil {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "write version json: " + err.Error()})
-		return
-	}
-
-	// 2. Download the version JAR
-	jarResult := h.bmclService.GetVersionJAR(&versionJSON)
-	if !jarResult.Success {
-		c.JSON(http.StatusBadRequest, jarResult)
-		return
-	}
-
-	jarData, ok := jarResult.Data.(map[string]interface{})
-	if !ok {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to parse JAR data"})
-		return
-	}
-
-	jarURL := jarData["url"].(string)
-	jarSize := jarData["size"].(int64)
-
-	jarDownload := h.bmclService.DownloadFile(jarURL, jarPath, jarSize, nil)
-	if !jarDownload.Success {
-		c.JSON(http.StatusBadRequest, jarDownload)
-		return
-	}
-
-	// 3. Download every library. Required for the -cp classpath the launcher
-	//    builds in BuildLaunchCommand.
-	libDownload := h.bmclService.DownloadLibraries(versionJSON.Libraries, librariesDir, nil)
-	if !libDownload.Success {
-		c.JSON(http.StatusBadRequest, libDownload)
-		return
-	}
-
-	// 4. Extract natives (used by -Djava.library.path).
-	nativesDownload := h.bmclService.DownloadNatives(versionJSON.Libraries, nativesDir, nil)
-	if !nativesDownload.Success {
-		c.JSON(http.StatusBadRequest, nativesDownload)
-		return
-	}
-
-	c.JSON(http.StatusOK, models.ApiResponse{
-		Success: true,
-		Data: map[string]interface{}{
-			"version_id":    req.VersionID,
-			"version_dir":   versionDir,
-			"version_json":  versionJSONPath,
-			"version_jar":   jarPath,
-			"libraries_dir": librariesDir,
-			"natives_dir":   nativesDir,
-		},
-	})
 }
 
 // ==================== Launcher Handlers ====================
@@ -508,7 +402,7 @@ func (h *MCHandler) LaunchGame(c *gin.Context) {
 		AuthServer:  req.AuthServer,
 	}
 
-	result := h.launcherService.LaunchGame(config, version, account)
+	result := h.launcherService.LaunchGame(config, version, account, nil)
 	if result.Success {
 		c.JSON(http.StatusOK, result)
 	} else {

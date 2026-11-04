@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Box, Typography, Card, CardContent, Chip, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Tooltip, Slider, Alert, Snackbar } from '@mui/material';
 import { Add, Delete, Star, Edit, Check, X, Save, Memory } from '@mui/icons-material';
-import { GetLauncherConfig, GetJavaInstallations } from '../../wailsjs/go/main/App';
+import {
+  GetLauncherConfig,
+  GetJavaInstallations,
+  UpdateLauncherConfig,
+  AddJavaInstallation,
+  UpdateJavaInstallation,
+  DeleteJavaInstallation,
+  SetDefaultJavaInstallation,
+} from '../../wailsjs/go/main/App';
 
 interface JavaInstallation {
   id: number;
@@ -22,8 +30,6 @@ interface LauncherConfig {
   game_height: number;
   java_args?: string;
 }
-
-const API_BASE = 'http://localhost:34501/api/v1';
 
 // Maximum memory cap for the slider. Minecraft's launcher standard does not
 // cap this explicitly, but 32 GB is well past any practical gameplay need
@@ -134,29 +140,32 @@ export default function SettingsView() {
     setSavingConfig(true);
     setSaveError('');
     try {
-      const response = await fetch(`${API_BASE}/launcher/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          min_memory: minMemory,
-          max_memory: maxMemory,
-          java_args: javaArgs,
-          game_width: gameWidth,
-          game_height: gameHeight
-        })
+      // ADR-0004: config writes go through the in-process Wails binding. The
+      // auto-detected fields (java_path, game_dir, authlib_jar) are sent empty
+      // so SaveLauncherConfig leaves them untouched, matching the old PUT body.
+      const result = await UpdateLauncherConfig({
+        java_path: '',
+        max_memory: maxMemory,
+        min_memory: minMemory,
+        java_args: javaArgs,
+        game_width: gameWidth,
+        game_height: gameHeight,
+        game_dir: '',
+        java_dir: '',
+        bmclapi_mirrors: '',
+        authlib_jar: '',
       });
-      const data = await response.json();
-      if (response.ok && data.success) {
-        setConfig(data.data);
-        setMinMemory(data.data.min_memory ?? minMemory);
-        setMaxMemory(data.data.max_memory ?? maxMemory);
-        setJavaArgs(data.data.java_args ?? '');
-        setGameWidth(data.data.game_width ?? gameWidth);
-        setGameHeight(data.data.game_height ?? gameHeight);
+      if (result.success && result.data) {
+        setConfig(result.data);
+        setMinMemory(result.data.min_memory ?? minMemory);
+        setMaxMemory(result.data.max_memory ?? maxMemory);
+        setJavaArgs(result.data.java_args ?? '');
+        setGameWidth(result.data.game_width ?? gameWidth);
+        setGameHeight(result.data.game_height ?? gameHeight);
         setDirty(false);
         setSaveSuccess(true);
       } else {
-        setSaveError(data.error || 'Failed to save settings');
+        setSaveError(result.error || 'Failed to save settings');
       }
     } catch (err) {
       setSaveError('Failed to save settings');
@@ -184,23 +193,14 @@ export default function SettingsView() {
     }
 
     try {
-      const response = await fetch('http://localhost:34501/api/v1/db/java', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          path: newJavaPath.trim(),
-          friendly_name: newJavaName.trim()
-        })
-      });
-
-      const data = await response.json();
-      if (response.ok) {
+      const result = await AddJavaInstallation(newJavaPath.trim(), newJavaName.trim());
+      if (result.success) {
         fetchJavaInstallations();
         setOpenDialog(false);
         setNewJavaPath('');
         setNewJavaName('');
       } else {
-        setDialogError(data.error || 'Failed to add Java installation');
+        setDialogError(result.error || 'Failed to add Java installation');
       }
     } catch (err) {
       setDialogError('Failed to add Java installation');
@@ -212,24 +212,19 @@ export default function SettingsView() {
     if (!editingJava) return;
 
     try {
-      const response = await fetch(`http://localhost:34501/api/v1/db/java/${editingJava.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          path: newJavaPath.trim() || editingJava.path,
-          friendly_name: newJavaName.trim()
-        })
-      });
-
-      const data = await response.json();
-      if (response.ok) {
+      const result = await UpdateJavaInstallation(
+        editingJava.id,
+        newJavaPath.trim() || editingJava.path,
+        newJavaName.trim()
+      );
+      if (result.success) {
         fetchJavaInstallations();
         setOpenDialog(false);
         setEditingJava(null);
         setNewJavaPath('');
         setNewJavaName('');
       } else {
-        setDialogError(data.error || 'Failed to update Java installation');
+        setDialogError(result.error || 'Failed to update Java installation');
       }
     } catch (err) {
       setDialogError('Failed to update Java installation');
@@ -240,15 +235,11 @@ export default function SettingsView() {
     if (!confirm('Are you sure you want to delete this Java installation?')) return;
 
     try {
-      const response = await fetch(`http://localhost:34501/api/v1/db/java/${id}`, {
-        method: 'DELETE'
-      });
-
-      if (response.ok) {
+      const result = await DeleteJavaInstallation(id);
+      if (result.success) {
         fetchJavaInstallations();
       } else {
-        const data = await response.json();
-        setError(data.error || 'Failed to delete Java installation');
+        setError(result.error || 'Failed to delete Java installation');
       }
     } catch (err) {
       setError('Failed to delete Java installation');
@@ -257,15 +248,11 @@ export default function SettingsView() {
 
   const handleSetDefault = async (id: number) => {
     try {
-      const response = await fetch(`http://localhost:34501/api/v1/db/java/${id}/default`, {
-        method: 'POST'
-      });
-
-      if (response.ok) {
+      const result = await SetDefaultJavaInstallation(id);
+      if (result.success) {
         fetchJavaInstallations();
       } else {
-        const data = await response.json();
-        setError(data.error || 'Failed to set default Java');
+        setError(result.error || 'Failed to set default Java');
       }
     } catch (err) {
       setError('Failed to set default Java');
