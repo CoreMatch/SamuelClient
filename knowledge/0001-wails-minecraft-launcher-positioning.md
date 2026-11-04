@@ -55,10 +55,11 @@ SamuelClient is a **cross-platform Minecraft launcher built with Wails**:
   `wails.json:3-4` ("Samuel Client"); `frontend/package.json:13-20,35`
   (React 19 + MUI + Vite), package name `hrpml-ml` at `:2`.
 - Window title and startup: `main.go:19-20`; `app.go:38-45` (startup init
-  SQLite), `app.go:55-59` (Gin on `config.ServerPort`); default port
-  `internal/config/config.go:17` (`34501`).
-- Routes: `internal/routes/routes.go:37-74` (route setup), `:135-144` (Java
-  CRUD), `:149-194` (MC launcher group).
+  SQLite), `app.go:L55-L59 @ 27745e6` (Gin on `config.ServerPort`); default
+  port `internal/config/config.go:L17 @ 27745e6` (`34501`).
+- Routes: `internal/routes/routes.go:L37-L74 @ 27745e6` (route setup),
+  `internal/routes/routes.go:L135-L144 @ 27745e6` (Java CRUD),
+  `internal/routes/routes.go:L149-L194 @ 27745e6` (MC launcher group).
 - Launch flow: `frontend/src/components/HomeView.tsx:269-316` (`handleLaunch`),
   `bindings.go:295-376` (launch binding),
   `internal/services/mc_services.go:1304-1410` (`BuildLaunchCommand`),
@@ -77,7 +78,7 @@ SamuelClient is a **cross-platform Minecraft launcher built with Wails**:
   shows no `cmcl.jar` was ever committed; the only cmcl-named file ever tracked
   was `frontend/docs/CMCL_Commands_Report.md` (added in `349774e`, moved to
   `docs/` in `756cbf0`, removed in `7095d3b`). The last reference was
-  `frontend/src/variables.ts:12-15`
+  `frontend/src/variables.ts:L12-L15 @ 27745e6`
   (`CMCL_CONFIG`, `cmclPath` default `java -jar ./cmcl.jar`); a repo-wide
   search found no consumer of `CMCL_CONFIG`/`cmclPath` in code, build scripts,
   README, or CI, and `variables.ts` was deleted during the ADR-0004 cleanup.
