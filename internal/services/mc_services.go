@@ -797,6 +797,188 @@ func (b *BMCLAPIService) DownloadForgeInstaller(mcVersion, forgeVersion, targetD
 	return &models.ApiResponse{Success: true, Data: map[string]string{"path": destPath}}
 }
 
+// InstallFabricLoader installs the Fabric loader on top of an already
+// installed vanilla version:
+//  1. requires <gameDir>/versions/<mcVersion>/<mcVersion>.json (the parent)
+//  2. fetches the loader profile JSON from the (mirrored) Fabric meta API
+//  3. writes it to <gameDir>/versions/<profile id>/<profile id>.json — the
+//     profile keeps inheritsFrom, resolved by BuildLaunchCommand at launch
+//  4. downloads the loader libraries into <gameDir>/libraries
+//
+// progress, when non-nil, is invoked with stage "loader" (the
+// download:progress contract). Failure removes a freshly created version
+// directory again (same semantics as InstallVersion); a pre-existing one is
+// left untouched so a retry cannot destroy a working loader install.
+func (b *BMCLAPIService) InstallFabricLoader(mcVersion, loaderVersion, gameDir string, progress func(stage, name string, downloaded, total int64)) *models.ApiResponse {
+	parentJSONPath := filepath.Join(gameDir, "versions", mcVersion, mcVersion+".json")
+	if _, err := os.Stat(parentJSONPath); err != nil {
+		return &models.ApiResponse{Success: false, Error: fmt.Sprintf("version %s is not installed; install the vanilla version first", mcVersion)}
+	}
+
+	profileURL := fmt.Sprintf("%s/fabric-meta/v2/versions/loader/%s/%s/profile/json", b.baseURL, mcVersion, loaderVersion)
+	resp, err := b.client.Get(profileURL)
+	if err != nil {
+		return &models.ApiResponse{Success: false, Error: err.Error()}
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return &models.ApiResponse{Success: false, Error: fmt.Sprintf("HTTP %d", resp.StatusCode)}
+	}
+
+	var profile BMCLVersionJSON
+	if err := json.NewDecoder(resp.Body).Decode(&profile); err != nil {
+		return &models.ApiResponse{Success: false, Error: "parse fabric profile: " + err.Error()}
+	}
+	if profile.ID == "" {
+		profile.ID = fmt.Sprintf("fabric-loader-%s-%s", loaderVersion, mcVersion)
+	}
+	if profile.InheritsFrom == "" {
+		profile.InheritsFrom = mcVersion
+	}
+
+	versionDir := filepath.Join(gameDir, "versions", profile.ID)
+	_, statErr := os.Stat(versionDir)
+	preExisting := statErr == nil
+	fail := func(resp *models.ApiResponse) *models.ApiResponse {
+		if !preExisting {
+			_ = os.RemoveAll(versionDir)
+		}
+		return resp
+	}
+	if err := os.MkdirAll(versionDir, 0755); err != nil {
+		return fail(&models.ApiResponse{Success: false, Error: fmt.Sprintf("create %s: %v", versionDir, err)})
+	}
+
+	jsonData, err := json.MarshalIndent(profile, "", "  ")
+	if err != nil {
+		return fail(&models.ApiResponse{Success: false, Error: "marshal fabric profile: " + err.Error()})
+	}
+	versionJSONPath := filepath.Join(versionDir, profile.ID+".json")
+	if err := os.WriteFile(versionJSONPath, jsonData, 0644); err != nil {
+		return fail(&models.ApiResponse{Success: false, Error: "write fabric profile: " + err.Error()})
+	}
+
+	var libProgress func(name string, downloaded, total int64)
+	if progress != nil {
+		libProgress = func(name string, downloaded, total int64) { progress("loader", name, downloaded, total) }
+	}
+	libDownload := b.DownloadLibraries(profile.Libraries, filepath.Join(gameDir, "libraries"), libProgress)
+	if !libDownload.Success {
+		return fail(libDownload)
+	}
+
+	return &models.ApiResponse{Success: true, Data: map[string]interface{}{
+		"version_id":    profile.ID,
+		"version_dir":   versionDir,
+		"version_json":  versionJSONPath,
+		"inherits_from": profile.InheritsFrom,
+	}}
+}
+
+// forgeInstallTimeout bounds the Forge installer run. It is a variable (like
+// the java detection seams) so tests can shrink it; 10 minutes matches the
+// slowest real-world installer runs on cold caches.
+var forgeInstallTimeout = 10 * time.Minute
+
+// InstallForgeLoader installs the Forge loader for a Minecraft version:
+//  1. downloads the installer jar into gameDir (transient, always removed)
+//  2. runs `java -jar <installer> --installClient` headless with a timeout,
+//     streaming the installer's output line-by-line to logCallback
+//  3. verifies the generated version directory
+//     (<gameDir>/versions/<mc>-forge-<forgeVersion>/)
+//
+// On any failure a freshly created version directory is removed again (same
+// semantics as InstallVersion). logCallback may be invoked concurrently
+// (stdout and stderr are streamed in parallel). Note: the stock installer
+// targets the platform-default Minecraft directory; callers should pass that
+// directory as gameDir (see TESTING-TODO for the redirection limitation).
+func (b *BMCLAPIService) InstallForgeLoader(mcVersion, forgeVersion, gameDir, javaPath string, logCallback func(source, line string), progress func(stage, name string, downloaded, total int64)) *models.ApiResponse {
+	installerName := "forge-installer-" + forgeVersion + ".jar"
+	if progress != nil {
+		progress("loader", installerName, 0, 0)
+	}
+	download := b.DownloadForgeInstaller(mcVersion, forgeVersion, gameDir)
+	if !download.Success {
+		return download
+	}
+	installerPath := filepath.Join(gameDir, installerName)
+	// The installer jar is transient: remove it on every exit path.
+	defer os.Remove(installerPath)
+
+	if javaPath == "" {
+		javaPath = "java"
+	}
+	cmd := exec.Command(javaPath, "-jar", installerPath, "--installClient")
+	cmd.Dir = gameDir
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return &models.ApiResponse{Success: false, Error: fmt.Sprintf("stdout pipe: %v", err)}
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return &models.ApiResponse{Success: false, Error: fmt.Sprintf("stderr pipe: %v", err)}
+	}
+	if err := cmd.Start(); err != nil {
+		return &models.ApiResponse{Success: false, Error: fmt.Sprintf("start forge installer: %v", err)}
+	}
+
+	// Stream both pipes into the log callback; both must finish before the
+	// result is evaluated (mirrors the LaunchGame streaming discipline).
+	streamDone := make(chan struct{})
+	forward := func(r io.Reader, source string) {
+		if logCallback != nil {
+			streamLines(io.Discard, r, source, logCallback)
+		} else {
+			io.Copy(io.Discard, r)
+		}
+	}
+	go func() {
+		go func() { forward(stdout, "stdout"); close(streamDone) }()
+		forward(stderr, "stderr")
+	}()
+
+	waitErr := make(chan error, 1)
+	go func() { waitErr <- cmd.Wait() }()
+
+	versionID := mcVersion + "-forge-" + forgeVersion
+	versionDir := filepath.Join(gameDir, "versions", versionID)
+	_, statErr := os.Stat(versionDir)
+	preExisting := statErr == nil
+	fail := func(resp *models.ApiResponse) *models.ApiResponse {
+		if !preExisting {
+			_ = os.RemoveAll(versionDir)
+		}
+		return resp
+	}
+
+	select {
+	case err := <-waitErr:
+		<-streamDone
+		if err != nil {
+			return fail(&models.ApiResponse{Success: false, Error: fmt.Sprintf("forge installer failed: %v (see launcher:log output)", err)})
+		}
+	case <-time.After(forgeInstallTimeout):
+		_ = cmd.Process.Kill()
+		<-waitErr
+		<-streamDone
+		return fail(&models.ApiResponse{Success: false, Error: fmt.Sprintf("forge installer timed out after %v", forgeInstallTimeout)})
+	}
+
+	// Verify the generated version directory.
+	versionJSONPath := filepath.Join(versionDir, versionID+".json")
+	if _, err := os.Stat(versionJSONPath); err != nil {
+		return fail(&models.ApiResponse{Success: false, Error: fmt.Sprintf("forge installer did not produce %s", versionJSONPath)})
+	}
+
+	return &models.ApiResponse{Success: true, Data: map[string]interface{}{
+		"version_id":    versionID,
+		"version_dir":   versionDir,
+		"version_json":  versionJSONPath,
+		"inherits_from": mcVersion,
+	}}
+}
+
 // DownloadAssets downloads game assets
 // BMCLAPI: http://resources.download.minecraft.net -> https://bmclapi2.bangbang93.com/assets
 func (b *BMCLAPIService) DownloadAssets(assetIndex *BMCLAssetIndex, assetsDir string, progressCallback func(name string, downloaded, total int64)) *models.ApiResponse {

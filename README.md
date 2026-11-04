@@ -92,16 +92,18 @@ no local HTTP listener). All bound methods return one uniform response shape:
 | Java (read) | `GetJavaInstallations` |
 | Config (read) | `GetLauncherConfig` |
 | Auth (write) | `AuthlibLogin`, `AuthlibRefresh`, `AuthlibValidate` |
-| Install / launch | `DownloadVersion`, `LaunchGame` |
+| Install / launch | `DownloadVersion`, `InstallFabricLoader`, `InstallForgeLoader`, `LaunchGame` |
 | Config (write) | `UpdateLauncherConfig` |
 | Java (write) | `AddJavaInstallation`, `UpdateJavaInstallation`, `DeleteJavaInstallation`, `SetDefaultJavaInstallation` |
 
 Live data is pushed from Go to the frontend via Wails runtime events:
 
-- `launcher:log` — one event per output line of the launched game process.
+- `launcher:log` — one event per output line of the launched game process or
+  of the Forge installer while `InstallForgeLoader` runs.
   Payload: `{ "source": "stdout" | "stderr", "line": string }`.
-- `download:progress` — progress while `DownloadVersion` installs a version.
-  Payload: `{ "version_id": string, "stage": "jar" | "library" | "native" | "asset", "name": string, "downloaded": number, "total": number }`.
+- `download:progress` — progress while `DownloadVersion` installs a version
+  or `InstallFabricLoader`/`InstallForgeLoader` install a mod loader.
+  Payload: `{ "version_id": string, "stage": "jar" | "library" | "native" | "asset" | "loader", "name": string, "downloaded": number, "total": number }`.
 
 ## Frontend
 

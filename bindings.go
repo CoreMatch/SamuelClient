@@ -13,16 +13,20 @@ package main
 // contract (ADR-0004):
 //
 //   - "launcher:log" — one event per output line of the launched game
-//     process. Payload: {"source": "stdout"|"stderr", "line": string}.
-//     Emission starts after LaunchGame returns success and ends when the
-//     process exits.
+//     process, or of the Forge installer while InstallForgeLoader runs.
+//     Payload: {"source": "stdout"|"stderr", "line": string}.
+//     For the game process, emission starts after LaunchGame returns success
+//     and ends when the process exits.
 //   - "download:progress" — progress while DownloadVersion installs a
 //     version. Payload: {"version_id": string, "stage": "jar"|"library"|
-//     "native"|"asset", "name": string, "downloaded": number, "total": number}.
+//     "native"|"asset"|"loader", "name": string, "downloaded": number,
+//     "total": number}. The "loader" stage is emitted by
+//     InstallFabricLoader/InstallForgeLoader.
 
 import (
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -273,6 +277,72 @@ func (a *App) DownloadVersion(versionID, gameDir string) *models.ApiResponse {
 	}
 
 	return a.bmclService.InstallVersion(versionID, gameDir, progress)
+}
+
+// InstallFabricLoader installs the Fabric loader profile on top of an
+// already installed vanilla version. The resulting version inherits the
+// parent's client jar (inheritsFrom) and becomes selectable through
+// GetInstalledVersions/LaunchGame. Progress is emitted as
+// "download:progress" events with stage "loader".
+func (a *App) InstallFabricLoader(mcVersion, loaderVersion, gameDir string) *models.ApiResponse {
+	if mcVersion == "" {
+		return &models.ApiResponse{Success: false, Error: "mc version is required"}
+	}
+	if loaderVersion == "" {
+		return &models.ApiResponse{Success: false, Error: "loader version is required"}
+	}
+	if gameDir == "" {
+		gameDir = a.launcherService.GetMinecraftDir()
+	}
+
+	versionID := fmt.Sprintf("fabric-loader-%s-%s", loaderVersion, mcVersion)
+	progress := func(stage, name string, downloaded, total int64) {
+		a.emit("download:progress", map[string]interface{}{
+			"version_id": versionID,
+			"stage":      stage,
+			"name":       name,
+			"downloaded": downloaded,
+			"total":      total,
+		})
+	}
+
+	return a.bmclService.InstallFabricLoader(mcVersion, loaderVersion, gameDir, progress)
+}
+
+// InstallForgeLoader downloads the Forge installer and runs it headless
+// (`java -jar <installer> --installClient`) with a timeout. The installer's
+// output is streamed as "launcher:log" events; progress as
+// "download:progress" with stage "loader".
+func (a *App) InstallForgeLoader(mcVersion, forgeVersion, gameDir string) *models.ApiResponse {
+	if mcVersion == "" {
+		return &models.ApiResponse{Success: false, Error: "mc version is required"}
+	}
+	if forgeVersion == "" {
+		return &models.ApiResponse{Success: false, Error: "forge version is required"}
+	}
+	if gameDir == "" {
+		gameDir = a.launcherService.GetMinecraftDir()
+	}
+
+	versionID := mcVersion + "-forge-" + forgeVersion
+	progress := func(stage, name string, downloaded, total int64) {
+		a.emit("download:progress", map[string]interface{}{
+			"version_id": versionID,
+			"stage":      stage,
+			"name":       name,
+			"downloaded": downloaded,
+			"total":      total,
+		})
+	}
+	logCallback := func(source, line string) {
+		a.emit("launcher:log", map[string]interface{}{
+			"source": source,
+			"line":   line,
+		})
+	}
+
+	javaPath := a.launcherService.GetJavaPath()
+	return a.bmclService.InstallForgeLoader(mcVersion, forgeVersion, gameDir, javaPath, logCallback, progress)
 }
 
 // ==================== Launch (write, streaming) ====================

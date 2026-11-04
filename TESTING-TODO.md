@@ -61,15 +61,24 @@ need an owner decision before being acted on.
    - `RefreshAuthlibToken` — **DELETED**. Thin wrapper with no caller; the
      binding calls `RefreshAuthlibTokenWithProfile` directly (the no-profile
      case is tested by passing `""`).
-   - `GetFabricInstaller` / `DownloadForgeInstaller` — **NEED AUTHOR
-     DECISION**. These only download installer jars. The UI offers a
-     Fabric/Forge loader dropdown and `LaunchGameRequest` carries
-     loader_type/loader_version, but nothing installs the loader (no
-     installer execution, no loader version JSON generation), so modded
-     launch is a feature gap bigger than one wiring step: it needs a design
-     (run installer via detected Java, or merge loader profiles into the
-     version JSON). Options: (a) design and implement loader installation,
-     (b) hide the loader dropdown until then, (c) delete the two downloaders.
+   - `GetFabricInstaller` / `DownloadForgeInstaller` — **WIRED**
+     (2026-11-05, branch `feat/loader-install`): `InstallFabricLoader`
+     fetches the Fabric profile JSON, persists it under
+     `versions/<profile id>/` with `inheritsFrom` (resolved by
+     `BuildLaunchCommand` at launch) and downloads the loader libraries;
+     `InstallForgeLoader` downloads the installer jar, runs
+     `java -jar <installer> --installClient` headless with a 10-minute
+     timeout, streams its output as `launcher:log` events, verifies the
+     generated version directory and removes the transient installer jar.
+     Both emit `download:progress` with stage `"loader"`, clean up fresh
+     directories on failure, and are retryable.
+     **Not verified**: against a real Fabric/Forge installer and real JRE
+     (tests use httptest meta + a shell-script installer covering exit 0 /
+     non-zero / timeout). Known limitation: the stock Forge installer
+     targets the platform-default Minecraft directory; `--installClient`
+     without a directory flag cannot be redirected on older installers, so
+     `gameDir` should be the default one. Decision left for the author:
+     whether to add modern-installer `--installDir` handling.
 9. **`UserRepository`, `TaskRepository`, `FileRepository` retired
    (2026-11-05, branch `fix/round3-triage`).** Zero production callers were
    found (grep across `*.go`), so the repositories, their models
