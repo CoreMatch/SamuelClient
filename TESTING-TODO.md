@@ -44,10 +44,13 @@ need an owner decision before being acted on.
 6. **`GetJavaPath` fallback branches are environment-dependent.** Only the
    JAVA_HOME branch is tested deterministically; the common-paths/`"java"`
    fallback depends on the machine. Decision: accept partial coverage?
-7. **Frontend has no automated tests** (no test runner configured in
-   `package.json`). This round only guarantees `tsc` + `vite build` (plus a
-   working `npm run lint`). Decision: introduce Vitest (or similar) for the
-   React views?
+7. **Frontend test framework introduced (2026-11-05, branch
+   `feat/loader-install`).** Vitest + jsdom + @testing-library/react, wired
+   through `vite.config.ts` (`npm test`, also added to CI). Key-interaction
+   coverage: LoginView (authlib validation/success/failure, offline login
+   via the type select) and HomeView (Play gating, launch request payload,
+   backend error surfacing), all Wails bindings mocked. Remaining gap: no
+   tests for VersionManager/AccountManager/SettingsView/ModManager yet.
 8. **Triage of the unwired service methods (2026-11-05, branch
    `fix/round3-triage`).** Each method was grep'd for callers and classified:
    - `DownloadAssets` — **WIRED** into `InstallVersion` as stage 5. Reason:
