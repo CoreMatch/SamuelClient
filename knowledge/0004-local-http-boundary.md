@@ -83,14 +83,29 @@ the following on 2026-11-04:
    download progress are pushed from Go via `runtime.EventsEmit` and consumed
    by the frontend via `EventsOn`. The event contract is fixed here so later
    code never has to guess the interface:
-   - `launcher:log` — one event per output line of the launched game process.
-     Payload: `{"source": "stdout" | "stderr", "line": string}`. Emission
-     starts after `LaunchGame` returns success and ends when the process exits.
+   - `launcher:log` — one event per output line of the launched game process,
+     or of the Forge installer while `InstallForgeLoader` runs. Payload:
+     `{"source": "stdout" | "stderr", "line": string}`. For the game process,
+     emission starts after `LaunchGame` returns success and ends when the
+     process exits.
    - `download:progress` — progress while `DownloadVersion` installs a
-     version. Payload: `{"version_id": string, "stage": "jar" | "library" |
-     "native", "name": string, "downloaded": number, "total": number}`.
-     Emitted at most once per percentage point for the jar stage and once per
-     completed library/native.
+     version or `InstallFabricLoader`/`InstallForgeLoader` install a mod
+     loader. Payload: `{"version_id": string, "stage": "jar" | "library" |
+     "native" | "asset" | "loader", "name": string, "downloaded": number,
+     "total": number}`. Within `DownloadVersion` the stages arrive in the
+     order `jar` → `library` → `native` → `asset`; the `loader` stage belongs
+     to the loader installs. The jar stage emits as download chunks arrive;
+     library/native/asset emit once per completed artifact; the loader stage
+     emits once per completed loader library (Fabric) or once before the
+     installer download (Forge).
+
+   Contract extensions after the 2026-11-04 decision (both 2026-11-05): the
+   `asset` stage was added when asset downloads were wired into
+   `internal/services/mc_services.go::InstallVersion`, and the `loader` stage
+   with `bindings.go::InstallFabricLoader` /
+   `bindings.go::InstallForgeLoader`; `launcher:log` was extended to the
+   Forge installer's output. The same contract text lives in the comment at
+   the top of `bindings.go` and in the README.
 4. **`SERVER_PORT` is removed, not preserved.** The `internal/config` package
    (`ServerPort`, `GinMode`) is deleted with the HTTP boundary; no port
    configuration is kept or reserved.
