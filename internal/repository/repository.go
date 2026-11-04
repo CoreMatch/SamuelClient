@@ -167,13 +167,16 @@ func (r *TaskRepository) GetByID(id int64) (*models.Task, error) {
 	task := &models.Task{}
 	query := `SELECT id, name, description, status, priority, progress, result, error, created_at, updated_at, completed_at FROM tasks WHERE id = ?`
 	var completedAt sql.NullTime
+	var result, taskErr sql.NullString
 	err := database.GetDB().QueryRow(query, id).Scan(
 		&task.ID, &task.Name, &task.Description, &task.Status, &task.Priority,
-		&task.Progress, &task.Result, &task.Error, &task.CreatedAt, &task.UpdatedAt, &completedAt,
+		&task.Progress, &result, &taskErr, &task.CreatedAt, &task.UpdatedAt, &completedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("task not found: %w", err)
 	}
+	task.Result = result.String
+	task.Error = taskErr.String
 	if completedAt.Valid {
 		task.CompletedAt = &completedAt.Time
 	}
@@ -202,12 +205,15 @@ func (r *TaskRepository) GetAll(status string) ([]models.Task, error) {
 	for rows.Next() {
 		var task models.Task
 		var completedAt sql.NullTime
+		var result, taskErr sql.NullString
 		if err := rows.Scan(
 			&task.ID, &task.Name, &task.Description, &task.Status, &task.Priority,
-			&task.Progress, &task.Result, &task.Error, &task.CreatedAt, &task.UpdatedAt, &completedAt,
+			&task.Progress, &result, &taskErr, &task.CreatedAt, &task.UpdatedAt, &completedAt,
 		); err != nil {
 			return nil, err
 		}
+		task.Result = result.String
+		task.Error = taskErr.String
 		if completedAt.Valid {
 			task.CompletedAt = &completedAt.Time
 		}
