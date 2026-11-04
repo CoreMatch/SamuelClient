@@ -31,17 +31,20 @@ by any contract in that repository.
 ## Evidence
 
 - HA-Contract positions itself as the ecosystem's contract center and lists its
-  covered projects; SamuelClient is not among them: HA-Contract `README.md`
+  covered projects; SamuelClient is not among them: HA-Contract
+  `/home/lnb/Desktop/HA/HA-Contract/README.md`
   (Project Structure lists HRPAuth, HRPAuth-Yggdrasil-API, HASkinLib,
   WinnerProxy, HASkinProxy, Cascade, HRPAuth-WebUI).
 - Search of HA-Contract for this project returns no launcher contract:
   `grep -i "samuelclient|samuel client|samuel"` matches only
-  `HA-Contract/docs/dev/Cascade/README.md:24` (`SamuelCheston/RW-HPS`, an
+  `/home/lnb/Desktop/HA/HA-Contract/docs/dev/Cascade/README.md:24`
+  (`SamuelCheston/RW-HPS`, an
   author/other-project reference, unrelated); `grep -i launcher` returns zero
   matches; "client" hits are unrelated contexts (Minecraft client, CSL client,
   clientToken).
 - External protocol references (authlib-injector/CSL) are kept as immutable
-  external standards in HA-Contract `docs/references/`, not as launcher
+  external standards in HA-Contract
+  `/home/lnb/Desktop/HA/HA-Contract/docs/references/`, not as launcher
   behavior contracts.
 - Not verified: none — this is a negative finding based on exhaustive grep of
   the HA-Contract working tree at its current `main`.
