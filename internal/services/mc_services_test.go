@@ -317,8 +317,8 @@ func TestGetAuthlibMetaInvalidJSON(t *testing.T) {
 	}
 }
 
-// RefreshAuthlibToken is the no-profile form; it must send no selectedProfile.
-func TestRefreshAuthlibTokenDelegates(t *testing.T) {
+// A refresh without profile selection must send no selectedProfile.
+func TestRefreshAuthlibTokenWithoutProfileOmitsSelectedProfile(t *testing.T) {
 	var gotBody map[string]interface{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -327,7 +327,7 @@ func TestRefreshAuthlibTokenDelegates(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result := NewAuthService().RefreshAuthlibToken(srv.URL, "old-token", "client-456")
+	result := NewAuthService().RefreshAuthlibTokenWithProfile(srv.URL, "old-token", "client-456", "")
 	if !result.Success {
 		t.Fatalf("refresh failed: %s", result.Error)
 	}
@@ -358,7 +358,7 @@ func TestRefreshAuthlibTokenErrors(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			result := NewAuthService().RefreshAuthlibToken(srv.URL, "token", "client")
+			result := NewAuthService().RefreshAuthlibTokenWithProfile(srv.URL, "token", "client", "")
 			if result.Success {
 				t.Fatal("expected failure")
 			}
@@ -403,6 +403,10 @@ func (r *recordingMux) server() *httptest.Server {
 }
 
 const testVersionID = "1.99"
+
+// testAssetHash is the 32-hex-char object hash served by installFixtures;
+// assets are stored under objects/<first two chars>/<hash>.
+const testAssetHash = "abababababababababababababababab"
 
 // installFixtures serves a complete fake BMCLAPI: version manifest, version
 // JSON, client jar, one plain library and one natives library (artifact +
@@ -462,6 +466,12 @@ func installFixtures(t *testing.T, jarStatus int) (*httptest.Server, *recordingM
 	})
 	rec.Handle("/maven/com/example/natives/1.0/natives-1.0-linux.jar", func(w http.ResponseWriter, r *http.Request) {
 		w.Write(nativeZipFixture(t))
+	})
+	rec.Handle("/v1/assets/5.json", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"objects": {"minecraft/sounds/one.ogg": {"hash": %q, "size": 5}}}`, testAssetHash)
+	})
+	rec.Handle("/assets/ab/"+testAssetHash, func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "asset")
 	})
 
 	srv := rec.server()
@@ -685,6 +695,30 @@ func TestDownloadFileWritesContentAndReportsProgress(t *testing.T) {
 	}
 	if len(calls) == 0 || calls[len(calls)-1] != int64(len(body)) {
 		t.Errorf("progress calls = %v, want final downloaded == %d", calls, len(body))
+	}
+}
+
+// A truncated response (fewer bytes than Content-Length) must fail and remove
+// the partial file: DownloadLibraries/DownloadAssets skip existing files, so
+// a leftover truncated file would block every retry.
+func TestDownloadFileFailureRemovesPartial(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		io.WriteString(w, "partial")
+		// Handler returns: connection closes with bytes still promised, so the
+		// client read fails with an unexpected EOF.
+	}))
+	defer srv.Close()
+
+	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
+	destPath := filepath.Join(t.TempDir(), "sub", "partial.jar")
+
+	result := svc.DownloadFile(srv.URL+"/x.jar", destPath, 100, nil)
+	if result.Success {
+		t.Fatal("expected failure for a truncated response")
+	}
+	if _, err := os.Stat(destPath); !os.IsNotExist(err) {
+		t.Errorf("partial file must be removed after a failed download, stat err = %v", err)
 	}
 }
 
@@ -939,7 +973,8 @@ func TestInstallVersionHappyPath(t *testing.T) {
 		t.Fatalf("InstallVersion failed: %s", result.Error)
 	}
 
-	// Stage order: manifest -> version json -> jar -> libraries -> natives.
+	// Stage order: manifest -> version json -> jar -> libraries -> natives ->
+	// asset index -> asset objects.
 	wantPaths := []string{
 		"/mc/game/version_manifest.json",
 		"/v1/packages/abc/" + testVersionID + ".json",
@@ -947,6 +982,8 @@ func TestInstallVersionHappyPath(t *testing.T) {
 		"/maven/com/example/lib/1.0/lib-1.0.jar",
 		"/maven/com/example/natives/1.0/natives-1.0.jar",
 		"/maven/com/example/natives/1.0/natives-1.0-linux.jar",
+		"/v1/assets/5.json",
+		"/assets/ab/" + testAssetHash,
 	}
 	gotPaths := rec.recorded()
 	if len(gotPaths) != len(wantPaths) {
@@ -977,6 +1014,9 @@ func TestInstallVersionHappyPath(t *testing.T) {
 	if got, err := os.ReadFile(filepath.Join(versionDir, "natives", "libfoo.so")); err != nil || string(got) != "native-bytes" {
 		t.Errorf("native missing or wrong (err=%v, got=%q)", err, got)
 	}
+	if got, err := os.ReadFile(filepath.Join(gameDir, "assets", "objects", "ab", testAssetHash)); err != nil || string(got) != "asset" {
+		t.Errorf("asset object missing or wrong (err=%v, got=%q)", err, got)
+	}
 
 	// Result payload paths.
 	data, ok := result.Data.(map[string]interface{})
@@ -986,10 +1026,13 @@ func TestInstallVersionHappyPath(t *testing.T) {
 	if data["version_json"] != filepath.Join(versionDir, testVersionID+".json") {
 		t.Errorf("version_json = %v", data["version_json"])
 	}
+	if data["assets_dir"] != filepath.Join(gameDir, "assets") {
+		t.Errorf("assets_dir = %v", data["assets_dir"])
+	}
 
 	// Progress stage order: all jar events before library events, library
-	// before native.
-	stageOrder := map[string]int{"jar": 0, "library": 1, "native": 2}
+	// before native, native before asset.
+	stageOrder := map[string]int{"jar": 0, "library": 1, "native": 2, "asset": 3}
 	last := -1
 	for _, e := range events {
 		if stageOrder[e.stage] < last {
@@ -998,7 +1041,7 @@ func TestInstallVersionHappyPath(t *testing.T) {
 		}
 		last = stageOrder[e.stage]
 	}
-	for _, want := range []string{"jar", "library", "native"} {
+	for _, want := range []string{"jar", "library", "native", "asset"} {
 		seen := false
 		for _, e := range events {
 			if e.stage == want {
@@ -1108,6 +1151,45 @@ func TestInstallVersionLibraryFailureSkipsNatives(t *testing.T) {
 	versionDir := filepath.Join(gameDir, "versions", testVersionID)
 	if _, err := os.Stat(versionDir); !os.IsNotExist(err) {
 		t.Errorf("version directory must be removed after a failed install, stat err = %v", err)
+	}
+}
+
+// A failure in the asset stage (stage 5) must also leave no residue.
+func TestInstallVersionAssetFailureCleansUp(t *testing.T) {
+	failSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/mc/game/version_manifest.json":
+			fmt.Fprintf(w, `{"versions": [{"id": %q, "type": "release", "url": "https://piston-meta.mojang.com/v1/packages/abc/%s.json"}]}`, testVersionID, testVersionID)
+		case "/v1/packages/abc/" + testVersionID + ".json":
+			fmt.Fprintf(w, `{
+				"id": %q,
+				"mainClass": "net.minecraft.client.main.Main",
+				"assetIndex": {"id": "5", "url": "https://piston-meta.mojang.com/v1/assets/5.json", "sha1": "x", "size": 1},
+				"downloads": {"client": {"sha1": "c1", "size": 3, "url": "https://piston-data.mojang.com/v1/objects/c1/client.jar"}}
+			}`, testVersionID)
+		case "/v1/objects/c1/client.jar":
+			io.WriteString(w, "jar")
+		default:
+			http.Error(w, "asset index down", http.StatusInternalServerError)
+		}
+	}))
+	defer failSrv.Close()
+
+	gameDir := t.TempDir()
+	result := NewBMCLAPIServiceWithBaseURL(failSrv.URL).InstallVersion(testVersionID, gameDir, nil)
+	if result.Success {
+		t.Fatal("expected failure when the asset index download fails")
+	}
+	if !strings.Contains(result.Error, "500") {
+		t.Errorf("Error = %q, want mention of 500", result.Error)
+	}
+
+	versionDir := filepath.Join(gameDir, "versions", testVersionID)
+	if _, err := os.Stat(versionDir); !os.IsNotExist(err) {
+		t.Errorf("version directory must be removed after a failed install, stat err = %v", err)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(gameDir, "assets")); len(entries) != 0 {
+		t.Errorf("assets dir must stay empty after a failed asset stage, found %v", entries)
 	}
 }
 

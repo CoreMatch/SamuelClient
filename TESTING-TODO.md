@@ -19,10 +19,14 @@ need an owner decision before being acted on.
 
 ## Decisions needed
 
-1. **LaunchGame success path is untested.** It spawns a real detached game
-   process, which unit tests must not do. Decision: add an integration test
-   that uses a fake `java` (shell script) plus a fixture version JSON, or
-   leave it to manual verification?
+1. **LaunchGame success path — covered by an end-to-end smoke test
+   (2026-11-05, branch `fix/round3-triage`).** `smoke_test.go`
+   (`TestSmokeLoginInstallLaunch`) drives the real bindings through
+   AuthlibLogin (fake Yggdrasil httptest server) → DownloadVersion (fake
+   BMCLAPI httptest server) → LaunchGame (shell-script "java"), then polls
+   the launch log for the process's stdout/stderr lines and clean exit. No
+   real network, accounts, or GUI. Remaining gap: it exercises a fake java,
+   not a real Minecraft client — real-game verification stays manual.
 4. **`database.Transaction` has no production consumer.** It is now covered by
    tests, but nothing calls it. Decision: delete, or keep as infrastructure?
 5. **Wails event emission is not unit-tested.** `launcher:log` /
@@ -38,30 +42,65 @@ need an owner decision before being acted on.
    `package.json`). This round only guarantees `tsc` + `vite build` (plus a
    working `npm run lint`). Decision: introduce Vitest (or similar) for the
    React views?
-8. **Tested but unwired service methods.** `DownloadAssets`,
-   `GetFabricInstaller`, `DownloadForgeInstaller`, `Unzip`, `VerifyMD5`, and
-   the thin `RefreshAuthlibToken` wrapper have no production caller (they are
-   building blocks for flows the bindings do not expose yet; note that a full
-   launch eventually needs asset downloads). Kept this round because they are
-   tested and on the documented launcher path. Decision: wire them into
-   bindings/`InstallVersion`, or delete?
-9. **`UserRepository`, `TaskRepository`, `FileRepository` (and the `users`,
-   `tasks`, `files` tables) have no production caller** — only tests use them.
-   Kept this round as a conservative choice. Decision: retire them like the
-   `logs` table (ADR-0004 follow-up), or keep for planned features?
-10. **Seven pre-existing frontend lint warnings remain** (four
-    `no-explicit-any`, one `react-hooks/exhaustive-deps`, one
-    `react-refresh/only-export-components`, plus related). Fixing them means
-    typing Wails response payloads and touching hook dependencies. Decision:
-    fix, or accept as warnings?
+8. **Triage of the unwired service methods (2026-11-05, branch
+   `fix/round3-triage`).** Each method was grep'd for callers and classified:
+   - `DownloadAssets` — **WIRED** into `InstallVersion` as stage 5. Reason:
+     `BuildLaunchCommand` passes `--assetsDir <gameDir>/assets`, but nothing
+     ever populated it, so every fresh install launched without textures or
+     sounds — a user-visible feature gap, one wiring step away. The
+     `download:progress` event gains the `"asset"` stage (contract updated in
+     `bindings.go` and README). Tests: happy path now asserts the asset
+     requests/files/progress stage; `TestInstallVersionAssetFailureCleansUp`
+     asserts no residue on asset-stage failure.
+   - `VerifyMD5` — **DELETED** (with its test). No caller; the ecosystem
+     checksums in version/library manifests are SHA-1, so an MD5 helper fits
+     no current or planned verification path.
+   - `Unzip` — **DELETED** (with its test). Only useful for Forge installer
+     extraction, which is not implemented (see below); kept dead code only
+     inflates coverage.
+   - `RefreshAuthlibToken` — **DELETED**. Thin wrapper with no caller; the
+     binding calls `RefreshAuthlibTokenWithProfile` directly (the no-profile
+     case is tested by passing `""`).
+   - `GetFabricInstaller` / `DownloadForgeInstaller` — **NEED AUTHOR
+     DECISION**. These only download installer jars. The UI offers a
+     Fabric/Forge loader dropdown and `LaunchGameRequest` carries
+     loader_type/loader_version, but nothing installs the loader (no
+     installer execution, no loader version JSON generation), so modded
+     launch is a feature gap bigger than one wiring step: it needs a design
+     (run installer via detected Java, or merge loader profiles into the
+     version JSON). Options: (a) design and implement loader installation,
+     (b) hide the loader dropdown until then, (c) delete the two downloaders.
+9. **`UserRepository`, `TaskRepository`, `FileRepository` retired
+   (2026-11-05, branch `fix/round3-triage`).** Zero production callers were
+   found (grep across `*.go`), so the repositories, their models
+   (`User`/`Task`/`File`, plus the never-referenced `Mod`/`ModLoader`/
+   `DownloadTask` models and related constants) and their tests were deleted.
+   Handled exactly like the `logs` table: fresh databases no longer create
+   `users`/`tasks`/`files`; no DROP migration is issued, so existing
+   deployments keep the old tables inert on disk. Regression test:
+   `TestMigrationsDoNotCreateRetiredTables`.
+10. **Frontend lint warnings fixed (2026-11-05, branch `fix/round3-triage`).**
+    `npm run lint` now reports 0 errors / 0 warnings without any
+    `eslint-disable`: the `any` usages got real interfaces
+    (`BackendInstalledVersion`, `FabricLoaderEntry`, `ForgeVersionEntry`,
+    shared `InstalledVersion` in `src/types.ts`), the `useEffect` dependency
+    was added, and `saveAccount`/`StoredAccount` moved to
+    `src/accountStorage.ts` so component files only export components
+    (react-refresh).
 
 ## Known behavior documented by tests (no action needed unless disagreed)
 
+- A failed `DownloadFile` (truncated stream) removes the partial file so a
+  retry is not blocked by "already exists" skips. Limitation: there is no
+  cancellation/context plumbing — a hard process kill mid-download can still
+  leave partial files behind; adding `context.Context` to the download path
+  would be a deliberate follow-up if cancellation is ever required.
 - `DownloadLibraries` continues after a failed library and reports the last
   error; `DownloadNatives` never fails (skips broken entries).
 - A second `database.Initialize` in the same process is a no-op (`sync.Once`).
-- The retired `logs` table is not created on fresh databases; existing tables
-  in already-deployed databases stay inert (ADR-0004 follow-up).
+- The retired `logs`, `users`, `tasks` and `files` tables are not created on
+  fresh databases; existing tables in already-deployed databases stay inert
+  (ADR-0004 follow-ups).
 - A failed `InstallVersion` removes a freshly created version directory but
   never touches a pre-existing one; `JavaRepository.Delete`/`SetDefault`
   fail with a wrapped `sql.ErrNoRows` for unknown ids.

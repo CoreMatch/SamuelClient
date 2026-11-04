@@ -27,23 +27,12 @@ import {
   WifiOff,
 } from '@mui/icons-material';
 
-export interface StoredAccount {
-  id: string;
-  username: string;
-  uuid: string;
-  accessToken: string;
-  clientToken: string;
-  authType: 'offline' | 'authlib-injector';
-  authServer?: string;
-  lastUsed?: boolean;
-}
+import { StoredAccount, ACCOUNTS_STORAGE_KEY } from '../accountStorage';
 
 interface AccountManagerProps {
   onSelectAccount: (account: StoredAccount) => void;
   onAddAccount: () => void;
 }
-
-const STORAGE_KEY = 'minecraft_accounts';
 
 export default function AccountManager({ onSelectAccount, onAddAccount }: AccountManagerProps) {
   const [accounts, setAccounts] = useState<StoredAccount[]>([]);
@@ -56,7 +45,7 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
 
   const loadAccounts = () => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = localStorage.getItem(ACCOUNTS_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         setAccounts(parsed);
@@ -68,7 +57,7 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
 
   const saveAccounts = (newAccounts: StoredAccount[]) => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newAccounts));
+      localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(newAccounts));
       setAccounts(newAccounts);
     } catch (err) {
       console.error('Failed to save accounts:', err);
@@ -248,35 +237,4 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
       </Dialog>
     </Box>
   );
-}
-
-// Save a new account to storage
-export function saveAccount(account: Omit<StoredAccount, 'id'> & { id?: string }): StoredAccount {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  const accounts: StoredAccount[] = stored ? JSON.parse(stored) : [];
-
-  const newAccount: StoredAccount = {
-    username: account.username,
-    uuid: account.uuid,
-    accessToken: account.accessToken,
-    clientToken: account.clientToken,
-    authType: account.authType,
-    authServer: account.authServer,
-    lastUsed: account.lastUsed,
-    id: account.id || Date.now().toString(),
-  };
-
-  // Check if account with same username and authType exists
-  const existingIndex = accounts.findIndex(
-    acc => acc.username === account.username && acc.authType === account.authType
-  );
-
-  if (existingIndex >= 0) {
-    accounts[existingIndex] = { ...newAccount, id: accounts[existingIndex].id };
-  } else {
-    accounts.push(newAccount);
-  }
-
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
-  return newAccount;
 }

@@ -18,7 +18,7 @@ package main
 //     process exits.
 //   - "download:progress" — progress while DownloadVersion installs a
 //     version. Payload: {"version_id": string, "stage": "jar"|"library"|
-//     "native", "name": string, "downloaded": number, "total": number}.
+//     "native"|"asset", "name": string, "downloaded": number, "total": number}.
 
 import (
 	"crypto/rand"

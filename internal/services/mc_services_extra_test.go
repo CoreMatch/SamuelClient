@@ -1,14 +1,11 @@
 package services
 
-// Second test batch (unattended follow-up): covers the file utilities, the
-// launch-log line splitter, and the remaining BMCLAPI download helpers that
-// were left uncovered by the first batch.
+// Second test batch (unattended follow-up): covers the launch-log line
+// splitter and the remaining BMCLAPI download helpers that were left
+// uncovered by the first batch.
 
 import (
-	"archive/zip"
 	"bytes"
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,73 +15,6 @@ import (
 	"strings"
 	"testing"
 )
-
-func TestVerifyMD5(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "f.bin")
-	content := []byte("check me")
-	if err := os.WriteFile(path, content, 0644); err != nil {
-		t.Fatalf("write fixture: %v", err)
-	}
-	sum := md5.Sum(content)
-	good := hex.EncodeToString(sum[:])
-
-	if !VerifyMD5(path, good) {
-		t.Error("VerifyMD5 must accept the correct digest")
-	}
-	if VerifyMD5(path, "0000000000000000000000000000000") {
-		t.Error("VerifyMD5 must reject a wrong digest")
-	}
-	if VerifyMD5(filepath.Join(t.TempDir(), "missing"), good) {
-		t.Error("VerifyMD5 must return false for a missing file")
-	}
-}
-
-func TestUnzip(t *testing.T) {
-	// Build a zip with a nested file and a directory entry.
-	buf := new(bytes.Buffer)
-	zw := zip.NewWriter(buf)
-	w, err := zw.Create("nested/hello.txt")
-	if err != nil {
-		t.Fatalf("zip create: %v", err)
-	}
-	if _, err := w.Write([]byte("hi")); err != nil {
-		t.Fatalf("zip write: %v", err)
-	}
-	if _, err := zw.Create("emptydir/"); err != nil {
-		t.Fatalf("zip dir: %v", err)
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatalf("zip close: %v", err)
-	}
-
-	src := filepath.Join(t.TempDir(), "a.zip")
-	if err := os.WriteFile(src, buf.Bytes(), 0644); err != nil {
-		t.Fatalf("write zip: %v", err)
-	}
-
-	dest := filepath.Join(t.TempDir(), "out")
-	if err := Unzip(src, dest); err != nil {
-		t.Fatalf("Unzip: %v", err)
-	}
-	got, err := os.ReadFile(filepath.Join(dest, "nested", "hello.txt"))
-	if err != nil || string(got) != "hi" {
-		t.Errorf("extracted file = %q / %v, want hi", got, err)
-	}
-	if fi, err := os.Stat(filepath.Join(dest, "emptydir")); err != nil || !fi.IsDir() {
-		t.Errorf("directory entry not extracted: %v", err)
-	}
-
-	if err := Unzip(filepath.Join(t.TempDir(), "missing.zip"), dest); err == nil {
-		t.Error("Unzip of a missing archive must fail")
-	}
-	notZip := filepath.Join(t.TempDir(), "bad.zip")
-	if err := os.WriteFile(notZip, []byte("not a zip"), 0644); err != nil {
-		t.Fatalf("write bad zip: %v", err)
-	}
-	if err := Unzip(notZip, dest); err == nil {
-		t.Error("Unzip of a corrupt archive must fail")
-	}
-}
 
 func TestStreamLines(t *testing.T) {
 	var w bytes.Buffer

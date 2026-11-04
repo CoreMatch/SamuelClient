@@ -8,7 +8,7 @@ A cross-platform Minecraft launcher built with [Wails](https://wails.io/) (Go + 
 - **Version management** — browse and download vanilla Minecraft versions, plus Fabric and Forge mod loaders
 - **Mod management** — open the `mods` folder for the active profile directly from the UI
 - **Java management** — track installed Java runtimes and set a default per profile
-- **Persistent storage** — embedded [SQLite](https://www.sqlite.org/) database for users, settings, tasks, file records, and Java installations
+- **Persistent storage** — embedded [SQLite](https://www.sqlite.org/) database for settings and Java installations
 - **Cross-platform** — Windows, macOS, and Linux builds via Wails
 
 ## Tech stack
@@ -101,7 +101,7 @@ Live data is pushed from Go to the frontend via Wails runtime events:
 - `launcher:log` — one event per output line of the launched game process.
   Payload: `{ "source": "stdout" | "stderr", "line": string }`.
 - `download:progress` — progress while `DownloadVersion` installs a version.
-  Payload: `{ "version_id": string, "stage": "jar" | "library" | "native", "name": string, "downloaded": number, "total": number }`.
+  Payload: `{ "version_id": string, "stage": "jar" | "library" | "native" | "asset", "name": string, "downloaded": number, "total": number }`.
 
 ## Frontend
 
