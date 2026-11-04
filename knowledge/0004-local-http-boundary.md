@@ -1,6 +1,6 @@
 # ADR-0004: Local HTTP Boundary — Retire Direct Frontend→Gin HTTP in Favor of Wails Bindings
 
-- **Status**: proposed
+- **Status**: accepted
 - **Date**: 2026-11-04
 
 ## Context
@@ -54,12 +54,35 @@ Threat model summary: any local process, and any web page rendered in any
 browser on the machine, can currently achieve remote-code execution on the
 launcher machine with a single POST; LAN devices can do the same.
 
-## Decision (Proposed)
+## Decision
 
-Adopt **Option A** below: move all frontend↔backend communication onto Wails
-bindings and retire the frontend-facing Gin HTTP boundary. Keep the proposal
-open until the owner confirms that no external tooling depends on the HTTP API
-(see Open Questions).
+Adopt **Option A**: move all frontend↔backend communication onto Wails
+bindings and retire the frontend-facing Gin HTTP boundary. The owner confirmed
+the following on 2026-11-04:
+
+1. **Gin is retired.** All business functionality moves to Wails bindings; the
+   HTTP listener is removed. The README's "Local HTTP API" feature claim is
+   deleted along with it. No external tooling consumes `:34501` (verified
+   in-repo; see Evidence).
+2. **Interim hardening lands first, separately.** Deleting the caller-less
+   shell/file routes and switching the listener to loopback with the CORS
+   wildcard removed are committed independently before the migration, so each
+   can be reverted on its own.
+3. **Streaming uses Wails Events, not HTTP polling.** Live launch logs and
+   download progress are pushed from Go via `runtime.EventsEmit` and consumed
+   by the frontend via `EventsOn`. The event contract is fixed here so later
+   code never has to guess the interface:
+   - `launcher:log` — one event per output line of the launched game process.
+     Payload: `{"source": "stdout" | "stderr", "line": string}`. Emission
+     starts after `LaunchGame` returns success and ends when the process exits.
+   - `download:progress` — progress while `DownloadVersion` installs a
+     version. Payload: `{"version_id": string, "stage": "jar" | "library" |
+     "native", "name": string, "downloaded": number, "total": number}`.
+     Emitted at most once per percentage point for the jar stage and once per
+     completed library/native.
+4. **`SERVER_PORT` is removed, not preserved.** The `internal/config` package
+   (`ServerPort`, `GinMode`) is deleted with the HTTP boundary; no port
+   configuration is kept or reserved.
 
 ## Options Considered
 
@@ -209,6 +232,13 @@ Option-B controls — deliberately, not by default.
    returns a single JSON response, so this is not currently needed.
 4. After step 5, the `SERVER_PORT` environment variable becomes meaningless;
    is removing it acceptable, or should it be kept reserved for a future API?
+
+All four questions were answered by the owner on 2026-11-04: (1) yes, retire
+Gin — nothing outside the repo consumes `:34501`; (2) yes, land the interim
+hardening first as separate commits; (3) yes, build the streaming UI on Wails
+Events (`runtime.EventsEmit` + frontend subscription, no HTTP polling);
+(4) remove `SERVER_PORT` entirely. The decisions are recorded in the Decision
+section above.
 
 ## Consequences
 
