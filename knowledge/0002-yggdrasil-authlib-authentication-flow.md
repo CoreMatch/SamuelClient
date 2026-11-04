@@ -3,6 +3,17 @@
 - **Status**: accepted
 - **Date**: 2026-11-04
 
+> **Supersession note (2026-11-05):** the authentication flow in this entry
+> still stands, but its local-HTTP side does not: the local auth endpoints
+> (`/auth/refresh`, `/auth/validate`, `/auth/offline`) and the backend's own
+> offline-UUID implementation were retired with the Gin boundary by
+> [ADR-0004](0004-local-http-boundary.md). Offline login now fabricates its
+> UUID only in the frontend
+> (`frontend/src/components/LoginView.tsx::generateOfflineUUID`); the
+> backend's differing MD5-based algorithm is gone with the handlers package.
+> The evidence line citing `internal/handlers/mc_handlers.go` carries a
+> time-point anchor and is kept as the historical record.
+
 ## Context
 
 The launcher must log players in against the HA ecosystem's authentication. The
@@ -42,19 +53,24 @@ SamuelClient authenticates **purely via the Yggdrasil protocol**, not OAuth2:
 
 ## Evidence
 
-- Authenticate call: `internal/services/mc_services.go:206`
-  (`{server}/authserver/authenticate`), request body `:70-79,208-215`; login
-  binding `bindings.go:187-198`; frontend login
+- Authenticate call: `internal/services/mc_services.go::AuthenticateWithAuthlib`
+  (`{server}/authserver/authenticate`), request body
+  `internal/services/mc_services.go::AuthlibAuthRequest`; login
+  binding `bindings.go::AuthlibLogin`; frontend login
   `frontend/src/components/LoginView.tsx:159-162`.
-- Refresh/validate: `internal/services/mc_services.go:266,273-275` (refresh,
-  optional `selectedProfile.id`), `:317,343-347` (validate, 204 valid / 403
-  invalid).
+- Refresh/validate:
+  `internal/services/mc_services.go::RefreshAuthlibTokenWithProfile`
+  (refresh, optional `selectedProfile.id`),
+  `internal/services/mc_services.go::ValidateAuthlibToken` (validate,
+  204 valid / 403 invalid).
 - Default auth server: `frontend/src/components/LoginView.tsx:49,52`
   (`https://backend.auth.samuelcheston.com/`); introduced/changed by `0ad13eb`
   and `61138ee` (`DEFAULT_HRPAUTH_URL`, "Login with HRPAUTH").
 - authlib-injector: metadata fetch with ALI redirect
-  `internal/services/mc_services.go:113-156`; JVM injection
-  `:1370-1372` (`-javaagent`) and `:1373-1378` (prefetched metadata); reference
+  `internal/services/mc_services.go::getMetaWithRedirects` (with
+  `internal/services/mc_services.go::resolveALI`); JVM injection
+  `internal/services/mc_services.go::BuildLaunchCommand` (`-javaagent` and
+  prefetched metadata); reference
   doc `docs/authlib-injector wiki.pdf`; introduced by `19fd6c3`.
 - Endpoint ownership: HRPAuth-Yggdrasil-API
   `/home/lnb/Desktop/HA/HRPAuth-Yggdrasil-API/main.go::Meta` (meta) and
@@ -64,8 +80,8 @@ SamuelClient authenticates **purely via the Yggdrasil protocol**, not OAuth2:
   `internal/routes/routes.go:L151-L158 @ 27745e6`; frontend offline UUID
   `frontend/src/components/LoginView.tsx:136,388-405` vs backend
   `internal/handlers/mc_handlers.go:L598-L610 @ 27745e6`.
-- Unimplemented Microsoft login: `internal/services/mc_services.go:1270-1284`
-  (`resolveUserType` handles `msa`; no implementation).
+- Unimplemented Microsoft login: `internal/services/mc_services.go::resolveUserType`
+  (handles `msa`; no implementation).
 - Commits: `19fd6c3`, `0ad13eb`, `61138ee`, `c08d863` (HRPAUTH support fix,
   `/auth/validate`, ALI meta, refresh with selectedProfile).
 - Not verified: that `backend.auth.samuelcheston.com` actually routes to
