@@ -103,7 +103,7 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
       } else {
         setError(result.error || 'Failed to fetch auth server info');
       }
-    } catch (err) {
+    } catch {
       setError('Failed to connect to auth server');
     } finally {
       setLoadingServers(false);
@@ -180,7 +180,7 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
           setError(result.error || 'Login failed');
         }
       }
-    } catch (err) {
+    } catch {
       setError('Login failed. Please try again.');
     } finally {
       setLoading(false);

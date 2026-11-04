@@ -431,7 +431,9 @@ func (r *JavaRepository) Update(java *models.JavaInstallation) error {
 	return err
 }
 
-// SetDefault sets a Java installation as the default
+// SetDefault sets a Java installation as the default. It fails if the id
+// does not exist; without that check the transaction would silently clear
+// every default flag and leave no default at all.
 func (r *JavaRepository) SetDefault(id int64) error {
 	tx, err := database.GetDB().Begin()
 	if err != nil {
@@ -444,10 +446,19 @@ func (r *JavaRepository) SetDefault(id int64) error {
 		return err
 	}
 
-	_, err = tx.Exec(`UPDATE java_installations SET is_default = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
+	result, err := tx.Exec(`UPDATE java_installations SET is_default = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
 	if err != nil {
 		tx.Rollback()
 		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	if affected == 0 {
+		tx.Rollback()
+		return fmt.Errorf("java installation not found: %w", sql.ErrNoRows)
 	}
 
 	return tx.Commit()
@@ -456,6 +467,16 @@ func (r *JavaRepository) SetDefault(id int64) error {
 // Delete deletes a Java installation
 func (r *JavaRepository) Delete(id int64) error {
 	query := `DELETE FROM java_installations WHERE id = ?`
-	_, err := database.GetDB().Exec(query, id)
-	return err
+	result, err := database.GetDB().Exec(query, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return fmt.Errorf("java installation not found: %w", sql.ErrNoRows)
+	}
+	return nil
 }

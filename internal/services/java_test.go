@@ -14,6 +14,59 @@ func TestDetectJavaVersionFailsForMissingBinary(t *testing.T) {
 	}
 }
 
+// fakeJavaBinary writes a shell script pretending to be java. Java prints its
+// version banner to stderr; stdoutOnly flips that to exercise the fallback.
+func fakeJavaBinary(t *testing.T, banner string, stdoutOnly bool) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skipf("fake java is a shell script; GOOS=%s", runtime.GOOS)
+	}
+	script := "#!/bin/sh\n"
+	if stdoutOnly {
+		script += "echo '" + banner + "'\n"
+	} else {
+		script += "echo '" + banner + "' >&2\n"
+	}
+	path := filepath.Join(t.TempDir(), "java")
+	if err := os.WriteFile(path, []byte(script), 0755); err != nil {
+		t.Fatalf("write fake java: %v", err)
+	}
+	return path
+}
+
+func TestDetectJavaVersionParsesBannerFromStderr(t *testing.T) {
+	path := fakeJavaBinary(t, `openjdk version "17.0.9" 2023-10-17`, false)
+	got, err := detectJavaVersion(path)
+	if err != nil {
+		t.Fatalf("detectJavaVersion: %v", err)
+	}
+	if got != "17.0.9" {
+		t.Errorf("version = %q, want 17.0.9", got)
+	}
+}
+
+func TestDetectJavaVersionFallsBackToStdout(t *testing.T) {
+	path := fakeJavaBinary(t, `java version "1.8.0_392"`, true)
+	got, err := detectJavaVersion(path)
+	if err != nil {
+		t.Fatalf("detectJavaVersion: %v", err)
+	}
+	if got != "1.8.0_392" {
+		t.Errorf("version = %q, want 1.8.0_392", got)
+	}
+}
+
+func TestDetectJavaVersionUnknownWithoutBanner(t *testing.T) {
+	path := fakeJavaBinary(t, "no banner here", false)
+	got, err := detectJavaVersion(path)
+	if err != nil {
+		t.Fatalf("detectJavaVersion: %v", err)
+	}
+	if got != "Unknown" {
+		t.Errorf("version = %q, want Unknown", got)
+	}
+}
+
 func TestDetectSystemJavaFindsJavaOnPath(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skipf("PATH lookup uses `which`, unavailable on Windows")

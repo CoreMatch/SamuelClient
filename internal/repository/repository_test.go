@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -369,5 +371,78 @@ func TestJavaRepositoryCRUDAndDefault(t *testing.T) {
 	}
 	if _, err := repo.GetByID(second.ID); err == nil {
 		t.Error("GetByID after Delete should fail")
+	}
+}
+
+// Delete on a missing id must fail instead of silently succeeding.
+func TestJavaRepositoryDeleteMissingID(t *testing.T) {
+	repo := NewJavaRepository()
+
+	err := repo.Delete(999999)
+	if err == nil {
+		t.Fatal("Delete of a missing id must fail")
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("Delete error = %v, want a wrapped sql.ErrNoRows", err)
+	}
+}
+
+// SetDefault on a missing id must fail and must not clear the existing
+// default flag (the transaction has to roll back).
+func TestJavaRepositorySetDefaultMissingID(t *testing.T) {
+	repo := NewJavaRepository()
+
+	seed := &models.JavaInstallation{Path: "/opt/jdk-c/bin/java", FriendlyName: "JDK C", Version: "21.0.3"}
+	if err := repo.Create(seed); err != nil {
+		t.Fatalf("Create seed: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Delete(seed.ID) })
+	if err := repo.SetDefault(seed.ID); err != nil {
+		t.Fatalf("SetDefault(seed): %v", err)
+	}
+
+	err := repo.SetDefault(999999)
+	if err == nil {
+		t.Fatal("SetDefault of a missing id must fail")
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("SetDefault error = %v, want a wrapped sql.ErrNoRows", err)
+	}
+
+	def, err := repo.GetDefault()
+	if err != nil {
+		t.Fatalf("GetDefault after failed SetDefault: %v", err)
+	}
+	if def.ID != seed.ID {
+		t.Errorf("default ID = %d, want %d (failed SetDefault must not clear the existing default)", def.ID, seed.ID)
+	}
+}
+
+// DeleteOld purges only files older than the retention window.
+func TestFileRepositoryDeleteOld(t *testing.T) {
+	repo := NewFileRepository()
+
+	file := &models.File{Name: "retention.txt", Path: "/tmp/retention.txt", Size: 3}
+	if err := repo.Create(file); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// Freshly created: must survive a 30-day purge.
+	if err := repo.DeleteOld(30); err != nil {
+		t.Fatalf("DeleteOld: %v", err)
+	}
+	if _, err := repo.GetByID(file.ID); err != nil {
+		t.Errorf("fresh file deleted by DeleteOld(30): %v", err)
+	}
+
+	// Backdate beyond the window: must be purged.
+	if _, err := database.GetDB().Exec(`UPDATE files SET created_at = datetime('now', '-31 days') WHERE id = ?`, file.ID); err != nil {
+		t.Fatalf("backdate created_at: %v", err)
+	}
+	if err := repo.DeleteOld(30); err != nil {
+		t.Fatalf("DeleteOld after backdate: %v", err)
+	}
+	if _, err := repo.GetByID(file.ID); err == nil {
+		t.Error("backdated file must be deleted by DeleteOld(30)")
 	}
 }

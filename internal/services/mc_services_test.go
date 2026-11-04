@@ -267,6 +267,108 @@ func TestValidateAuthlibToken(t *testing.T) {
 	}
 }
 
+// ==================== resolveALI / metadata edge cases ====================
+
+func TestResolveALI(t *testing.T) {
+	cases := []struct {
+		name       string
+		requestURL string
+		ali        string
+		want       string
+		wantErr    bool
+	}{
+		{"empty header keeps request url", "https://auth.example.com/api", "  ", "https://auth.example.com/api", false},
+		{"absolute location", "https://auth.example.com/api", "https://other.example.com/api", "https://other.example.com/api", false},
+		{"relative location", "https://auth.example.com/api", "/v2/api", "https://auth.example.com/v2/api", false},
+		{"invalid request url", "://bad", "/api", "", true},
+		{"invalid location", "https://auth.example.com/api", "/a\x7f", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := resolveALI(tc.requestURL, tc.ali)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("resolveALI(%q, %q) = %q, want error", tc.requestURL, tc.ali, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveALI(%q, %q) error: %v", tc.requestURL, tc.ali, err)
+			}
+			if got != tc.want {
+				t.Errorf("resolveALI(%q, %q) = %q, want %q", tc.requestURL, tc.ali, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestGetAuthlibMetaInvalidJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "this is not json")
+	}))
+	defer srv.Close()
+
+	result := NewAuthService().GetAuthlibMeta(srv.URL)
+	if result.Success {
+		t.Fatal("expected failure for a non-JSON metadata body")
+	}
+	if result.Error == "" {
+		t.Error("error must not be empty")
+	}
+}
+
+// RefreshAuthlibToken is the no-profile form; it must send no selectedProfile.
+func TestRefreshAuthlibTokenDelegates(t *testing.T) {
+	var gotBody map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		io.WriteString(w, `{"accessToken": "new-token", "clientToken": "client-456"}`)
+	}))
+	defer srv.Close()
+
+	result := NewAuthService().RefreshAuthlibToken(srv.URL, "old-token", "client-456")
+	if !result.Success {
+		t.Fatalf("refresh failed: %s", result.Error)
+	}
+	if _, present := gotBody["selectedProfile"]; present {
+		t.Errorf("selectedProfile must be absent without profile selection: %v", gotBody)
+	}
+	if resp := result.Data.(AuthlibAuthResponse); resp.AccessToken != "new-token" {
+		t.Errorf("AccessToken = %q, want new-token", resp.AccessToken)
+	}
+}
+
+func TestRefreshAuthlibTokenErrors(t *testing.T) {
+	cases := []struct {
+		name      string
+		status    int
+		body      string
+		wantError string // substring
+	}{
+		{"403 with errorMessage", http.StatusForbidden, `{"errorMessage": "ForbiddenOperationException"}`, "ForbiddenOperationException"},
+		{"500 without body", http.StatusInternalServerError, "", "HTTP 500"},
+		{"200 with invalid json", http.StatusOK, "not-json", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				io.WriteString(w, tc.body)
+			}))
+			defer srv.Close()
+
+			result := NewAuthService().RefreshAuthlibToken(srv.URL, "token", "client")
+			if result.Success {
+				t.Fatal("expected failure")
+			}
+			if tc.wantError != "" && !strings.Contains(result.Error, tc.wantError) {
+				t.Errorf("Error = %q, want substring %q", result.Error, tc.wantError)
+			}
+		})
+	}
+}
+
 // ==================== BMCLAPIService ====================
 
 // recordingMux wraps an http.ServeMux and records every request path in
@@ -483,6 +585,76 @@ func TestGetFabricAndForgeVersions(t *testing.T) {
 	}
 }
 
+func TestGetVersionManifestErrors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bad-json.json":
+			io.WriteString(w, "not-json")
+		default:
+			http.Error(w, "down", http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+
+	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
+
+	result := svc.GetVersionManifest(srv.URL + "/missing.json")
+	if result.Success || !strings.Contains(result.Error, "500") {
+		t.Errorf("HTTP error case: Success=%v Error=%q, want failure mentioning 500", result.Success, result.Error)
+	}
+
+	result = svc.GetVersionManifest(srv.URL + "/bad-json.json")
+	if result.Success || result.Error == "" {
+		t.Errorf("invalid JSON case: Success=%v Error=%q, want decode failure", result.Success, result.Error)
+	}
+}
+
+func TestGetFabricAndForgeVersionsErrors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/bad") {
+			io.WriteString(w, "not-json")
+			return
+		}
+		http.Error(w, "down", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
+
+	if result := svc.GetFabricVersions("1.99"); result.Success || !strings.Contains(result.Error, "500") {
+		t.Errorf("fabric HTTP error: Success=%v Error=%q", result.Success, result.Error)
+	}
+	if result := svc.GetFabricVersions("bad"); result.Success {
+		t.Error("fabric invalid JSON must fail")
+	}
+	if result := svc.GetForgeVersions("1.99"); result.Success || !strings.Contains(result.Error, "500") {
+		t.Errorf("forge HTTP error: Success=%v Error=%q", result.Success, result.Error)
+	}
+	if result := svc.GetForgeVersions("bad"); result.Success {
+		t.Error("forge invalid JSON must fail")
+	}
+}
+
+func TestGetFabricInstallerHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).GetFabricInstaller("1.99", "0.15.0", t.TempDir())
+	if result.Success || !strings.Contains(result.Error, "404") {
+		t.Errorf("Success=%v Error=%q, want failure mentioning 404", result.Success, result.Error)
+	}
+}
+
+func TestDownloadForgeInstallerHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).DownloadForgeInstaller("1.99", "47.2.0", t.TempDir())
+	if result.Success || !strings.Contains(result.Error, "404") {
+		t.Errorf("Success=%v Error=%q, want failure mentioning 404", result.Success, result.Error)
+	}
+}
+
 func TestDownloadFileWritesContentAndReportsProgress(t *testing.T) {
 	body := "download-me"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -663,6 +835,90 @@ func TestDownloadNativesExtractsOnlyNativeFiles(t *testing.T) {
 	}
 }
 
+func TestShouldDownloadLibraryRules(t *testing.T) {
+	current := runtime.GOOS
+	other := "windows"
+	if current == "windows" {
+		other = "linux"
+	}
+
+	rule := func(action, osName string) BMCLRule {
+		r := BMCLRule{Action: action}
+		if osName != "" {
+			r.OS = &BMCLOS{Name: osName}
+		}
+		return r
+	}
+
+	cases := []struct {
+		name  string
+		rules []BMCLRule
+		want  bool
+	}{
+		{"no rules downloads", nil, true},
+		{"allow current os", []BMCLRule{rule("allow", current)}, true},
+		{"allow other os only", []BMCLRule{rule("allow", other)}, false},
+		{"allow without os matches all", []BMCLRule{rule("allow", "")}, true},
+		{"disallow current os wins", []BMCLRule{rule("allow", ""), rule("disallow", current)}, false},
+		{"disallow other os keeps allow", []BMCLRule{rule("allow", ""), rule("disallow", other)}, true},
+		{"disallow without os is ignored", []BMCLRule{rule("allow", ""), rule("disallow", "")}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shouldDownloadLibrary(BMCLLibrary{Name: "g:a:1", Rules: tc.rules}); got != tc.want {
+				t.Errorf("shouldDownloadLibrary(rules=%+v) = %v, want %v", tc.rules, got, tc.want)
+			}
+		})
+	}
+}
+
+// DownloadNatives has continue-semantics: libraries without a matching
+// classifier, failed downloads or corrupt zips are skipped without failing
+// the whole stage.
+func TestDownloadNativesSkipsUnusableEntries(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skipf("classifier selection is OS specific; GOOS=%s", runtime.GOOS)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/maven/corrupt.jar":
+			io.WriteString(w, "this is not a zip")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	libs := []BMCLLibrary{
+		{Name: "no-classifiers"},
+		{Name: "wrong-classifier", Downloads: BMCLLibraryDownloads{
+			Classifiers: map[string]BMCLArtifact{"natives-windows": {URL: srv.URL + "/maven/win.jar", Size: 1}},
+		}},
+		{Name: "corrupt-zip", Downloads: BMCLLibraryDownloads{
+			Classifiers: map[string]BMCLArtifact{"natives-linux": {URL: srv.URL + "/maven/corrupt.jar", Size: 17}},
+		}},
+		{Name: "missing-zip", Downloads: BMCLLibraryDownloads{
+			Classifiers: map[string]BMCLArtifact{"natives-linux": {URL: srv.URL + "/maven/missing.jar", Size: 1}},
+		}},
+	}
+
+	nativesDir := filepath.Join(t.TempDir(), "natives")
+	var progressCalls int
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).DownloadNatives(libs, nativesDir, func(name string, downloaded, total int64) {
+		progressCalls++
+	})
+	if !result.Success {
+		t.Fatalf("DownloadNatives must succeed despite unusable entries: %s", result.Error)
+	}
+	if progressCalls != 0 {
+		t.Errorf("progress calls = %d, want none for skipped entries", progressCalls)
+	}
+	if entries, _ := os.ReadDir(nativesDir); len(entries) != 0 {
+		t.Errorf("natives dir must stay empty, found %v", entries)
+	}
+}
+
 func TestInstallVersionHappyPath(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skipf("fixture provides natives-linux only; GOOS=%s", runtime.GOOS)
@@ -801,14 +1057,11 @@ func TestInstallVersionJarFailureStopsBeforeLibraries(t *testing.T) {
 		t.Fatal("expected failure when the jar download fails")
 	}
 
-	// The version JSON (stage 1) is written before the jar download; the jar
-	// itself must be absent and no library/native request may follow.
+	// No residue: the stage-1 version JSON is written before the jar download,
+	// but the failed install must clean the whole version directory up again.
 	versionDir := filepath.Join(gameDir, "versions", testVersionID)
-	if _, err := os.Stat(filepath.Join(versionDir, testVersionID+".json")); err != nil {
-		t.Errorf("stage-1 version JSON missing: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(versionDir, testVersionID+".jar")); !os.IsNotExist(err) {
-		t.Error("jar must not exist after a failed jar download")
+	if _, err := os.Stat(versionDir); !os.IsNotExist(err) {
+		t.Errorf("version directory must be removed after a failed install, stat err = %v", err)
 	}
 	for _, p := range rec.recorded() {
 		if strings.HasPrefix(p, "/maven/") {
@@ -850,15 +1103,50 @@ func TestInstallVersionLibraryFailureSkipsNatives(t *testing.T) {
 	if !strings.Contains(result.Error, "com.example:lib:1.0") {
 		t.Errorf("Error = %q, want the failed library name", result.Error)
 	}
-	// Jar (stage 2) completed, so it must exist; natives stage never runs.
-	if _, err := os.Stat(filepath.Join(gameDir, "versions", testVersionID, testVersionID+".jar")); err != nil {
-		t.Errorf("jar should exist before the failing library stage: %v", err)
+	// No residue: even though the jar (stage 2) completed, the failed install
+	// must remove the version directory again; the natives stage never runs.
+	versionDir := filepath.Join(gameDir, "versions", testVersionID)
+	if _, err := os.Stat(versionDir); !os.IsNotExist(err) {
+		t.Errorf("version directory must be removed after a failed install, stat err = %v", err)
 	}
-	// The natives directory is created up front by InstallVersion, but no
-	// native file may have been extracted into it after a library failure.
-	nativesDir := filepath.Join(gameDir, "versions", testVersionID, "natives")
-	if entries, err := os.ReadDir(nativesDir); err == nil && len(entries) > 0 {
-		t.Errorf("natives extracted despite library failure: %v", entries)
+}
+
+// A re-install over an existing, working version directory must not destroy
+// it when the new attempt fails mid-download.
+func TestInstallVersionFailureKeepsPreExistingInstall(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skipf("fixture provides natives-linux only; GOOS=%s", runtime.GOOS)
+	}
+
+	okSrv, _ := installFixtures(t, http.StatusOK)
+	defer okSrv.Close()
+	gameDir := t.TempDir()
+	if result := NewBMCLAPIServiceWithBaseURL(okSrv.URL).InstallVersion(testVersionID, gameDir, nil); !result.Success {
+		t.Fatalf("initial install failed: %s", result.Error)
+	}
+	versionDir := filepath.Join(gameDir, "versions", testVersionID)
+	wantJar, err := os.ReadFile(filepath.Join(versionDir, testVersionID+".jar"))
+	if err != nil {
+		t.Fatalf("jar missing after initial install: %v", err)
+	}
+
+	// Second attempt: same version, but the jar download now fails.
+	failSrv, _ := installFixtures(t, http.StatusInternalServerError)
+	defer failSrv.Close()
+	result := NewBMCLAPIServiceWithBaseURL(failSrv.URL).InstallVersion(testVersionID, gameDir, nil)
+	if result.Success {
+		t.Fatal("expected failure when the jar download fails")
+	}
+
+	// The pre-existing install must survive the failed re-install.
+	if _, err := os.Stat(filepath.Join(versionDir, testVersionID+".json")); err != nil {
+		t.Errorf("pre-existing version JSON destroyed by failed re-install: %v", err)
+	}
+	gotJar, err := os.ReadFile(filepath.Join(versionDir, testVersionID+".jar"))
+	if err != nil {
+		t.Errorf("pre-existing jar destroyed by failed re-install: %v", err)
+	} else if string(gotJar) != string(wantJar) {
+		t.Errorf("jar content changed after failed re-install: %q -> %q", wantJar, gotJar)
 	}
 }
 
