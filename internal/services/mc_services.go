@@ -1001,9 +1001,24 @@ func (b *BMCLAPIService) InstallVersion(versionID, gameDir string, progress func
 	nativesDir := versionDir + "/natives"
 	librariesDir := gameDir + "/libraries"
 
+	// A failed install must not leave an orphan <id>.json (or partial jar)
+	// behind, so the version directory is removed again on any later failure.
+	// A pre-existing directory (re-install over a working copy) is kept, so a
+	// transient download error cannot destroy a playable install. Shared
+	// libraries under librariesDir are intentionally untouched: they may be
+	// used by other installed versions.
+	_, statErr := os.Stat(versionDir)
+	preExisting := statErr == nil
+	fail := func(resp *models.ApiResponse) *models.ApiResponse {
+		if !preExisting {
+			_ = os.RemoveAll(versionDir)
+		}
+		return resp
+	}
+
 	for _, dir := range []string{versionDir, librariesDir, nativesDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			return &models.ApiResponse{Success: false, Error: fmt.Sprintf("create %s: %v", dir, err)}
+			return fail(&models.ApiResponse{Success: false, Error: fmt.Sprintf("create %s: %v", dir, err)})
 		}
 	}
 
@@ -1012,21 +1027,21 @@ func (b *BMCLAPIService) InstallVersion(versionID, gameDir string, progress func
 	//    cannot be launched.
 	jsonData, err := json.MarshalIndent(versionJSON, "", "  ")
 	if err != nil {
-		return &models.ApiResponse{Success: false, Error: "marshal version json: " + err.Error()}
+		return fail(&models.ApiResponse{Success: false, Error: "marshal version json: " + err.Error()})
 	}
 	if err := os.WriteFile(versionJSONPath, jsonData, 0644); err != nil {
-		return &models.ApiResponse{Success: false, Error: "write version json: " + err.Error()}
+		return fail(&models.ApiResponse{Success: false, Error: "write version json: " + err.Error()})
 	}
 
 	// 2. Download the version JAR
 	jarResult := b.GetVersionJAR(&versionJSON)
 	if !jarResult.Success {
-		return jarResult
+		return fail(jarResult)
 	}
 
 	jarData, ok := jarResult.Data.(map[string]interface{})
 	if !ok {
-		return &models.ApiResponse{Success: false, Error: "failed to parse JAR data"}
+		return fail(&models.ApiResponse{Success: false, Error: "failed to parse JAR data"})
 	}
 
 	jarURL := jarData["url"].(string)
@@ -1038,7 +1053,7 @@ func (b *BMCLAPIService) InstallVersion(versionID, gameDir string, progress func
 	}
 	jarDownload := b.DownloadFile(jarURL, jarPath, jarSize, jarProgress)
 	if !jarDownload.Success {
-		return jarDownload
+		return fail(jarDownload)
 	}
 
 	// 3. Download every library. Required for the -cp classpath the launcher
@@ -1049,7 +1064,7 @@ func (b *BMCLAPIService) InstallVersion(versionID, gameDir string, progress func
 	}
 	libDownload := b.DownloadLibraries(versionJSON.Libraries, librariesDir, libProgress)
 	if !libDownload.Success {
-		return libDownload
+		return fail(libDownload)
 	}
 
 	// 4. Extract natives (used by -Djava.library.path).
@@ -1059,7 +1074,7 @@ func (b *BMCLAPIService) InstallVersion(versionID, gameDir string, progress func
 	}
 	nativesDownload := b.DownloadNatives(versionJSON.Libraries, nativesDir, nativeProgress)
 	if !nativesDownload.Success {
-		return nativesDownload
+		return fail(nativesDownload)
 	}
 
 	return &models.ApiResponse{

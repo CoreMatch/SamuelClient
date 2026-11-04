@@ -801,14 +801,11 @@ func TestInstallVersionJarFailureStopsBeforeLibraries(t *testing.T) {
 		t.Fatal("expected failure when the jar download fails")
 	}
 
-	// The version JSON (stage 1) is written before the jar download; the jar
-	// itself must be absent and no library/native request may follow.
+	// No residue: the stage-1 version JSON is written before the jar download,
+	// but the failed install must clean the whole version directory up again.
 	versionDir := filepath.Join(gameDir, "versions", testVersionID)
-	if _, err := os.Stat(filepath.Join(versionDir, testVersionID+".json")); err != nil {
-		t.Errorf("stage-1 version JSON missing: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(versionDir, testVersionID+".jar")); !os.IsNotExist(err) {
-		t.Error("jar must not exist after a failed jar download")
+	if _, err := os.Stat(versionDir); !os.IsNotExist(err) {
+		t.Errorf("version directory must be removed after a failed install, stat err = %v", err)
 	}
 	for _, p := range rec.recorded() {
 		if strings.HasPrefix(p, "/maven/") {
@@ -850,15 +847,50 @@ func TestInstallVersionLibraryFailureSkipsNatives(t *testing.T) {
 	if !strings.Contains(result.Error, "com.example:lib:1.0") {
 		t.Errorf("Error = %q, want the failed library name", result.Error)
 	}
-	// Jar (stage 2) completed, so it must exist; natives stage never runs.
-	if _, err := os.Stat(filepath.Join(gameDir, "versions", testVersionID, testVersionID+".jar")); err != nil {
-		t.Errorf("jar should exist before the failing library stage: %v", err)
+	// No residue: even though the jar (stage 2) completed, the failed install
+	// must remove the version directory again; the natives stage never runs.
+	versionDir := filepath.Join(gameDir, "versions", testVersionID)
+	if _, err := os.Stat(versionDir); !os.IsNotExist(err) {
+		t.Errorf("version directory must be removed after a failed install, stat err = %v", err)
 	}
-	// The natives directory is created up front by InstallVersion, but no
-	// native file may have been extracted into it after a library failure.
-	nativesDir := filepath.Join(gameDir, "versions", testVersionID, "natives")
-	if entries, err := os.ReadDir(nativesDir); err == nil && len(entries) > 0 {
-		t.Errorf("natives extracted despite library failure: %v", entries)
+}
+
+// A re-install over an existing, working version directory must not destroy
+// it when the new attempt fails mid-download.
+func TestInstallVersionFailureKeepsPreExistingInstall(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skipf("fixture provides natives-linux only; GOOS=%s", runtime.GOOS)
+	}
+
+	okSrv, _ := installFixtures(t, http.StatusOK)
+	defer okSrv.Close()
+	gameDir := t.TempDir()
+	if result := NewBMCLAPIServiceWithBaseURL(okSrv.URL).InstallVersion(testVersionID, gameDir, nil); !result.Success {
+		t.Fatalf("initial install failed: %s", result.Error)
+	}
+	versionDir := filepath.Join(gameDir, "versions", testVersionID)
+	wantJar, err := os.ReadFile(filepath.Join(versionDir, testVersionID+".jar"))
+	if err != nil {
+		t.Fatalf("jar missing after initial install: %v", err)
+	}
+
+	// Second attempt: same version, but the jar download now fails.
+	failSrv, _ := installFixtures(t, http.StatusInternalServerError)
+	defer failSrv.Close()
+	result := NewBMCLAPIServiceWithBaseURL(failSrv.URL).InstallVersion(testVersionID, gameDir, nil)
+	if result.Success {
+		t.Fatal("expected failure when the jar download fails")
+	}
+
+	// The pre-existing install must survive the failed re-install.
+	if _, err := os.Stat(filepath.Join(versionDir, testVersionID+".json")); err != nil {
+		t.Errorf("pre-existing version JSON destroyed by failed re-install: %v", err)
+	}
+	gotJar, err := os.ReadFile(filepath.Join(versionDir, testVersionID+".jar"))
+	if err != nil {
+		t.Errorf("pre-existing jar destroyed by failed re-install: %v", err)
+	} else if string(gotJar) != string(wantJar) {
+		t.Errorf("jar content changed after failed re-install: %q -> %q", wantJar, gotJar)
 	}
 }
 
