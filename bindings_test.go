@@ -389,9 +389,9 @@ func TestVersionBindingFailureMapping(t *testing.T) {
 	app.bmclService = services.NewBMCLAPIServiceWithBaseURL(url)
 
 	for name, result := range map[string]*models.ApiResponse{
-		"GetVersions":        app.GetVersions(),
-		"GetFabricVersions":  app.GetFabricVersions("1.99"),
-		"GetForgeVersions":   app.GetForgeVersions("1.99"),
+		"GetVersions":       app.GetVersions(),
+		"GetFabricVersions": app.GetFabricVersions("1.99"),
+		"GetForgeVersions":  app.GetForgeVersions("1.99"),
 	} {
 		if result.Success {
 			t.Errorf("%s: expected failure against a closed server", name)
