@@ -146,15 +146,132 @@ func TestInstallFabricLoaderLibraryFailureCleansUp(t *testing.T) {
 	}
 }
 
+// ==================== launcher_profiles.json ====================
+
+// hasLauncherProfile reports whether launcher_profiles.json contains an
+// entry whose lastVersionId matches.
+func hasLauncherProfile(t *testing.T, gameDir, versionID string) bool {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(gameDir, "launcher_profiles.json"))
+	if err != nil {
+		return false
+	}
+	var root struct {
+		Profiles map[string]struct {
+			LastVersionID string `json:"lastVersionId"`
+		} `json:"profiles"`
+	}
+	if json.Unmarshal(raw, &root) != nil {
+		t.Fatalf("launcher_profiles.json is not valid JSON: %s", raw)
+	}
+	for _, p := range root.Profiles {
+		if p.LastVersionID == versionID {
+			return true
+		}
+	}
+	return false
+}
+
+func TestUpsertLauncherProfile(t *testing.T) {
+	gameDir := t.TempDir()
+
+	// Missing file: created with the entry.
+	if err := upsertLauncherProfile(gameDir, "fabric-loader-1"); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if !hasLauncherProfile(t, gameDir, "fabric-loader-1") {
+		t.Fatal("entry missing after create")
+	}
+
+	// Idempotent: a second call must not duplicate or fail.
+	if err := upsertLauncherProfile(gameDir, "fabric-loader-1"); err != nil {
+		t.Fatalf("second upsert: %v", err)
+	}
+
+	// Existing valid file: other entries survive, new one is added.
+	if err := upsertLauncherProfile(gameDir, "1.99-forge47.2.0"); err != nil {
+		t.Fatalf("third upsert: %v", err)
+	}
+	if !hasLauncherProfile(t, gameDir, "fabric-loader-1") || !hasLauncherProfile(t, gameDir, "1.99-forge47.2.0") {
+		t.Fatal("both entries must be present")
+	}
+
+	// Unparseable file: left untouched, no error.
+	badDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(badDir, "launcher_profiles.json"), []byte("not-json"), 0644); err != nil {
+		t.Fatalf("write bad file: %v", err)
+	}
+	if err := upsertLauncherProfile(badDir, "x"); err != nil {
+		t.Fatalf("upsert over corrupt file must not fail: %v", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(badDir, "launcher_profiles.json")); string(got) != "not-json" {
+		t.Errorf("corrupt launcher_profiles.json was modified: %q", got)
+	}
+}
+
+func TestInstallFabricLoaderWritesLauncherProfile(t *testing.T) {
+	srv := fabricMetaFixture(t, http.StatusOK, http.StatusOK)
+	gameDir := t.TempDir()
+	writeVersionJSON(t, gameDir, "1.99", testVersionJSON)
+
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallFabricLoader("1.99", "0.15.0", gameDir, nil)
+	if !result.Success {
+		t.Fatalf("InstallFabricLoader failed: %s", result.Error)
+	}
+	if !hasLauncherProfile(t, gameDir, "fabric-loader-0.15.0-1.99") {
+		t.Error("launcher_profiles.json must contain the fabric loader entry")
+	}
+}
+
+func TestInstallForgeLoaderInjectsMissingProfile(t *testing.T) {
+	srv := forgeInstallerFixture(t, http.StatusOK)
+	gameDir := t.TempDir()
+
+	// The fake installer does not inject a profile itself; the service must.
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallForgeLoader("1.99", "47.2.0", gameDir, fakeForgeInstaller(t, 0, true), nil, nil)
+	if !result.Success {
+		t.Fatalf("InstallForgeLoader failed: %s", result.Error)
+	}
+	if !hasLauncherProfile(t, gameDir, "1.99-forge-47.2.0") {
+		t.Error("launcher_profiles.json must contain the forge version entry")
+	}
+}
+
+func TestInstallForgeLoaderKeepsInjectedProfile(t *testing.T) {
+	srv := forgeInstallerFixture(t, http.StatusOK)
+	gameDir := t.TempDir()
+
+	// Simulate the real installer, which injects its own entry keyed "forge".
+	pre := `{"profiles": {"forge": {"name": "forge", "type": "custom", "lastVersionId": "1.99-forge-47.2.0"}}}`
+	if err := os.WriteFile(filepath.Join(gameDir, "launcher_profiles.json"), []byte(pre), 0644); err != nil {
+		t.Fatalf("seed profiles: %v", err)
+	}
+
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallForgeLoader("1.99", "47.2.0", gameDir, fakeForgeInstaller(t, 0, true), nil, nil)
+	if !result.Success {
+		t.Fatalf("InstallForgeLoader failed: %s", result.Error)
+	}
+	raw, err := os.ReadFile(filepath.Join(gameDir, "launcher_profiles.json"))
+	if err != nil {
+		t.Fatalf("read profiles: %v", err)
+	}
+	if string(raw) != pre {
+		t.Errorf("installer-injected profile was modified:\n got %s\nwant %s", raw, pre)
+	}
+}
+
 // The live Fabric meta API returns libraries without URLs; fillMavenURLs
 // must derive the mirror maven URL from the coordinates and leave explicit
-// URLs untouched.
+// file URLs untouched.
 func TestFillMavenURLs(t *testing.T) {
 	svc := NewBMCLAPIServiceWithBaseURL("https://mirror.example")
 	libs := []BMCLLibrary{
 		{Name: "net.fabricmc:fabric-loader:0.20.1"},
 		{Name: "org.example:has-url:1.0", Downloads: BMCLLibraryDownloads{Artifact: BMCLArtifact{URL: "https://keep.example/x.jar"}}},
 		{Name: "not-maven-coordinates"},
+		// Live fabric meta shape: repository base at the library level.
+		{Name: "org.ow2.asm:asm:9.10.1", URL: "https://maven.fabricmc.net/"},
+		{Name: "org.other:lib:2.0", Downloads: BMCLLibraryDownloads{Artifact: BMCLArtifact{URL: "https://other.repo/maven/"}}},
 	}
 	svc.fillMavenURLs(libs)
 
@@ -167,6 +284,16 @@ func TestFillMavenURLs(t *testing.T) {
 	}
 	if libs[1].Downloads.Artifact.URL != "https://keep.example/x.jar" {
 		t.Errorf("explicit URL changed: %q", libs[1].Downloads.Artifact.URL)
+	}
+	// The official fabric maven base is rerouted to the mirror.
+	wantFabric := "https://mirror.example/maven/org/ow2/asm/asm/9.10.1/asm-9.10.1.jar"
+	if libs[3].Downloads.Artifact.URL != wantFabric {
+		t.Errorf("fabric base URL resolved to %q, want %q", libs[3].Downloads.Artifact.URL, wantFabric)
+	}
+	// Other repository bases are kept, with the maven path appended.
+	wantOther := "https://other.repo/maven/org/other/lib/2.0/lib-2.0.jar"
+	if libs[4].Downloads.Artifact.URL != wantOther {
+		t.Errorf("foreign base URL resolved to %q, want %q", libs[4].Downloads.Artifact.URL, wantOther)
 	}
 }
 

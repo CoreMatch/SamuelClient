@@ -454,6 +454,9 @@ type BMCLLibrary struct {
 	Name      string               `json:"name"`
 	Downloads BMCLLibraryDownloads `json:"downloads"`
 	Rules     []BMCLRule           `json:"rules,omitempty"`
+	// URL is set by Fabric meta profiles: a maven repository base URL at the
+	// library level (no downloads object). fillMavenURLs resolves it.
+	URL string `json:"url,omitempty"`
 }
 
 type BMCLLibraryDownloads struct {
@@ -890,6 +893,12 @@ func (b *BMCLAPIService) InstallFabricLoader(mcVersion, loaderVersion, gameDir s
 		return fail(libDownload)
 	}
 
+	// Register the loader version in launcher_profiles.json so the install is
+	// visible exactly like the official launcher's entries.
+	if err := upsertLauncherProfile(gameDir, profile.ID); err != nil {
+		return fail(&models.ApiResponse{Success: false, Error: "write launcher_profiles.json: " + err.Error()})
+	}
+
 	return &models.ApiResponse{Success: true, Data: map[string]interface{}{
 		"version_id":    profile.ID,
 		"version_dir":   versionDir,
@@ -898,15 +907,15 @@ func (b *BMCLAPIService) InstallFabricLoader(mcVersion, loaderVersion, gameDir s
 	}}
 }
 
-// fillMavenURLs derives download URLs for libraries that carry maven
-// coordinates but no URL. The live Fabric meta API returns such entries for
-// its own artifacts; the URL is the maven layout under the BMCLAPI mirror.
+// fillMavenURLs makes sure every library carries a downloadable artifact
+// URL. The live Fabric meta API returns libraries without a downloads
+// object, or with `url` set to a maven repository base (e.g.
+// https://maven.fabricmc.net/) instead of a file URL; both forms are
+// resolved to the maven layout derived from the coordinates, served from
+// the BMCLAPI mirror (verified live).
 func (b *BMCLAPIService) fillMavenURLs(libraries []BMCLLibrary) {
 	for i := range libraries {
 		artifact := &libraries[i].Downloads.Artifact
-		if artifact.URL != "" {
-			continue
-		}
 		parts := strings.Split(libraries[i].Name, ":")
 		if len(parts) != 3 {
 			continue
@@ -914,8 +923,80 @@ func (b *BMCLAPIService) fillMavenURLs(libraries []BMCLLibrary) {
 		if artifact.Path == "" {
 			artifact.Path = strings.ReplaceAll(parts[0], ".", "/") + "/" + parts[1] + "/" + parts[2] + "/" + parts[1] + "-" + parts[2] + ".jar"
 		}
-		artifact.URL = b.baseURL + "/maven/" + artifact.Path
+		if artifact.URL == "" && libraries[i].URL != "" {
+			// Fabric meta: repository base at the library level.
+			artifact.URL = libraries[i].URL
+		}
+		if artifact.URL == "" {
+			artifact.URL = b.baseURL + "/maven/" + artifact.Path
+		} else if !strings.HasSuffix(artifact.URL, ".jar") {
+			base := strings.TrimRight(artifact.URL, "/")
+			if base == "https://maven.fabricmc.net" {
+				base = b.baseURL + "/maven"
+			}
+			artifact.URL = base + "/" + artifact.Path
+		}
 	}
+}
+
+// upsertLauncherProfile writes a profile entry for versionID into
+// <gameDir>/launcher_profiles.json (creating a minimal file when missing),
+// mirroring what the official launcher and HMCL keep there. The Forge
+// installer injects its own entry; Fabric profiles have no installer step,
+// so this launcher writes the entry itself. An existing file that cannot be
+// parsed is left untouched rather than clobbered.
+func upsertLauncherProfile(gameDir, versionID string) error {
+	profilesPath := filepath.Join(gameDir, "launcher_profiles.json")
+
+	root := map[string]interface{}{}
+	if raw, err := os.ReadFile(profilesPath); err == nil {
+		if json.Unmarshal(raw, &root) != nil {
+			return nil // keep an unparseable file as-is
+		}
+	}
+	profiles, ok := root["profiles"].(map[string]interface{})
+	if !ok {
+		profiles = map[string]interface{}{}
+		root["profiles"] = profiles
+	}
+	if _, exists := profiles[versionID]; exists {
+		return nil
+	}
+	profiles[versionID] = map[string]interface{}{
+		"name":          versionID,
+		"type":          "custom",
+		"lastVersionId": versionID,
+	}
+
+	data, err := json.MarshalIndent(root, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(profilesPath, data, 0644)
+}
+
+// launcherProfileExists reports whether launcher_profiles.json already
+// contains an entry whose lastVersionId is versionID (the Forge installer
+// keys its entry "forge" rather than by the version id).
+func launcherProfileExists(gameDir, versionID string) bool {
+	raw, err := os.ReadFile(filepath.Join(gameDir, "launcher_profiles.json"))
+	if err != nil {
+		return false
+	}
+	var root struct {
+		Profiles map[string]struct {
+			LastVersionID string `json:"lastVersionId"`
+		} `json:"profiles"`
+	}
+	if json.Unmarshal(raw, &root) != nil {
+		return false
+	}
+	for _, p := range root.Profiles {
+		if p.LastVersionID == versionID {
+			return true
+		}
+	}
+	return false
 }
 
 // forgeInstallTimeout bounds the Forge installer run. It is a variable (like
@@ -1038,6 +1119,14 @@ func (b *BMCLAPIService) InstallForgeLoader(mcVersion, forgeVersion, gameDir, ja
 	versionID, versionDir, found := findForgeVersionDir(versionsRoot, mcVersion)
 	if !found {
 		return fail(&models.ApiResponse{Success: false, Error: fmt.Sprintf("forge installer did not produce a %s-forge* version directory", mcVersion)})
+	}
+
+	// The installer normally injects its own launcher_profiles.json entry;
+	// if it did not, write one so the install is consistently registered.
+	if !launcherProfileExists(gameDir, versionID) {
+		if err := upsertLauncherProfile(gameDir, versionID); err != nil {
+			return fail(&models.ApiResponse{Success: false, Error: "write launcher_profiles.json: " + err.Error()})
+		}
 	}
 
 	return &models.ApiResponse{Success: true, Data: map[string]interface{}{
@@ -1717,6 +1806,37 @@ func (l *LauncherService) BuildLaunchCommand(config models.LauncherConfig, versi
 	userType := resolveUserType(account.AuthType)
 	versionType := resolveVersionType(version.VersionType)
 
+	// Loader profiles (Fabric/Forge) carry their own launch arguments on top
+	// of the standard set — fabric's -DFabricMcEmu jvm flag and forge's
+	// --launchTarget game args (shapes verified against live metadata). They
+	// are expanded only for inheriting versions; vanilla keeps the legacy
+	// argument construction.
+	var extraJVM, extraGame []string
+	if versionJSON.InheritsFrom != "" {
+		vars := map[string]string{
+			"auth_player_name":      account.Username,
+			"version_name":          version.VersionID,
+			"game_directory":        gameDir,
+			"assets_root":           filepath.Join(gameDir, "assets"),
+			"assets_index_name":     assetIndex,
+			"auth_uuid":             stripDashes(account.UUID),
+			"auth_access_token":     account.AccessToken,
+			"user_type":             userType,
+			"version_type":          versionType,
+			"natives_directory":     nativesDir,
+			"launcher_name":         "SamuelClient",
+			"launcher_version":      "1.0",
+			"classpath":             classpath,
+			"classpath_separator":   string(os.PathListSeparator),
+			"library_directory":     librariesDir,
+			"user_properties":       "{}",
+			"resolution_width":      strconv.Itoa(config.GameWidth),
+			"resolution_height":     strconv.Itoa(config.GameHeight),
+		}
+		extraJVM = expandArgumentEntries(versionJSON.Arguments.JVM, vars)
+		extraGame = expandArgumentEntries(versionJSON.Arguments.Game, vars)
+	}
+
 	// JVM args
 	args := []string{javaPath}
 	if config.MaxMemory > 0 {
@@ -1729,6 +1849,7 @@ func (l *LauncherService) BuildLaunchCommand(config models.LauncherConfig, versi
 		args = append(args, strings.Fields(config.JavaArgs)...)
 	}
 	args = append(args, "-Djava.library.path="+nativesDir)
+	args = append(args, extraJVM...)
 
 	// Authlib-Injector: -javaagent:/path/authlib-injector.jar=<auth-server>
 	if strings.EqualFold(account.AuthType, "authlib-injector") && config.AuthlibJar != "" && account.AuthServer != "" {
@@ -1762,6 +1883,7 @@ func (l *LauncherService) BuildLaunchCommand(config models.LauncherConfig, versi
 	if config.GameHeight > 0 {
 		gameArgs = append(gameArgs, "--height", fmt.Sprintf("%d", config.GameHeight))
 	}
+	gameArgs = append(gameArgs, extraGame...)
 
 	// Forge 1.12.x and older use LaunchWrapper and need --tweakClass
 	if strings.HasPrefix(mainClass, "net.minecraft.launchwrapper.Launch") {
@@ -1770,6 +1892,78 @@ func (l *LauncherService) BuildLaunchCommand(config models.LauncherConfig, versi
 
 	args = append(args, gameArgs...)
 	return args, nil
+}
+
+// expandArgumentEntries resolves a version JSON arguments list (strings or
+// {rules, value} objects) into concrete command-line tokens, substituting
+// ${variable} placeholders. Entries whose rules exclude the current OS are
+// dropped, mirroring the official launcher / HMCL behaviour.
+func expandArgumentEntries(entries []interface{}, vars map[string]string) []string {
+	var out []string
+	for _, entry := range entries {
+		switch v := entry.(type) {
+		case string:
+			out = append(out, substituteLaunchVars(v, vars))
+		case map[string]interface{}:
+			if !argumentRulesAllow(v["rules"]) {
+				continue
+			}
+			switch value := v["value"].(type) {
+			case string:
+				out = append(out, substituteLaunchVars(value, vars))
+			case []interface{}:
+				for _, item := range value {
+					if s, ok := item.(string); ok {
+						out = append(out, substituteLaunchVars(s, vars))
+					}
+				}
+			}
+		}
+	}
+	return out
+}
+
+// argumentRulesAllow evaluates Mojang-style argument rules. Absent or empty
+// rules mean the argument applies.
+func argumentRulesAllow(rulesRaw interface{}) bool {
+	rules, ok := rulesRaw.([]interface{})
+	if !ok || len(rules) == 0 {
+		return true
+	}
+	allowed := false
+	for _, ruleRaw := range rules {
+		rule, ok := ruleRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		action, _ := rule["action"].(string)
+		matches := true
+		if osObj, ok := rule["os"].(map[string]interface{}); ok {
+			if name, ok := osObj["name"].(string); ok && name != runtime.GOOS {
+				matches = false
+			}
+		}
+		switch action {
+		case "allow":
+			if matches {
+				allowed = true
+			}
+		case "disallow":
+			if matches {
+				return false
+			}
+		}
+	}
+	return allowed
+}
+
+// substituteLaunchVars replaces ${name} placeholders with launch context
+// values; unknown placeholders are left as-is so they stay visible.
+func substituteLaunchVars(s string, vars map[string]string) string {
+	for name, value := range vars {
+		s = strings.ReplaceAll(s, "${"+name+"}", value)
+	}
+	return s
 }
 
 // stripDashes removes dashes from a UUID (game expects compact form).
