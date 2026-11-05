@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -130,7 +131,7 @@ func TestNewClientToken(t *testing.T) {
 	}
 }
 
-// ==================== validation failures (all 17 bindings) ====================
+// ==================== validation failures (all 19 bindings) ====================
 
 func TestBindingValidationFailures(t *testing.T) {
 	app := newTestApp()
@@ -151,6 +152,10 @@ func TestBindingValidationFailures(t *testing.T) {
 		{"AuthlibValidate empty server", func() *models.ApiResponse { return app.AuthlibValidate("", "at", "") }, "server is required"},
 		{"AuthlibValidate empty token", func() *models.ApiResponse { return app.AuthlibValidate("s", "", "") }, "access token is required"},
 		{"DownloadVersion empty id", func() *models.ApiResponse { return app.DownloadVersion("", "") }, "version_id is required"},
+		{"InstallFabricLoader empty mc", func() *models.ApiResponse { return app.InstallFabricLoader("", "0.15.0", "") }, "mc version is required"},
+		{"InstallFabricLoader empty loader", func() *models.ApiResponse { return app.InstallFabricLoader("1.99", "", "") }, "loader version is required"},
+		{"InstallForgeLoader empty mc", func() *models.ApiResponse { return app.InstallForgeLoader("", "47.2.0", "") }, "mc version is required"},
+		{"InstallForgeLoader empty forge", func() *models.ApiResponse { return app.InstallForgeLoader("1.99", "", "") }, "forge version is required"},
 		{"LaunchGame empty request", func() *models.ApiResponse { return app.LaunchGame(LaunchGameRequest{}) }, "version_id is required"},
 		{"LaunchGame missing user", func() *models.ApiResponse {
 			return app.LaunchGame(LaunchGameRequest{VersionID: "1.99"})
@@ -702,5 +707,152 @@ func TestLaunchGameValidationOnly(t *testing.T) {
 	result := app.LaunchGame(LaunchGameRequest{})
 	if result.Success || result.Error == "" || result.Data != nil {
 		t.Errorf("failure shape = %+v, want Success=false/Error set/Data nil", result)
+	}
+}
+
+// ==================== loader install bindings (hermetic) ====================
+
+// TestInstallFabricLoaderBindingSuccess drives the binding layer against a
+// fake Fabric meta server: the profile JSON is persisted under the
+// binding-constructed version id on top of an installed parent version.
+func TestInstallFabricLoaderBindingSuccess(t *testing.T) {
+	var srvURL string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/fabric-meta/v2/versions/loader/1.99/0.15.0/profile/json", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{
+			"id": "fabric-loader-0.15.0-1.99",
+			"inheritsFrom": "1.99",
+			"mainClass": "net.fabricmc.loader.impl.launch.knot.KnotClient",
+			"libraries": [
+				{
+					"name": "net.fabricmc:fabric-loader:0.15.0",
+					"downloads": {"artifact": {"path": "net/fabricmc/fabric-loader/0.15.0/fabric-loader-0.15.0.jar", "url": "%s/maven/fabric-loader.jar", "size": 10}}
+				}
+			]
+		}`, srvURL)
+	})
+	mux.HandleFunc("/maven/fabric-loader.jar", func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "fabric-lib")
+	})
+	srv := httptest.NewServer(mux)
+	srvURL = srv.URL
+	defer srv.Close()
+
+	gameDir := t.TempDir()
+	parentDir := filepath.Join(gameDir, "versions", "1.99")
+	if err := os.MkdirAll(parentDir, 0755); err != nil {
+		t.Fatalf("mkdir parent: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(parentDir, "1.99.json"), []byte(`{"id": "1.99", "type": "release"}`), 0644); err != nil {
+		t.Fatalf("write parent json: %v", err)
+	}
+
+	app := newTestApp()
+	app.bmclService = services.NewBMCLAPIServiceWithBaseURL(srv.URL)
+
+	result := app.InstallFabricLoader("1.99", "0.15.0", gameDir)
+	if !result.Success {
+		t.Fatalf("InstallFabricLoader failed: %s", result.Error)
+	}
+	data, ok := result.Data.(map[string]interface{})
+	if !ok || data["version_id"] != "fabric-loader-0.15.0-1.99" {
+		t.Fatalf("data = %+v, want version_id fabric-loader-0.15.0-1.99", result.Data)
+	}
+
+	profilePath := filepath.Join(gameDir, "versions", "fabric-loader-0.15.0-1.99", "fabric-loader-0.15.0-1.99.json")
+	if _, err := os.Stat(profilePath); err != nil {
+		t.Errorf("profile json missing after install: %v", err)
+	}
+}
+
+// TestInstallForgeLoaderBindingSuccess wires the binding's java path
+// resolution (JAVA_HOME seam) to a fake installer script standing in for
+// `java -jar installer --installClient`, then asserts the generated version
+// directory and the transient installer jar cleanup.
+func TestInstallForgeLoaderBindingSuccess(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skipf("fake installer is a shell script; GOOS=%s", runtime.GOOS)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/maven/net/minecraftforge/forge/1.99-47.2.0/forge-1.99-47.2.0-installer.jar" {
+			http.NotFound(w, r)
+			return
+		}
+		io.WriteString(w, "installer-bytes")
+	}))
+	defer srv.Close()
+
+	// JAVA_HOME seam: bin/java is the fake installer script (arguments are
+	// ignored, mirroring the service-level fake).
+	javaHome := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(javaHome, "bin"), 0755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	script := "#!/bin/sh\n" +
+		"mkdir -p \"versions/1.99-forge-47.2.0\"\n" +
+		"printf '{\"id\": \"1.99-forge-47.2.0\", \"inheritsFrom\": \"1.99\"}' > \"versions/1.99-forge-47.2.0/1.99-forge-47.2.0.json\"\n" +
+		"exit 0\n"
+	if err := os.WriteFile(filepath.Join(javaHome, "bin", "java"), []byte(script), 0755); err != nil {
+		t.Fatalf("write fake java: %v", err)
+	}
+	t.Setenv("JAVA_HOME", javaHome)
+
+	app := newTestApp()
+	app.bmclService = services.NewBMCLAPIServiceWithBaseURL(srv.URL)
+	gameDir := t.TempDir()
+
+	result := app.InstallForgeLoader("1.99", "47.2.0", gameDir)
+	if !result.Success {
+		t.Fatalf("InstallForgeLoader failed: %s", result.Error)
+	}
+	if _, err := os.Stat(filepath.Join(gameDir, "versions", "1.99-forge-47.2.0", "1.99-forge-47.2.0.json")); err != nil {
+		t.Errorf("generated version json missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(gameDir, "forge-installer-47.2.0.jar")); !os.IsNotExist(err) {
+		t.Errorf("installer jar must be removed after the install, stat err = %v", err)
+	}
+}
+
+// Loader versions have no client jar of their own; GetInstalledVersions must
+// count the parent's jar as theirs via inheritsFrom so the UI treats them as
+// launchable.
+func TestGetInstalledVersionsLoaderInheritsParentJar(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	versionsDir := filepath.Join(home, ".minecraft", "versions")
+	parent := filepath.Join(versionsDir, "1.99")
+	loader := filepath.Join(versionsDir, "fabric-loader-0.15.0-1.99")
+	for _, d := range []string{parent, loader} {
+		if err := os.MkdirAll(d, 0755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(parent, "1.99.json"), []byte(`{"type": "release"}`), 0644); err != nil {
+		t.Fatalf("write parent json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(parent, "1.99.jar"), []byte("jar"), 0644); err != nil {
+		t.Fatalf("write parent jar: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(loader, "fabric-loader-0.15.0-1.99.json"), []byte(`{"type": "release", "inheritsFrom": "1.99"}`), 0644); err != nil {
+		t.Fatalf("write loader json: %v", err)
+	}
+
+	app := newTestApp()
+	result := app.GetInstalledVersions()
+	if !result.Success {
+		t.Fatalf("GetInstalledVersions failed: %s", result.Error)
+	}
+	versions := result.Data.(map[string]interface{})["versions"].([]InstalledVersion)
+
+	byID := map[string]InstalledVersion{}
+	for _, v := range versions {
+		byID[v.ID] = v
+	}
+	loaderGot, ok := byID["fabric-loader-0.15.0-1.99"]
+	if !ok || !loaderGot.HasJSON || !loaderGot.HasJAR {
+		t.Errorf("loader version = %+v (present=%v), want has_json+has_jar via parent", loaderGot, ok)
 	}
 }
