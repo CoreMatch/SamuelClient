@@ -81,19 +81,26 @@ need an owner decision before being acted on.
      generated version directory and removes the transient installer jar.
      Both emit `download:progress` with stage `"loader"`, clean up fresh
      directories on failure, and are retryable.
-     **Real-network verified (2026-11-05, branch `chore/loader-ui-and-verify`)**:
+     **Real-network verified (2026-11-05, branches `chore/loader-ui-and-verify`
+     and `feat/loader-launch-complete`)**:
      Fabric 0.20.1 for MC 1.20.4 via the live BMCLAPI mirror — profile JSON
-     on disk, 8 loader libraries downloaded, `GetInstalledVersions`
-     recognizes it, `BuildLaunchCommand` classpath points at the parent
-     files. Forge 1.20.4-49.0.3 — real installer ran on JDK 25 and produced
-     `versions/1.20.4-forge49.0.3/`. The live run exposed and fixed three
-     real bugs: fabric meta libraries without URLs (now derived from maven
-     coordinates via the mirror), mirror CDNs 403-ing Go's default
-     User-Agent (downloads now send a launcher UA), and the forge installer
-     download URL (the old `/forge/.../installer` endpoint 404s; the maven
-     layout works). The installer also needs a `launcher_profiles.json` in
-     the target dir (a minimal one is seeded) and installs into its working
-     directory, so the earlier "install-dir redirection" concern is moot.
+     on disk, 8 loader libraries downloaded and content-validated (zip
+     magic), `launcher_profiles.json` entry written, `GetInstalledVersions`
+     recognizes it, and `BuildLaunchCommand` emits the fabric launch command
+     (KnotClient mainClass, `-DFabricMcEmu` from the profile's `arguments`,
+     parent jar on the classpath). Forge 1.20.4-49.0.3 — real installer ran
+     on JDK 25 (~40s), produced `versions/1.20.4-forge49.0.3/`, injected its
+     `launcher_profiles.json` entry (kept untouched by the service), removed
+     the installer jar, and the launch command built from the real forge
+     version JSON carries `--launchTarget forge_client` plus the parent jar.
+     The live runs exposed and fixed real bugs: fabric meta libraries without
+     file URLs (resolved from maven coordinates / repository bases via the
+     mirror), mirror CDNs 403-ing Go's default User-Agent (downloads now
+     send a launcher UA), the forge installer download URL (maven layout),
+     the missing `launcher_profiles.json` requirement (seeded), and the
+     missing `arguments` expansion in `BuildLaunchCommand` (loader versions
+     now expand Mojang-style game/jvm arguments with rules and ${variable}
+     substitution; vanilla keeps the legacy construction).
      UI follow-up (done 2026-11-05, `chore/loader-ui-and-verify`): the
      HomeView loader dropdown now calls `InstallFabricLoader`/
      `InstallForgeLoader` and refreshes the version list on success.
