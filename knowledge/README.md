@@ -22,7 +22,7 @@ the conflict to the owner.
 
 Each entry is one page in ADR style:
 
-- **Status** (`accepted` / `superseded` / ...), **Date**
+- **Status** (`accepted` / `superseded` / ...)
 - **Context** — the problem and constraints
 - **Decision** — what was chosen
 - **Consequences** — including costs and limitations
@@ -32,9 +32,9 @@ Each entry is one page in ADR style:
 
 ## Entries
 
-| # | Title | Status | Date |
-|---|-------|--------|------|
-| [0001](0001-wails-minecraft-launcher-positioning.md) | Wails-based Cross-Platform Minecraft Launcher | accepted | 2026-11-04 |
-| [0002](0002-yggdrasil-authlib-authentication-flow.md) | Authentication Is Pure Yggdrasil via authlib-injector | accepted | 2026-11-04 |
-| [0003](0003-zero-contract-coverage.md) | Zero Contract Coverage in HA-Contract | accepted | 2026-11-04 |
-| [0004](0004-local-http-boundary.md) | Local HTTP Boundary: Retire Direct Frontend→Gin HTTP in Favor of Wails Bindings | accepted | 2026-11-04 |
+| # | Title | Status |
+|---|-------|--------|
+| [0001](0001-wails-minecraft-launcher-positioning.md) | Wails-based Cross-Platform Minecraft Launcher | accepted |
+| [0002](0002-yggdrasil-authlib-authentication-flow.md) | Authentication Is Pure Yggdrasil via authlib-injector | accepted |
+| [0003](0003-zero-contract-coverage.md) | Zero Contract Coverage in HA-Contract | accepted |
+| [0004](0004-local-http-boundary.md) | Local HTTP Boundary: Retire Direct Frontend→Gin HTTP in Favor of Wails Bindings | accepted |

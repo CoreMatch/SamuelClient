@@ -1,7 +1,6 @@
 # ADR-0001: Wails-based Cross-Platform Minecraft Launcher
 
 - **Status**: accepted
-- **Date**: 2026-11-04
 
 ## Context
 

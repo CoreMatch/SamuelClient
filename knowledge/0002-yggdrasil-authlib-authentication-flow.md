@@ -1,7 +1,6 @@
 # ADR-0002: Authentication Is Pure Yggdrasil via authlib-injector
 
 - **Status**: accepted
-- **Date**: 2026-11-04
 
 ## Context
 

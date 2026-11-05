@@ -1,7 +1,6 @@
 # ADR-0004: Local HTTP Boundary — Retire Direct Frontend→Gin HTTP in Favor of Wails Bindings
 
 - **Status**: accepted
-- **Date**: 2026-11-04
 
 ## Context
 
@@ -36,7 +35,7 @@ machine with a single POST; LAN devices could do the same.
 
 Adopt **Option A**: move all frontend↔backend communication onto Wails
 bindings and retire the frontend-facing Gin HTTP boundary. The owner confirmed
-the following on 2026-11-04:
+the following:
 
 1. **Gin is retired.** All business functionality moves to Wails bindings; the
    HTTP listener is removed, and the README's "Local HTTP API" feature claim
@@ -179,7 +178,7 @@ Option-B controls — deliberately, not by default.
 - Cost: any future external integration must be designed deliberately rather
   than reusing an accidental API.
 
-## Follow-up Decisions (2026-11-05)
+## Follow-up Decisions
 
 After the migration landed, the owner decided a second round of reductions:
 
