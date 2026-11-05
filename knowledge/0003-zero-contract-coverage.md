@@ -18,9 +18,9 @@ by any contract in that repository.
 
 ## Consequences
 
-- SamuelClient's external behavior (its auth calls, launcher API) is currently
-  defined only by its own code and this knowledge base, not by a shared
-  contract.
+- SamuelClient's external behavior (its auth calls) is currently defined only
+  by its own code and this knowledge base, not by a shared contract. The Wails
+  binding surface is internal to the application, not an outward API.
 - If HA-Contract later adds coverage for the launcher and an entry here
   conflicts with it, the contract wins and this entry must be fixed (see the
   Order of Authority in the index).
