@@ -214,6 +214,12 @@ delete per the no-dead-code precedent).
   percentage only when `total > 0` and `typeof downloaded === 'number'` —
   missing numeric fields render a bare stage label, never divide by zero.
 
+**Binding test gaps closed on this branch** — the validation table now
+covers all 19 bindings; hermetic binding-level success tests added for
+`InstallFabricLoader` (fake meta httptest server) and `InstallForgeLoader`
+(fake installer script via the JAVA_HOME seam), plus a
+`GetInstalledVersions` case for loader versions inheriting the parent jar.
+
 **Escalations** (appended to `/home/lnb/SamuelPortal-docs/PENDING-DECISIONS.md`):
 #9 (GetJavaPath partial coverage, from item 6 above), #10 (cancellation
 plumbing, from item 11 above), #11 (unused auth bindings), #12 (bundle
