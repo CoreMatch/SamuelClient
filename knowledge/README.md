@@ -38,3 +38,4 @@ Each entry is one page in ADR style:
 | [0002](0002-yggdrasil-authlib-authentication-flow.md) | Authentication Is Pure Yggdrasil via authlib-injector | accepted |
 | [0003](0003-zero-contract-coverage.md) | Zero Contract Coverage in HA-Contract | accepted |
 | [0004](0004-local-http-boundary.md) | Local HTTP Boundary: Retire Direct Frontend→Gin HTTP in Favor of Wails Bindings | accepted |
+| [0005](0005-frontend-test-framework-evaluation.md) | Frontend Test Framework: Vitest + React Testing Library | accepted |

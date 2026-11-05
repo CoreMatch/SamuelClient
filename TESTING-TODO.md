@@ -44,6 +44,7 @@ need an owner decision before being acted on.
 6. **`GetJavaPath` fallback branches are environment-dependent.** Only the
    JAVA_HOME branch is tested deterministically; the common-paths/`"java"`
    fallback depends on the machine. Decision: accept partial coverage?
+   Escalated to `PENDING-DECISIONS.md` #9 by the 2026-11-06 patrol.
 7. **Frontend test framework introduced (2026-11-05, branch
    `feat/loader-install`).** Vitest + jsdom + @testing-library/react, wired
    through `vite.config.ts` (`npm test`, also added to CI). Key-interaction
@@ -135,7 +136,8 @@ need an owner decision before being acted on.
       cancel funcs in `App`, add a `CancelInstall(versionID)` binding and a
       cancel button in the UI.
     - Decision needed: accept the status quo (timeouts + retry tolerance) or
-      schedule the cancellation work.
+      schedule the cancellation work. Escalated to `PENDING-DECISIONS.md` #10
+      by the 2026-11-06 patrol.
 
 ## Known behavior documented by tests (no action needed unless disagreed)
 
@@ -153,3 +155,66 @@ need an owner decision before being acted on.
 - A failed `InstallVersion` removes a freshly created version directory but
   never touches a pre-existing one; `JavaRepository.Delete`/`SetDefault`
   fail with a wrapped `sql.ErrNoRows` for unknown ids.
+
+## Nightly patrol results (branch `chore/nightly-patrol`)
+
+**Triage of #4/#5/#7** — all three were already closed before this patrol;
+re-verified against the current code:
+
+- #4 (`database.Transaction`): deletion complete, zero references remain
+  (grep across `*.go`).
+- #5 (event emission not unit-tested): acceptance stands; emit call sites
+  remain nil-context safe, contract documented in `bindings.go` and README.
+- #7 (frontend framework): Vitest is live — `npm test` passes 10/10 tests
+  in 2 files. The framework re-evaluation (vitest vs jest vs RTL) is written
+  up in `knowledge/0005-frontend-test-framework-evaluation.md`: keep
+  Vitest + jsdom + @testing-library/react; Jest rejected (duplicate
+  transform config, migration cost, zero gain). No `package.json` change.
+
+**Quality patrol** (all commands run in the patrol worktree):
+
+| Check | Result |
+|---|---|
+| `npm run lint` | 0 errors / 0 warnings |
+| `npm test` | 2 files, 10 tests passed |
+| `npm run build` (tsc + vite) | OK |
+| `go build ./...` | OK |
+| `go vet ./...` | OK |
+| `go test -race ./...` | all packages pass |
+| `gofmt -l` | 4 files unformatted (alignment only) — fixed on this branch |
+| `go mod tidy` | no diff (go.mod/go.sum unchanged) |
+| `npm ls --all` | no extraneous / invalid / missing packages |
+| Coverage (`go test -cover`) | main 75.8%, database 70.4%, repository 80.4%, services 81.5% |
+| Bundle (`vite build`) | `index.js` 581.73 kB (gzip 176.77 kB), CSS 0.34 kB, HTML 0.46 kB — only 3 artifacts, single JS chunk trips Vite's >500 kB warning → `PENDING-DECISIONS.md` #12 |
+
+**Binding surface self-check** — `bindings.go` has 19 methods; the generated
+`wailsjs/go/main/App.d.ts` has the same 19 (one-to-one); every frontend
+import resolves (tsc passes). Diff against frontend call sites:
+
+| Binding | Frontend caller |
+|---|---|
+| `GetAuthlibMeta`, `AuthlibLogin` | LoginView |
+| `GetVersions`, `DownloadVersion` | VersionManager |
+| `GetLauncherConfig`, `GetJavaInstallations`, `UpdateLauncherConfig`, `AddJavaInstallation`, `UpdateJavaInstallation`, `DeleteJavaInstallation`, `SetDefaultJavaInstallation` | SettingsView (`GetJavaInstallations` also HomeView) |
+| `GetInstalledVersions`, `GetFabricVersions`, `GetForgeVersions`, `InstallFabricLoader`, `InstallForgeLoader`, `LaunchGame` | HomeView |
+| `AuthlibRefresh` | **none** |
+| `AuthlibValidate` | **none** |
+
+No frontend call targets an unbound method. The two unused bindings are
+escalated as `PENDING-DECISIONS.md` #11 (wire into account restore vs
+delete per the no-dead-code precedent).
+
+**Event consumer field defense** — both consumers tolerate missing fields:
+
+- `launcher:log` (HomeView.tsx `EventsOn` handler): null-payload guard,
+  `source || 'stdout'`, `line || ''` — a payload missing either field
+  renders as an empty stdout line, never throws.
+- `download:progress` (VersionManager.tsx `EventsOn` handler): null guard,
+  drops events without `version_id`, `stage || ''`, and computes the
+  percentage only when `total > 0` and `typeof downloaded === 'number'` —
+  missing numeric fields render a bare stage label, never divide by zero.
+
+**Escalations** (appended to `/home/lnb/SamuelPortal-docs/PENDING-DECISIONS.md`):
+#9 (GetJavaPath partial coverage, from item 6 above), #10 (cancellation
+plumbing, from item 11 above), #11 (unused auth bindings), #12 (bundle
+splitting).
