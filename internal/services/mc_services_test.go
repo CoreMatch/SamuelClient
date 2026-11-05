@@ -1594,6 +1594,114 @@ func TestBuildLaunchCommandInheritsFromMissingParent(t *testing.T) {
 	}
 }
 
+// Loader versions whose profiles carry Mojang-style `arguments` must get
+// them expanded on top of the standard args (verified against the live
+// forge 1.20.4/fabric 0.20.1 metadata shapes): string entries, {rules,
+// value} entries with OS filtering, and ${variable} substitution.
+func TestBuildLaunchCommandLoaderArguments(t *testing.T) {
+	gameDir := t.TempDir()
+	writeVersionJSON(t, gameDir, "1.99", testVersionJSON)
+	parentDir := filepath.Join(gameDir, "versions", "1.99")
+	if err := os.WriteFile(filepath.Join(parentDir, "1.99.jar"), []byte("jar"), 0644); err != nil {
+		t.Fatalf("write parent jar: %v", err)
+	}
+
+	childJSON := fmt.Sprintf(`{
+		"id": "1.99-forge47.2.0",
+		"inheritsFrom": "1.99",
+		"mainClass": "net.minecraftforge.bootstrap.ForgeBootstrap",
+		"arguments": {
+			"game": [
+				"--launchTarget", "forge_client",
+				{"rules": [{"action": "allow", "os": {"name": "windows"}}], "value": "--win-only"},
+				{"rules": [{"action": "allow"}, {"action": "disallow", "os": {"name": %q}}], "value": "--never"}
+			],
+			"jvm": [
+				"-Djava.net.preferIPv6Addresses=system",
+				"-Dlibrary_directory=${library_directory}"
+			]
+		}
+	}`, runtime.GOOS)
+	writeVersionJSON(t, gameDir, "1.99-forge47.2.0", childJSON)
+
+	svc := NewLauncherService()
+	args, err := svc.BuildLaunchCommand(
+		models.LauncherConfig{JavaPath: "/opt/java/bin/java", GameDir: gameDir},
+		&models.MinecraftVersion{VersionID: "1.99-forge47.2.0"},
+		&models.MinecraftAccount{Username: "Steve", UUID: "u", AccessToken: "at", ClientToken: "ct", AuthType: "offline"},
+	)
+	if err != nil {
+		t.Fatalf("BuildLaunchCommand: %v", err)
+	}
+	joined := strings.Join(args, "\x00")
+
+	contains := func(want string) {
+		t.Helper()
+		if !strings.Contains(joined, want) {
+			t.Errorf("args missing %q\nfull args: %v", want, args)
+		}
+	}
+	absent := func(unwanted string) {
+		t.Helper()
+		if strings.Contains(joined, unwanted) {
+			t.Errorf("args must not contain %q\nfull args: %v", unwanted, args)
+		}
+	}
+
+	// Forge-style game arguments are appended after the standard set.
+	contains("--launchTarget")
+	contains("forge_client")
+	contains("--username")
+	// JVM arguments are expanded with variable substitution.
+	contains("-Djava.net.preferIPv6Addresses=system")
+	contains("-Dlibrary_directory=" + filepath.Join(gameDir, "libraries"))
+	// OS rules filter entries.
+	if runtime.GOOS != "windows" {
+		absent("--win-only")
+	}
+	absent("--never")
+	// The child mainClass wins over the parent's.
+	contains("net.minecraftforge.bootstrap.ForgeBootstrap")
+}
+
+// Fabric profiles add a single jvm flag (-DFabricMcEmu); it must reach the
+// launch command.
+func TestBuildLaunchCommandFabricArguments(t *testing.T) {
+	gameDir := t.TempDir()
+	writeVersionJSON(t, gameDir, "1.99", testVersionJSON)
+	parentDir := filepath.Join(gameDir, "versions", "1.99")
+	if err := os.WriteFile(filepath.Join(parentDir, "1.99.jar"), []byte("jar"), 0644); err != nil {
+		t.Fatalf("write parent jar: %v", err)
+	}
+
+	childJSON := `{
+		"id": "fabric-loader-0.20.1-1.99",
+		"inheritsFrom": "1.99",
+		"mainClass": "net.fabricmc.loader.impl.launch.knot.KnotClient",
+		"arguments": {"game": [], "jvm": ["-DFabricMcEmu= net.minecraft.client.main.Main "]}
+	}`
+	writeVersionJSON(t, gameDir, "fabric-loader-0.20.1-1.99", childJSON)
+
+	svc := NewLauncherService()
+	args, err := svc.BuildLaunchCommand(
+		models.LauncherConfig{JavaPath: "/opt/java/bin/java", GameDir: gameDir},
+		&models.MinecraftVersion{VersionID: "fabric-loader-0.20.1-1.99"},
+		&models.MinecraftAccount{Username: "Steve", UUID: "u", AccessToken: "at", ClientToken: "ct", AuthType: "offline"},
+	)
+	if err != nil {
+		t.Fatalf("BuildLaunchCommand: %v", err)
+	}
+	found := false
+	for _, a := range args {
+		if a == "-DFabricMcEmu= net.minecraft.client.main.Main " {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("args missing the FabricMcEmu flag: %v", args)
+	}
+}
+
 func TestBuildLaunchCommandAuthlibInjector(t *testing.T) {
 	gameDir := t.TempDir()
 	writeVersionJSON(t, gameDir, "1.99", testVersionJSON)
