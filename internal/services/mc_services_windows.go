@@ -11,8 +11,8 @@ import (
 // console attached to the launcher and CREATE_NEW_PROCESS_GROUP so it is not
 // killed when the launcher (Wails) process exits.
 const (
-	detachedProcess        uint32 = 0x00000008
-	createNewProcessGroup  uint32 = 0x00000200
+	detachedProcess       uint32 = 0x00000008
+	createNewProcessGroup uint32 = 0x00000200
 )
 
 // configureDetachedProcess configures the SysProcAttr so the launched Java
