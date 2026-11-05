@@ -536,4 +536,3 @@ func (a *App) SetDefaultJavaInstallation(id int) *models.ApiResponse {
 	}
 	return &models.ApiResponse{Success: true}
 }
-
