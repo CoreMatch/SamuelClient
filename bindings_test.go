@@ -856,3 +856,37 @@ func TestGetInstalledVersionsLoaderInheritsParentJar(t *testing.T) {
 		t.Errorf("loader version = %+v (present=%v), want has_json+has_jar via parent", loaderGot, ok)
 	}
 }
+
+// ==================== match handoff preflight ====================
+
+// The join target is validated and reachability-checked before any game
+// process is spawned (INTEROP-SPEC §6); both failure paths are hermetic.
+func TestLaunchGameJoinTargetPreflight(t *testing.T) {
+	app := newTestApp()
+
+	base := LaunchGameRequest{
+		VersionID:   "1.99",
+		Username:    "u",
+		UUID:        "id",
+		AccessToken: "at",
+		ClientToken: "ct",
+	}
+
+	// Invalid host grammar (argument-injection attempt) is rejected.
+	bad := base
+	bad.JoinServer = "a --server evil"
+	bad.JoinPort = 25565
+	result := app.LaunchGame(bad)
+	if result.Success || !strings.Contains(result.Error, "invalid join target") {
+		t.Errorf("bad host: Success=%v Error=%q", result.Success, result.Error)
+	}
+
+	// Unreachable target degrades readably instead of launching.
+	unreachable := base
+	unreachable.JoinServer = "127.0.0.1"
+	unreachable.JoinPort = 1
+	result = app.LaunchGame(unreachable)
+	if result.Success || !strings.Contains(result.Error, "not reachable") {
+		t.Errorf("unreachable target: Success=%v Error=%q", result.Success, result.Error)
+	}
+}

@@ -1850,3 +1850,71 @@ func TestGetMinecraftDirUsesHome(t *testing.T) {
 		t.Errorf("GetMinecraftDir = %q, want %q", got, filepath.Join(home, ".minecraft"))
 	}
 }
+
+// Match handoff (INTEROP-SPEC §6): a configured join target becomes
+// --server/--port game arguments so the client connects straight into the
+// match server.
+func TestBuildLaunchCommandJoinTarget(t *testing.T) {
+	gameDir := t.TempDir()
+	writeVersionJSON(t, gameDir, "1.99", testVersionJSON)
+
+	svc := NewLauncherService()
+	args, err := svc.BuildLaunchCommand(
+		models.LauncherConfig{
+			JavaPath:   "/opt/java/bin/java",
+			MaxMemory:  2048,
+			MinMemory:  512,
+			GameDir:    gameDir,
+			JoinServer: "bw.match.local",
+			JoinPort:   25565,
+		},
+		&models.MinecraftVersion{VersionID: "1.99"},
+		&models.MinecraftAccount{
+			Username: "Steve", UUID: "11111111-2222-3333-4444-555555555555",
+			AccessToken: "at", ClientToken: "ct", AuthType: "offline",
+		},
+	)
+	if err != nil {
+		t.Fatalf("BuildLaunchCommand: %v", err)
+	}
+
+	var serverIdx, portIdx = -1, -1
+	for i, a := range args {
+		if a == "--server" {
+			serverIdx = i
+		}
+		if a == "--port" {
+			portIdx = i
+		}
+	}
+	if serverIdx < 0 || serverIdx+1 >= len(args) || args[serverIdx+1] != "bw.match.local" {
+		t.Errorf("--server missing or wrong value: %v", args)
+	}
+	if portIdx < 0 || portIdx+1 >= len(args) || args[portIdx+1] != "25565" {
+		t.Errorf("--port missing or wrong value: %v", args)
+	}
+}
+
+// Without a join target the extra arguments must not appear.
+func TestBuildLaunchCommandWithoutJoinTarget(t *testing.T) {
+	gameDir := t.TempDir()
+	writeVersionJSON(t, gameDir, "1.99", testVersionJSON)
+
+	svc := NewLauncherService()
+	args, err := svc.BuildLaunchCommand(
+		models.LauncherConfig{JavaPath: "/opt/java/bin/java", MaxMemory: 2048, MinMemory: 512, GameDir: gameDir},
+		&models.MinecraftVersion{VersionID: "1.99"},
+		&models.MinecraftAccount{
+			Username: "Steve", UUID: "11111111-2222-3333-4444-555555555555",
+			AccessToken: "at", ClientToken: "ct", AuthType: "offline",
+		},
+	)
+	if err != nil {
+		t.Fatalf("BuildLaunchCommand: %v", err)
+	}
+	for _, a := range args {
+		if a == "--server" {
+			t.Errorf("--server present without a join target: %v", args)
+		}
+	}
+}
