@@ -28,10 +28,10 @@ const smokeVersionID = "1.99-smoke"
 // assets land under assets/objects/<first two chars>/<hash>.
 const smokeAssetHash = "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
 
-// fakeYggdrasil serves the two endpoints the login flow touches:
+// fakeHRPAuth serves the two endpoints the HRPAuth login flow touches:
 // GET / (metadata, also prefetched before launch) and POST
 // /authserver/authenticate.
-func fakeYggdrasil(t *testing.T) *httptest.Server {
+func fakeHRPAuth(t *testing.T) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -129,16 +129,17 @@ func TestSmokeLoginInstallLaunch(t *testing.T) {
 		t.Skipf("smoke test uses a shell-script java; GOOS=%s", runtime.GOOS)
 	}
 
-	authSrv := fakeYggdrasil(t)
+	authSrv := fakeHRPAuth(t)
 	bmclSrv := fakeBMCLAPI(t)
+	pointHRPAuthAt(t, authSrv.URL)
 
 	app := newTestApp()
 	app.bmclService = services.NewBMCLAPIServiceWithBaseURL(bmclSrv.URL)
 
-	// 1. Login against the fake Yggdrasil server.
-	login := app.AuthlibLogin(authSrv.URL, "smoke-user", "smoke-password", "")
+	// 1. Login against the fake HRPAuth endpoint.
+	login := app.HRPAuthLogin("smoke-user", "smoke-password", "")
 	if !login.Success {
-		t.Fatalf("AuthlibLogin failed: %s", login.Error)
+		t.Fatalf("HRPAuthLogin failed: %s", login.Error)
 	}
 
 	// 2. Install the version into a scratch game directory.
@@ -159,8 +160,8 @@ func TestSmokeLoginInstallLaunch(t *testing.T) {
 		}
 	}
 
-	// 3. Launch with the fake java. The authlib-injector auth type also
-	//    exercises the pre-launch metadata prefetch against fakeYggdrasil.
+	// 3. Launch with the fake java. The hrpauth auth type also exercises the
+	//    pre-launch metadata prefetch against fakeHRPAuth.
 	launch := app.LaunchGame(LaunchGameRequest{
 		VersionID:   smokeVersionID,
 		VersionType: "release",
@@ -168,8 +169,7 @@ func TestSmokeLoginInstallLaunch(t *testing.T) {
 		UUID:        "p-smoke",
 		AccessToken: "smoke-access",
 		ClientToken: "smoke-client",
-		AuthType:    "authlib-injector",
-		AuthServer:  authSrv.URL,
+		AuthType:    "hrpauth",
 		GameDir:     gameDir,
 		JavaPath:    fakeJava(t),
 	})
