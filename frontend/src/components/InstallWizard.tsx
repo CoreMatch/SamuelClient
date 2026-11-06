@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Box, Boxes, Check, Cpu, Feather, Flame, Images, Package, Puzzle } from 'lucide-react';
+import { Box, Feather, Flame } from 'lucide-react';
+import { Asset } from '@ha/ui';
 import {
   GetVersions,
   GetFabricVersions,
@@ -240,7 +241,7 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
                       : 'border border-edge text-ink-faint'
                 }`}
               >
-                {step > i ? <Check className="size-4" aria-hidden /> : i + 1}
+                {step > i ? <Asset id="icon-check" size={16} /> : i + 1}
               </span>
               <span className={`text-sm font-medium ${step >= i ? 'text-ink' : 'text-ink-faint'}`}>{label}</span>
             </span>
@@ -284,7 +285,10 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
                     index > 0 ? 'border-t border-edge' : ''
                   } ${selectedVersion?.id === version.id ? 'bg-white/6' : ''}`}
                 >
-                  <span className="text-base font-medium text-ink">{version.id}</span>
+                  <span className="flex items-center gap-2.5">
+                    <Asset id="icon-version" size={20} className="text-ink-muted" />
+                    <span className="text-base font-medium text-ink">{version.id}</span>
+                  </span>
                   <span className="flex items-center gap-2">
                     <Badge
                       tone={
@@ -450,19 +454,11 @@ function installStepKey(stage: string): 'install.step.jar' | 'install.step.libra
   }
 }
 
-// Graphical stage markers for the install progress row (text assists only).
+// Graphical stage markers for the install progress row (text assists only):
+// file-download stages share the download glyph, the loader stage its own.
 function stageIcon(stage: string) {
-  const cls = 'size-4 shrink-0';
-  switch (stage) {
-    case 'library':
-      return <Boxes className={cls} aria-hidden />;
-    case 'native':
-      return <Cpu className={cls} aria-hidden />;
-    case 'asset':
-      return <Images className={cls} aria-hidden />;
-    case 'loader':
-      return <Puzzle className={cls} aria-hidden />;
-    default:
-      return <Package className={cls} aria-hidden />;
+  if (stage === 'loader') {
+    return <Asset id="icon-loader" size={16} />;
   }
+  return <Asset id="icon-download" size={16} />;
 }

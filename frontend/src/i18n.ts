@@ -71,7 +71,7 @@ const en = {
   'wizard.loaderVersionsData': 'the loader list',
   'wizard.summary': 'Minecraft {version} with {loader}.',
   'wizard.summaryVanilla': 'Minecraft {version} (vanilla).',
-  'wizard.installSuccess': 'Installed {version}. It is ready to play.',
+  'wizard.installSuccess': 'Installed {version}.',
   'wizard.installFailed': 'Installation failed: {error}',
   'install.step.jar': 'Game file',
   'install.step.library': 'Libraries',
