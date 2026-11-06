@@ -175,6 +175,8 @@ func (a *App) followDeepLink(link *interop.DeepLink) {
 						})
 						return
 					}
+					fmt.Printf("[interop] handoff pulled from sender: %s match=%s target=%s:%d\n",
+						payload.HandoffID, payload.Match.MatchID, payload.Match.JoinTarget.Host, payload.Match.JoinTarget.Port)
 					if aerr := a.acceptHandoff(payload); aerr != nil {
 						// A push arrived first (slot busy) — that copy wins.
 						fmt.Printf("[interop] pull skipped: %v\n", aerr)
