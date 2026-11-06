@@ -197,12 +197,13 @@ import resolves (tsc passes). Diff against frontend call sites:
 | `GetVersions`, `DownloadVersion` | VersionManager |
 | `GetLauncherConfig`, `GetJavaInstallations`, `UpdateLauncherConfig`, `AddJavaInstallation`, `UpdateJavaInstallation`, `DeleteJavaInstallation`, `SetDefaultJavaInstallation` | SettingsView (`GetJavaInstallations` also HomeView) |
 | `GetInstalledVersions`, `GetFabricVersions`, `GetForgeVersions`, `InstallFabricLoader`, `InstallForgeLoader`, `LaunchGame` | HomeView |
-| `AuthlibRefresh` | **none** |
-| `AuthlibValidate` | **none** |
+| `AuthlibRefresh` | account restore (`accountStorage.ts`, wired on `fix/nightly-followups`) |
+| `AuthlibValidate` | account restore (`accountStorage.ts`, wired on `fix/nightly-followups`) |
 
-No frontend call targets an unbound method. The two unused bindings are
-escalated as `PENDING-DECISIONS.md` #11 (wire into account restore vs
-delete per the no-dead-code precedent).
+No frontend call targets an unbound method. The two bindings that were
+unused at patrol time are now wired into the localStorage account restore
+(validate silently, refresh when stale, prompt re-login when both fail —
+`PENDING-DECISIONS.md` #11 resolved).
 
 **Event consumer field defense** — both consumers tolerate missing fields:
 
@@ -224,3 +225,13 @@ covers all 19 bindings; hermetic binding-level success tests added for
 #9 (GetJavaPath partial coverage, from item 6 above), #10 (cancellation
 plumbing, from item 11 above), #11 (unused auth bindings), #12 (bundle
 splitting).
+
+**Follow-up resolutions (branch `fix/nightly-followups`)**: #11 resolved by
+wiring `AuthlibValidate`/`AuthlibRefresh` into the account restore; #12
+resolved as status quo (`chunkSizeWarningLimit` raised to 700, no code
+splitting); the govulncheck item (#13 in `PENDING-DECISIONS.md`) resolved
+for this repo: toolchain `go1.26.10`, `x/net` v0.60.0 (x/text v0.42.0,
+x/sys v0.48.0, x/crypto v0.57.0 followed), govulncheck reports 0
+vulnerabilities affecting SamuelClient code. Remaining module-level note:
+wails v2.12.0 GO-2026-6862 is not called by this code (fixed in v2.13.0,
+upgrade pending decision).
