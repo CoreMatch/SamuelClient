@@ -1,0 +1,111 @@
+# On-demand artifact publishing for milestone releases (ci.yml never
+# publishes). Triggered manually (workflow_dispatch) with a git ref: checks
+# out that ref, builds the Linux binary and the mingw cross-compiled Windows
+# .exe, then creates the GitHub Release for the ref — or uploads to it when
+# the Release already exists. A failed Windows cross-compile does not block
+# the Linux artifact; the step stays visibly failed so the reason is honest.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to build and release (tag, branch, or SHA)'
+        required: true
+        default: 'v0.1.0'
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_REF: ${{ inputs.ref }}
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the requested ref
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      # The frontend consumes @ha/ui through a file: dependency (a sibling of
+      # this repository), so clone it next to the workspace first.
+      - name: Checkout @ha/ui design system
+        run: git clone --depth 1 https://github.com/CoreMatch/ha-ui.git ../ha-ui
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev pkg-config \
+            gcc-mingw-w64-x86-64
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install @ha/ui dependencies
+        run: cd ../ha-ui && npm ci
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Stub frontend dist for embed
+        run: |
+          mkdir -p frontend/dist
+          touch frontend/dist/.gitkeep
+
+      - name: Generate Wails bindings
+        run: wails generate module
+
+      - name: Build Linux binary
+        run: wails build -o SamuelClient-linux-amd64
+
+      - name: Build Windows binary (mingw cross-compile)
+        id: windows-build
+        continue-on-error: true
+        env:
+          CC: x86_64-w64-mingw32-gcc
+        run: wails build -platform windows/amd64 -o SamuelClient-windows-amd64.exe
+
+      - name: Collect artifacts
+        run: |
+          SAFE_REF="${RELEASE_REF//\//-}"
+          mkdir -p release-assets
+          cp build/bin/SamuelClient-linux-amd64 "release-assets/SamuelClient-${SAFE_REF}-linux-amd64"
+          if [ -f build/bin/SamuelClient-windows-amd64.exe ]; then
+            cp build/bin/SamuelClient-windows-amd64.exe "release-assets/SamuelClient-${SAFE_REF}-windows-amd64.exe"
+          fi
+          {
+            echo "## Release artifacts for ${RELEASE_REF}"
+            ls -l release-assets
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create or update Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > /tmp/release-notes.md <<'NOTES'
+          Historical milestone snapshot of SamuelClient, provided as-is.
+
+          This release preserves the project state at the tagged commit as a
+          reference point. It carries no guarantee of updates, bug fixes, or
+          ongoing maintenance, and does not constitute a support baseline.
+          NOTES
+          if gh release view "$RELEASE_REF" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_REF" release-assets/* --clobber
+          else
+            gh release create "$RELEASE_REF" release-assets/* \
+              --title "$RELEASE_REF" --notes-file /tmp/release-notes.md
+          fi
