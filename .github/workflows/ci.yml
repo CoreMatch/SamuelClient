@@ -25,6 +25,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # The frontend consumes the shared @ha/ui design system through a
+      # `file:` dependency (frontend/package.json -> ../../ha-ui, i.e. a
+      # sibling of this repository), so the package must be checked out
+      # next to the workspace before `npm ci` runs.
+      - name: Checkout @ha/ui design system
+        uses: actions/checkout@v7
+        with:
+          repository: CoreMatch/ha-ui
+          path: ../ha-ui
+
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
