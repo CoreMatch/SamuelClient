@@ -12,6 +12,14 @@ vi.mock('../../wailsjs/go/main/App', () => ({
 
 const mockAuthlibLogin = vi.mocked(AuthlibLogin);
 
+// Opens the auth-type select (first combobox) and picks an option by name.
+async function selectAuthType(name: string) {
+  fireEvent.keyDown(screen.getAllByRole('combobox')[0], { key: 'Enter' });
+  const option = await screen.findByRole('option', { name });
+  fireEvent.pointerUp(option);
+  fireEvent.click(option);
+}
+
 describe('LoginView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -79,10 +87,7 @@ describe('LoginView', () => {
     render(<LoginView onLoginSuccess={onLoginSuccess} onSwitchToAccounts={vi.fn()} />);
 
     // Switch the auth type select to "Offline (Cracked)".
-    const comboboxes = screen.getAllByRole('combobox');
-    fireEvent.mouseDown(comboboxes[0]);
-    const option = await screen.findByRole('option', { name: 'Offline (Cracked)' });
-    fireEvent.click(option);
+    await selectAuthType('Offline (Cracked)');
 
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'offline-steve' } });
     fireEvent.click(screen.getByRole('button', { name: 'Login' }));
@@ -99,9 +104,7 @@ describe('LoginView', () => {
     const onLoginSuccess = vi.fn();
     render(<LoginView onLoginSuccess={onLoginSuccess} onSwitchToAccounts={vi.fn()} />);
 
-    const comboboxes = screen.getAllByRole('combobox');
-    fireEvent.mouseDown(comboboxes[0]);
-    fireEvent.click(await screen.findByRole('option', { name: 'Offline (Cracked)' }));
+    await selectAuthType('Offline (Cracked)');
 
     fireEvent.click(screen.getByRole('button', { name: 'Login' }));
 

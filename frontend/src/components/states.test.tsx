@@ -5,7 +5,7 @@ import { LoadingSkeleton, ErrorState, EmptyState } from './states';
 describe('unified states', () => {
   it('renders skeleton rows while loading', () => {
     const { container } = render(<LoadingSkeleton rows={4} />);
-    expect(container.querySelectorAll('.MuiSkeleton-root').length).toBe(4);
+    expect(container.querySelectorAll('.skeleton-row').length).toBe(4);
   });
 
   it('shows a readable error with a retry action', () => {
