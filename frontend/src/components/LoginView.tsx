@@ -1,29 +1,11 @@
 import { useState } from 'react';
-import {
-  Box,
-  Paper,
-  TextField,
-  Button,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  CircularProgress,
-  Alert,
-  Collapse,
-  IconButton,
-  InputAdornment,
-} from '@mui/material';
-import {
-  Visibility,
-  VisibilityOff,
-  Person,
-  Lock,
-  Http,
-  Refresh,
-} from '@mui/icons-material';
+import { Eye, EyeOff, RefreshCw } from 'lucide-react';
 import { GetAuthlibMeta, AuthlibLogin } from '../../wailsjs/go/main/App';
-import { tokens } from '../theme';
+import { t } from '../i18n';
+import { Button, IconButton } from '../ui/button';
+import { Select } from '../ui/select';
+import { TextField, Field } from '../ui/field';
+import { Callout } from '../ui/callout';
 
 interface AuthServer {
   id: string;
@@ -64,10 +46,11 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
   const [authServers, setAuthServers] = useState<AuthServer[]>(DEFAULT_AUTH_SERVERS);
   const [loadingServers, setLoadingServers] = useState(false);
 
-  const handleAuthTypeChange = (type: 'offline' | 'authlib-injector') => {
-    setAuthType(type);
+  const handleAuthTypeChange = (type: string) => {
+    const next = type as 'offline' | 'authlib-injector';
+    setAuthType(next);
     setError('');
-    if (type === 'offline') {
+    if (next === 'offline') {
       setAuthServer('offline');
     } else {
       // Auto-select HRPAUTH as default when switching to authlib-injector
@@ -98,14 +81,14 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
         };
         setAuthServers(prev => {
           const filtered = prev.filter(s => s.id !== 'custom');
-          return [...filtered, newServer, { id: 'custom', name: 'Custom Server', url: 'custom' }];
+          return [...filtered, newServer, { id: 'custom', name: t('login.customServer'), url: 'custom' }];
         });
         setAuthServer(serverUrl);
       } else {
-        setError(result.error || 'Failed to fetch auth server info');
+        setError(result.error || t('login.metaFailed'));
       }
     } catch {
-      setError('Failed to connect to auth server');
+      setError(t('login.metaConnect'));
     } finally {
       setLoadingServers(false);
     }
@@ -129,7 +112,7 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
       if (authType === 'offline') {
         // Offline mode login
         if (!username.trim()) {
-          setError('Username is required');
+          setError(t('login.usernameRequired'));
           setLoading(false);
           return;
         }
@@ -147,12 +130,12 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
       } else {
         // Authlib-injector login
         if (!authServer || authServer === 'custom' || !authServer.trim()) {
-          setError('Please select or add an auth server');
+          setError(t('login.selectServer'));
           setLoading(false);
           return;
         }
         if (!username.trim() || !password.trim()) {
-          setError('Username and password are required');
+          setError(t('login.credentialsRequired'));
           setLoading(false);
           return;
         }
@@ -165,7 +148,7 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
         if (result.success && result.data) {
           const profile = result.data.selectedProfile || result.data.availableProfiles?.[0];
           if (!profile) {
-            setError('No profile found');
+            setError(t('login.noProfile'));
             setLoading(false);
             return;
           }
@@ -178,208 +161,119 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
             authServer: serverUrl,
           });
         } else {
-          setError(result.error || 'Login failed');
+          setError(result.error || t('login.failed'));
         }
       }
     } catch {
-      setError('Login failed. Please try again.');
+      setError(t('login.failedRetry'));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
-        p: 2,
-      }}
-    >
-      <Paper
-        elevation={6}
-        sx={{
-          p: 4,
-          maxWidth: 420,
-          width: '100%',
-          backgroundColor: 'background.paper',
-          borderRadius: tokens.radius.lg,
-        }}
-      >
-        <Box sx={{ textAlign: 'center', mb: 3 }}>
-        </Box>
+    <div className="mx-auto mt-14 w-full max-w-[400px]">
+      <div className="rounded-lg border border-edge bg-panel p-8">
+        <h1 className="text-xl font-semibold text-ink">{t('login.title')}</h1>
 
-        <Box sx={{ mb: 3 }}>
-          <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel sx={{ color: 'text.secondary' }}>Authentication Type</InputLabel>
+        <div className="mt-6 flex flex-col gap-4">
+          <Field label={t('login.authType')} htmlFor="login-auth-type">
             <Select
+              ariaLabel={t('login.authType')}
               value={authType}
-              label="Authentication Type"
-              onChange={(e) => handleAuthTypeChange(e.target.value as 'offline' | 'authlib-injector')}
-              sx={{
-                color: 'white',
-                '.MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
-                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.accent },
-                '.MuiSvgIcon-root': { color: 'text.secondary' },
-              }}
-            >
-              <MenuItem value="authlib-injector">Yggdrasil API</MenuItem>
-              <MenuItem value="offline">Offline (Cracked)</MenuItem>
-            </Select>
-          </FormControl>
+              onValueChange={handleAuthTypeChange}
+              options={[
+                { value: 'authlib-injector', label: t('login.yggdrasil') },
+                { value: 'offline', label: t('login.offline') },
+              ]}
+            />
+          </Field>
 
           {authType === 'authlib-injector' && (
             <>
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <InputLabel sx={{ color: 'text.secondary' }}>Auth Server</InputLabel>
+              <Field label={t('login.authServer')} htmlFor="login-auth-server">
                 <Select
+                  ariaLabel={t('login.authServer')}
                   value={authServer}
-                  label="Auth Server"
-                  onChange={(e) => handleAuthServerChange(e.target.value)}
-                  sx={{
-                    color: 'white',
-                    '.MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
-                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.accent },
-                    '.MuiSvgIcon-root': { color: 'text.secondary' },
-                  }}
-                >
-                  {authServers.map((server) => (
-                    <MenuItem key={server.id} value={server.url || server.id}>
-                      {server.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                  onValueChange={handleAuthServerChange}
+                  options={authServers.map(server => ({
+                    value: server.url || server.id,
+                    label: server.name,
+                  }))}
+                />
+              </Field>
 
               {authServer === 'custom' && (
-                <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                <div className="flex items-end gap-2">
                   <TextField
-                    fullWidth
-                    label="Custom Server URL"
+                    className="flex-1"
+                    label={t('login.customUrl')}
                     value={customAuthServer}
-                    onChange={(e) => setCustomAuthServer(e.target.value)}
+                    onChange={e => setCustomAuthServer(e.target.value)}
                     placeholder="https://auth.example.com"
-                    size="small"
-                    slotProps={{
-                      input: {
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <Http sx={{ color: 'text.secondary' }} />
-                          </InputAdornment>
-                        ),
-                      },
-                    }}
-                    sx={{
-                      '& .MuiInputBase-input': { color: 'white' },
-                      '& .MuiInputLabel-root': { color: 'text.secondary' },
-                      '& .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
-                    }}
                   />
                   <Button
-                    variant="contained"
+                    variant="secondary"
                     onClick={handleAddCustomServer}
                     disabled={loadingServers || !customAuthServer.trim()}
-                    sx={{ minWidth: 'auto' }}
+                    loading={loadingServers}
+                    aria-label={t('login.addServer')}
+                    className="shrink-0"
                   >
-                    {loadingServers ? <CircularProgress size={20} color="inherit" /> : <Refresh />}
+                    {!loadingServers && <RefreshCw className="size-4" aria-hidden />}
                   </Button>
-                </Box>
+                </div>
               )}
             </>
           )}
-        </Box>
 
-        <Collapse in={!!error}>
-          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-            {error}
-          </Alert>
-        </Collapse>
+          {error && (
+            <Callout tone="danger" onDismiss={() => setError('')}>
+              {error}
+            </Callout>
+          )}
 
-        <TextField
-          fullWidth
-          label="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          margin="normal"
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Person sx={{ color: 'text.secondary' }} />
-                </InputAdornment>
-              ),
-            },
-          }}
-          sx={{
-            '& .MuiInputBase-input': { color: 'white' },
-            '& .MuiInputLabel-root': { color: 'text.secondary' },
-            '& .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
-            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.accent },
-          }}
-        />
-
-        {authType === 'authlib-injector' && (
           <TextField
-            fullWidth
-            label="Password"
-            type={showPassword ? 'text' : 'password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            margin="normal"
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Lock sx={{ color: 'text.secondary' }} />
-                </InputAdornment>
-              ),
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
-                    {showPassword ? <VisibilityOff sx={{ color: 'text.secondary' }} /> : <Visibility sx={{ color: 'text.secondary' }} />}
-                  </IconButton>
-                </InputAdornment>
-              ),
-            },
-          }}
-            sx={{
-              '& .MuiInputBase-input': { color: 'white' },
-              '& .MuiInputLabel-root': { color: 'text.secondary' },
-              '& .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
-              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.accent },
-            }}
+            label={t('login.username')}
+            value={username}
+            onChange={e => setUsername(e.target.value)}
+            autoComplete="username"
           />
-        )}
 
-        <Button
-          fullWidth
-          variant="contained"
-          onClick={handleLogin}
-          disabled={loading}
-          sx={{
-            mt: 3,
-            mb: 2,
-            py: 1.5,
-            fontSize: '1.1rem',
-          }}
-        >
-          {loading ? <CircularProgress size={24} color="inherit" /> : 'Login'}
-        </Button>
+          {authType === 'authlib-injector' && (
+            <Field label={t('login.password')} htmlFor="login-password">
+              <div className="relative">
+                <input
+                  id="login-password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  className="h-9 w-full rounded-md border border-edge bg-raised px-3 pr-10 text-sm text-ink placeholder:text-ink-faint transition-colors duration-150 ease-standard hover:border-edge-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong"
+                />
+                <IconButton
+                  label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-1 top-1/2 -translate-y-1/2"
+                >
+                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </IconButton>
+              </div>
+            </Field>
+          )}
 
-        <Box sx={{ textAlign: 'center' }}>
-          <Button
-            variant="text"
-            onClick={onSwitchToAccounts}
-            sx={{ color: 'text.secondary', textTransform: 'none' }}
-          >
-            Manage Accounts
+          <Button size="lg" className="mt-2 w-full" onClick={handleLogin} loading={loading}>
+            {t('login.submit')}
           </Button>
-        </Box>
-      </Paper>
-    </Box>
+
+          <div className="text-center">
+            <Button variant="ghost" size="sm" onClick={onSwitchToAccounts}>
+              {t('login.manageAccounts')}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

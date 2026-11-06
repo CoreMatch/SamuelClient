@@ -1,22 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  FormControl,
-  InputLabel,
-  LinearProgress,
-  List,
-  ListItemButton,
-  ListItemText,
-  MenuItem,
-  Select,
-  Step,
-  StepLabel,
-  Stepper,
-  Typography,
-} from '@mui/material';
+import { Check } from 'lucide-react';
 import {
   GetVersions,
   GetFabricVersions,
@@ -28,7 +11,13 @@ import {
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 import { LoadingSkeleton, ErrorState } from './states';
 import { t } from '../i18n';
-import { tokens } from '../theme';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { Select } from '../ui/select';
+import { Field } from '../ui/field';
+import { Progress } from '../ui/progress';
+import { Callout } from '../ui/callout';
+import { RadioCards } from '../ui/radio-cards';
 
 // InstallWizard implements the three-step install flow shared by HMCL/PCL2
 // (launcher research 03 §8.3): select version → select loader → confirm and
@@ -232,252 +221,225 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
 
   const filteredVersions = versions.filter(v => typeFilter === 'all' || v.type === typeFilter);
 
+  const stepLabels = [t('wizard.step.version'), t('wizard.step.loader'), t('wizard.step.confirm')];
+
   return (
-    <Box>
-      <Stepper activeStep={step} sx={{ mb: 3 }}>
-        {[t('wizard.step.version'), t('wizard.step.loader'), t('wizard.step.confirm')].map(label => (
-          <Step key={label}>
-            <StepLabel>{label}</StepLabel>
-          </Step>
+    <div>
+      {/* Step indicator */}
+      <ol className="mb-6 flex items-center gap-3">
+        {stepLabels.map((label, i) => (
+          <li key={label} className={`flex items-center gap-3 ${i < stepLabels.length - 1 ? 'flex-1' : ''}`}>
+            <span className="flex items-center gap-2">
+              <span
+                aria-current={step === i ? 'step' : undefined}
+                className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                  step > i
+                    ? 'bg-accent text-on-accent'
+                    : step === i
+                      ? 'border border-edge-strong bg-white/8 text-ink'
+                      : 'border border-edge text-ink-faint'
+                }`}
+              >
+                {step > i ? <Check className="size-3.5" aria-hidden /> : i + 1}
+              </span>
+              <span className={`text-xs font-medium ${step >= i ? 'text-ink' : 'text-ink-faint'}`}>{label}</span>
+            </span>
+            {i < stepLabels.length - 1 && <span className="h-px flex-1 bg-border" aria-hidden />}
+          </li>
         ))}
-      </Stepper>
+      </ol>
 
       {step === 0 && (
-        <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 2, flexWrap: 'wrap' }}>
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+        <div>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-ink-faint">
               {t('versions.recommended', { versions: REVOLUTION_VERSIONS.join(', ') })}
-            </Typography>
-            <FormControl size="small" sx={{ minWidth: 160 }}>
-              <InputLabel>{t('versions.filterType')}</InputLabel>
+            </p>
+            <div className="w-44">
               <Select
+                ariaLabel={t('versions.filterType')}
                 value={typeFilter}
-                label={t('versions.filterType')}
-                onChange={(e) => setTypeFilter(e.target.value)}
-              >
-                <MenuItem value="all">All</MenuItem>
-                <MenuItem value="release">Release</MenuItem>
-                <MenuItem value="snapshot">Snapshot</MenuItem>
-                <MenuItem value="old_beta">Old Beta</MenuItem>
-                <MenuItem value="old_alpha">Old Alpha</MenuItem>
-              </Select>
-            </FormControl>
-          </Box>
+                onValueChange={setTypeFilter}
+                options={[
+                  { value: 'all', label: t('versions.filter.all') },
+                  { value: 'release', label: t('versions.filter.release') },
+                  { value: 'snapshot', label: t('versions.filter.snapshot') },
+                  { value: 'old_beta', label: t('versions.filter.oldBeta') },
+                  { value: 'old_alpha', label: t('versions.filter.oldAlpha') },
+                ]}
+              />
+            </div>
+          </div>
 
           {loading ? (
             <LoadingSkeleton rows={6} />
           ) : fetchError ? (
             <ErrorState data={t('versions.listData')} onRetry={fetchVersions} />
           ) : (
-            <List
-              sx={{
-                backgroundColor: 'background.paper',
-                borderRadius: tokens.radius.lg,
-                maxHeight: 420,
-                overflowY: 'auto',
-              }}
-            >
-              {filteredVersions.map(version => (
-                <ListItemButton
+            <div className="max-h-[420px] overflow-y-auto rounded-lg border border-edge bg-panel">
+              {filteredVersions.map((version, index) => (
+                <button
                   key={version.id}
-                  selected={selectedVersion?.id === version.id}
+                  type="button"
                   onClick={() => setSelectedVersion(version)}
-                  sx={{
-                    borderRadius: tokens.radius.md,
-                    '&.Mui-selected': { backgroundColor: 'rgba(233, 69, 96, 0.16)' },
-                  }}
+                  aria-pressed={selectedVersion?.id === version.id}
+                  className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-white/4 ${
+                    index > 0 ? 'border-t border-edge' : ''
+                  } ${selectedVersion?.id === version.id ? 'bg-white/6' : ''}`}
                 >
-                  <ListItemText
-                    primary={<Typography sx={{ color: 'text.primary' }}>{version.id}</Typography>}
-                    secondary={
-                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 0.5 }}>
-                        <Chip
-                          size="small"
-                          label={version.type}
-                          sx={{
-                            height: 20,
-                            fontSize: '0.7rem',
-                            backgroundColor:
-                              version.type === 'release'
-                                ? tokens.color.success
-                                : version.type === 'snapshot'
-                                  ? tokens.color.warning
-                                  : 'rgba(255, 255, 255, 0.24)',
-                            color: tokens.color.deep,
-                          }}
-                        />
-                        {REVOLUTION_VERSIONS.includes(version.id) && (
-                          <Chip
-                            size="small"
-                            label="Revolution"
-                            sx={{ height: 20, fontSize: '0.7rem', backgroundColor: tokens.color.info, color: tokens.color.deep }}
-                          />
-                        )}
-                      </Box>
-                    }
-                  />
-                </ListItemButton>
+                  <span className="text-sm font-medium text-ink">{version.id}</span>
+                  <span className="flex items-center gap-1.5">
+                    <Badge
+                      tone={
+                        version.type === 'release'
+                          ? 'success'
+                          : version.type === 'snapshot'
+                            ? 'warning'
+                            : 'neutral'
+                      }
+                    >
+                      {version.type}
+                    </Badge>
+                    {REVOLUTION_VERSIONS.includes(version.id) && <Badge tone="info">Revolution</Badge>}
+                  </span>
+                </button>
               ))}
-            </List>
+            </div>
           )}
 
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-            <Button variant="contained" onClick={goNext} disabled={!selectedVersion}>
+          <div className="mt-4 flex justify-end">
+            <Button onClick={goNext} disabled={!selectedVersion}>
               {t('wizard.next')}
             </Button>
-          </Box>
-        </Box>
+          </div>
+        </div>
       )}
 
       {step === 1 && selectedVersion && (
-        <Box>
-          {loadersLoading && <LinearProgress sx={{ mb: 2, borderRadius: 3 }} />}
+        <div>
+          {loadersLoading && (
+            <div className="mb-4">
+              <Progress value={null} />
+            </div>
+          )}
           {loadersError && (
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              {loadersError}
-            </Alert>
+            <div className="mb-4">
+              <Callout tone="warning">{loadersError}</Callout>
+            </div>
           )}
 
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 2 }}>
-            {(['vanilla', 'fabric', 'forge'] as LoaderType[]).map(kind => (
-              <Box
-                key={kind}
-                onClick={() => {
-                  setLoaderType(kind);
-                  setSelectedLoaderVersion(kind === 'fabric' ? fabricVersions[0] || '' : kind === 'forge' ? forgeVersions[0] || '' : '');
-                }}
-                sx={{
-                  p: 2,
-                  borderRadius: tokens.radius.lg,
-                  cursor: 'pointer',
-                  backgroundColor: 'background.paper',
-                  border: loaderType === kind ? `2px solid ${tokens.color.accent}` : `2px solid ${tokens.color.divider}`,
-                }}
-              >
-                <Typography sx={{ color: 'text.primary', fontWeight: 600 }}>
-                  {kind === 'vanilla' ? t('wizard.vanilla') : kind === 'fabric' ? 'Fabric' : 'Forge'}
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {kind === 'vanilla'
-                    ? t('wizard.vanillaHint')
-                    : kind === 'fabric'
-                      ? t('wizard.fabricHint')
-                      : t('wizard.forgeHint')}
-                </Typography>
-                {kind !== 'vanilla' && !loadersLoading && (
-                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    {(kind === 'fabric' ? fabricVersions : forgeVersions).length} loader versions available
-                  </Typography>
-                )}
-              </Box>
-            ))}
-          </Box>
+          <RadioCards
+            ariaLabel={t('wizard.step.loader')}
+            value={loaderType}
+            onValueChange={kind => {
+              const next = kind as LoaderType;
+              setLoaderType(next);
+              setSelectedLoaderVersion(
+                next === 'fabric' ? fabricVersions[0] || '' : next === 'forge' ? forgeVersions[0] || '' : '',
+              );
+            }}
+            options={[
+              { value: 'vanilla', title: t('wizard.vanilla'), description: t('wizard.vanillaHint') },
+              {
+                value: 'fabric',
+                title: 'Fabric',
+                description: t('wizard.fabricHint'),
+                meta: !loadersLoading ? t('wizard.loaderCount', { count: fabricVersions.length }) : undefined,
+              },
+              {
+                value: 'forge',
+                title: 'Forge',
+                description: t('wizard.forgeHint'),
+                meta: !loadersLoading ? t('wizard.loaderCount', { count: forgeVersions.length }) : undefined,
+              },
+            ]}
+          />
 
           {loaderType !== 'vanilla' && (
-            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-              <InputLabel>Loader version</InputLabel>
-              <Select
-                value={selectedLoaderVersion}
-                label="Loader version"
-                onChange={(e) => setSelectedLoaderVersion(e.target.value)}
-              >
-                {(loaderType === 'fabric' ? fabricVersions : forgeVersions).map(v => (
-                  <MenuItem key={v} value={v}>
-                    {v}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <div className="mt-4">
+              <Field label={t('wizard.loaderVersion')} htmlFor="wizard-loader-version">
+                <Select
+                  ariaLabel={t('wizard.loaderVersion')}
+                  value={selectedLoaderVersion}
+                  onValueChange={setSelectedLoaderVersion}
+                  options={(loaderType === 'fabric' ? fabricVersions : forgeVersions).map(v => ({
+                    value: v,
+                    label: v,
+                  }))}
+                />
+              </Field>
+            </div>
           )}
 
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
-            <Button variant="outlined" onClick={goBack}>
+          <div className="mt-6 flex justify-between">
+            <Button variant="secondary" onClick={goBack}>
               {t('wizard.back')}
             </Button>
-            <Button
-              variant="contained"
-              onClick={goNext}
-              disabled={loaderType !== 'vanilla' && !selectedLoaderVersion}
-            >
+            <Button onClick={goNext} disabled={loaderType !== 'vanilla' && !selectedLoaderVersion}>
               {t('wizard.next')}
             </Button>
-          </Box>
-        </Box>
+          </div>
+        </div>
       )}
 
       {step === 2 && selectedVersion && (
-        <Box>
-          <Box sx={{ p: 2, mb: 2, backgroundColor: 'background.paper', borderRadius: tokens.radius.lg }}>
-            <Typography sx={{ color: 'text.primary' }}>
+        <div>
+          <div className="rounded-lg border border-edge bg-panel px-4 py-3">
+            <p className="text-sm text-ink">
               {loaderType === 'vanilla'
                 ? t('wizard.summaryVanilla', { version: selectedVersion.id })
                 : t('wizard.summary', {
                     version: selectedVersion.id,
                     loader: `${loaderType === 'fabric' ? 'Fabric' : 'Forge'} ${selectedLoaderVersion}`,
                   })}
-            </Typography>
-          </Box>
+            </p>
+          </div>
 
           {phase === 'installing' && (
-            <Box sx={{ mb: 2 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  {t(installStepKey(activeProgress?.stage || ''))}
-                </Typography>
+            <div className="mt-4">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-xs text-ink-muted">{t(installStepKey(activeProgress?.stage || ''))}</span>
                 {activeProgress?.pct != null && (
-                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    {activeProgress.pct}%
-                  </Typography>
+                  <span className="font-mono text-xs text-ink-muted">{activeProgress.pct}%</span>
                 )}
-              </Box>
-              <LinearProgress
-                variant={activeProgress?.pct == null ? 'indeterminate' : 'determinate'}
-                value={activeProgress?.pct ?? 0}
-                sx={{
-                  height: 8,
-                  borderRadius: 4,
-                  backgroundColor: 'rgba(255, 255, 255, 0.12)',
-                  '& .MuiLinearProgress-bar': { backgroundColor: tokens.color.accent, borderRadius: 4 },
-                }}
-              />
-            </Box>
+              </div>
+              <Progress value={activeProgress?.pct ?? null} />
+            </div>
           )}
 
           {phase === 'success' && (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              {t('wizard.installSuccess', { version: installedLabel })}
-            </Alert>
+            <div className="mt-4">
+              <Callout tone="success">{t('wizard.installSuccess', { version: installedLabel })}</Callout>
+            </div>
           )}
 
           {phase === 'error' && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {t('wizard.installFailed', { error: installError })}
-            </Alert>
+            <div className="mt-4">
+              <Callout tone="danger">{t('wizard.installFailed', { error: installError })}</Callout>
+            </div>
           )}
 
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
+          <div className="mt-6 flex justify-between">
             {phase === 'success' ? (
-              <Button variant="outlined" onClick={resetWizard}>
+              <Button variant="secondary" onClick={resetWizard}>
                 {t('wizard.installAnother')}
               </Button>
             ) : (
-              <Button variant="outlined" onClick={goBack} disabled={phase === 'installing'}>
+              <Button variant="secondary" onClick={goBack} disabled={phase === 'installing'}>
                 {t('wizard.back')}
               </Button>
             )}
             {phase === 'success' ? null : phase === 'error' ? (
-              <Button variant="contained" onClick={runInstall}>
-                {t('common.retry')}
-              </Button>
+              <Button onClick={runInstall}>{t('common.retry')}</Button>
             ) : (
-              <Button variant="contained" onClick={runInstall} disabled={phase === 'installing'}>
+              <Button onClick={runInstall} disabled={phase === 'installing'} loading={phase === 'installing'}>
                 {phase === 'installing' ? t('wizard.installing') : t('wizard.install')}
               </Button>
             )}
-          </Box>
-        </Box>
+          </div>
+        </div>
       )}
-    </Box>
+    </div>
   );
 }
 

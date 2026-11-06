@@ -1,22 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  Box,
-  Typography,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
-  Chip,
-  Tab,
-  Tabs,
-} from '@mui/material';
-import { CheckCircle, CloudDownload, Delete } from '@mui/icons-material';
-import { InstalledVersion } from '../types';
+import { CircleCheck, Download, Trash2 } from 'lucide-react';
+import type { InstalledVersion } from '../types';
 import InstallWizard from './InstallWizard';
 import { EmptyState } from './states';
 import { t } from '../i18n';
-import { tokens } from '../theme';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
+import { Badge } from '../ui/badge';
+import { IconButton } from '../ui/button';
 
 interface VersionManagerProps {
   onSelectVersion: (version: InstalledVersion) => void;
@@ -29,7 +19,7 @@ const STORAGE_KEY = 'installed_versions';
 // this component owns the localStorage working copy of installed versions.
 export default function VersionManager({ onSelectVersion }: VersionManagerProps) {
   const [installedVersions, setInstalledVersions] = useState<InstalledVersion[]>([]);
-  const [tabValue, setTabValue] = useState(0);
+  const [tabValue, setTabValue] = useState('install');
 
   const loadInstalledVersions = useCallback(() => {
     try {
@@ -56,107 +46,85 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
     setInstalledVersions(updated);
   };
 
-  // Version-type chip colors come from the shared semantic palette.
-  const getVersionTypeColor = (type: string) => {
+  // Version-type badge tones come from the shared semantic palette.
+  const getVersionTypeTone = (type: string) => {
     switch (type) {
       case 'release':
-        return tokens.color.success;
+        return 'success' as const;
       case 'snapshot':
-        return tokens.color.warning;
+        return 'warning' as const;
       case 'old_beta':
-        return tokens.color.info;
+        return 'info' as const;
       default:
-        return 'rgba(255, 255, 255, 0.24)';
+        return 'neutral' as const;
     }
   };
 
   return (
-    <Box>
-      <Tabs
-        value={tabValue}
-        onChange={(_, newValue) => setTabValue(newValue)}
-        sx={{
-          mb: 2,
-          '& .MuiTab-root': { color: 'text.secondary' },
-          '& .Mui-selected': { color: tokens.color.accent },
-          '& .MuiTabs-indicator': { backgroundColor: tokens.color.accent },
-        }}
-      >
-        <Tab label={t('versions.tab.install')} />
-        <Tab label={t('versions.tab.installed')} />
-      </Tabs>
+    <Tabs value={tabValue} onValueChange={setTabValue}>
+      <TabsList>
+        <TabsTrigger value="install">{t('versions.tab.install')}</TabsTrigger>
+        <TabsTrigger value="installed">{t('versions.tab.installed')}</TabsTrigger>
+      </TabsList>
 
-      {tabValue === 0 ? (
+      <TabsContent value="install">
         <InstallWizard onInstalled={loadInstalledVersions} />
-      ) : installedVersions.length === 0 ? (
-        <EmptyState
-          icon={<CloudDownload sx={{ fontSize: 64, mb: 2, opacity: 0.5, color: 'text.secondary' }} />}
-          title={t('versions.emptyTitle')}
-          hint={t('versions.emptyHint')}
-          actionLabel={t('versions.browse')}
-          onAction={() => setTabValue(0)}
-        />
-      ) : (
-        <List sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg }}>
-          {installedVersions.map((version) => (
-            <ListItem
-              key={version.id}
-              sx={{
-                cursor: 'pointer',
-                '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.06)' },
-              }}
-              onClick={() => onSelectVersion(version)}
-            >
-              <ListItemText
-                primary={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography sx={{ color: 'text.primary' }}>{version.id}</Typography>
-                    <CheckCircle sx={{ fontSize: 16, color: tokens.color.success }} />
-                  </Box>
-                }
-                secondary={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                    <Chip
-                      size="small"
-                      label={version.type}
-                      sx={{
-                        height: 20,
-                        fontSize: '0.7rem',
-                        backgroundColor: getVersionTypeColor(version.type),
-                        color: tokens.color.deep,
-                      }}
-                    />
+      </TabsContent>
+
+      <TabsContent value="installed">
+        {installedVersions.length === 0 ? (
+          <EmptyState
+            icon={<Download className="size-12 opacity-60" aria-hidden />}
+            title={t('versions.emptyTitle')}
+            hint={t('versions.emptyHint')}
+            actionLabel={t('versions.browse')}
+            onAction={() => setTabValue('install')}
+          />
+        ) : (
+          <div className="rounded-lg border border-edge bg-panel">
+            {installedVersions.map((version, index) => (
+              <div
+                key={version.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelectVersion(version)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSelectVersion(version);
+                  }
+                }}
+                className={`flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-white/4 ${
+                  index > 0 ? 'border-t border-edge' : ''
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-ink">{version.id}</span>
+                    <CircleCheck className="size-4 text-ok" aria-hidden />
+                  </div>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <Badge tone={getVersionTypeTone(version.type)}>{version.type}</Badge>
                     {version.loaderType && (
-                      <Chip
-                        size="small"
-                        label={`${version.loaderType} ${version.loaderVersion || ''}`}
-                        sx={{
-                          height: 20,
-                          fontSize: '0.7rem',
-                          backgroundColor: 'rgba(255, 255, 255, 0.12)',
-                          color: 'text.secondary',
-                        }}
-                      />
+                      <Badge>{`${version.loaderType} ${version.loaderVersion || ''}`}</Badge>
                     )}
-                  </Box>
-                }
-              />
-              <ListItemSecondaryAction>
+                  </div>
+                </div>
                 <IconButton
-                  edge="end"
-                  onClick={(e) => {
+                  label={t('versions.deleteLabel', { version: version.id })}
+                  tone="danger"
+                  onClick={e => {
                     e.stopPropagation();
                     handleDelete(version.id);
                   }}
-                  sx={{ color: tokens.color.danger }}
                 >
-                  <Delete />
+                  <Trash2 className="size-4" />
                 </IconButton>
-              </ListItemSecondaryAction>
-            </ListItem>
-          ))}
-        </List>
-      )}
-    </Box>
+              </div>
+            ))}
+          </div>
+        )}
+      </TabsContent>
+    </Tabs>
   );
 }
