@@ -24,6 +24,7 @@ import {
 import { StoredAccount } from '../accountStorage';
 import { InstalledVersion } from '../types';
 import { tokens } from '../theme';
+import GetStartedChecklist from './GetStartedChecklist';
 import {
   GetJavaInstallations,
   GetInstalledVersions,
@@ -119,6 +120,8 @@ export default function HomeView({
   const [javaInstallations, setJavaInstallations] = useState<JavaInstallation[]>([]);
   const [selectedJava, setSelectedJava] = useState<JavaInstallation | null>(null);
   const [installingLoader, setInstallingLoader] = useState<string | null>(null);
+  // First-run checklist state: the game has launched at least once.
+  const [hasLaunched, setHasLaunched] = useState(() => localStorage.getItem('has_launched_game') === '1');
 
   useEffect(() => {
     loadVersions();
@@ -349,6 +352,8 @@ export default function HomeView({
 
       if (result.success) {
         console.log('Game launched with PID:', result.data?.pid);
+        localStorage.setItem('has_launched_game', '1');
+        setHasLaunched(true);
       } else {
         setError(result.error || 'Failed to launch game');
       }
@@ -369,6 +374,12 @@ export default function HomeView({
 
   return (
     <Box>
+
+      <GetStartedChecklist
+        hasAccount={!!currentAccount}
+        installedCount={versions.length}
+        hasLaunched={hasLaunched}
+      />
 
       <Collapse in={!!error}>
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
