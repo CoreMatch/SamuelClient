@@ -337,6 +337,8 @@ export default function HomeView({
         java_path: '',
         loader_type: settings.selectedLoader === 'none' ? '' : settings.selectedLoader.split('-')[0],
         loader_version: settings.loaderVersion,
+        join_server: '',
+        join_port: 0,
         max_memory: settings.maxMemory,
         min_memory: settings.minMemory,
         java_args: settings.javaArgs,
