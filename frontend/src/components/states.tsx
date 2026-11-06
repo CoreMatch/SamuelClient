@@ -1,8 +1,8 @@
-import { ReactNode } from 'react';
-import { Box, Button, Skeleton, Typography } from '@mui/material';
-import { ErrorOutlined } from '@mui/icons-material';
+import type { ReactNode } from 'react';
+import { CircleAlert } from 'lucide-react';
 import { t } from '../i18n';
-import { tokens } from '../theme';
+import { Button } from '../ui/button';
+import { Skeleton } from '../ui/skeleton';
 
 // Unified empty/loading/error states (competitive-ui-research 04 §A5):
 // empty = "nothing here yet + next action", loading = skeleton (no bare
@@ -13,18 +13,7 @@ interface LoadingSkeletonProps {
 }
 
 export function LoadingSkeleton({ rows = 3 }: LoadingSkeletonProps) {
-  return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {Array.from({ length: rows }).map((_, i) => (
-        <Skeleton
-          key={i}
-          variant="rounded"
-          height={48}
-          sx={{ borderRadius: tokens.radius.md, bgcolor: 'rgba(255, 255, 255, 0.08)' }}
-        />
-      ))}
-    </Box>
-  );
+  return <Skeleton rows={rows} />;
 }
 
 interface ErrorStateProps {
@@ -35,22 +24,17 @@ interface ErrorStateProps {
 
 export function ErrorState({ data, onRetry }: ErrorStateProps) {
   return (
-    <Box
-      sx={{
-        p: 4,
-        textAlign: 'center',
-        backgroundColor: 'background.paper',
-        borderRadius: tokens.radius.lg,
-      }}
-    >
-      <ErrorOutlined sx={{ fontSize: 48, color: tokens.color.danger, mb: 1, opacity: 0.8 }} />
-      <Typography variant="body1" sx={{ color: 'text.primary', mb: 2 }}>
+    <div className="rounded-lg border border-edge bg-panel px-6 py-10 text-center">
+      <CircleAlert className="mx-auto size-10 text-danger" aria-hidden />
+      <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-ink">
         {t('common.loadError', { data })}
-      </Typography>
-      <Button variant="outlined" color="error" onClick={onRetry}>
-        {t('common.retry')}
-      </Button>
-    </Box>
+      </p>
+      <div className="mt-4 flex justify-center">
+        <Button variant="secondary" onClick={onRetry}>
+          {t('common.retry')}
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -64,29 +48,17 @@ interface EmptyStateProps {
 
 export function EmptyState({ icon, title, hint, actionLabel, onAction }: EmptyStateProps) {
   return (
-    <Box
-      sx={{
-        p: 4,
-        textAlign: 'center',
-        backgroundColor: 'background.paper',
-        color: 'text.secondary',
-        borderRadius: tokens.radius.lg,
-      }}
-    >
-      {icon}
-      <Typography variant="h6" sx={{ mb: 1, color: 'text.primary' }}>
-        {title}
-      </Typography>
-      {hint && (
-        <Typography variant="body2" sx={{ mb: 2 }}>
-          {hint}
-        </Typography>
-      )}
+    <div className="rounded-lg border border-edge bg-panel px-6 py-12 text-center">
+      {icon && <div className="flex justify-center text-ink-faint">{icon}</div>}
+      <h3 className="mt-3 text-base font-semibold text-ink">{title}</h3>
+      {hint && <p className="mx-auto mt-1.5 max-w-sm text-sm leading-relaxed text-ink-muted">{hint}</p>}
       {actionLabel && onAction && (
-        <Button variant="outlined" onClick={onAction}>
-          {actionLabel}
-        </Button>
+        <div className="mt-5 flex justify-center">
+          <Button variant="secondary" onClick={onAction}>
+            {actionLabel}
+          </Button>
+        </div>
       )}
-    </Box>
+    </div>
   );
 }

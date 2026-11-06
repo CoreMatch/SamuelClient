@@ -1,8 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { ThemeProvider } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
-import { Box, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, AppBar, Toolbar, Typography, IconButton } from '@mui/material';
-import { Gamepad, Home, Settings, Group, Menu, ArrowBack } from '@mui/icons-material';
+import { useState, useEffect } from 'react';
+import { Package, Play, Settings, Users } from 'lucide-react';
 import HomeView from './components/HomeView';
 import VersionManager from './components/VersionManager';
 import AccountManager from './components/AccountManager';
@@ -12,7 +9,10 @@ import LoginView, { LoggedInAccount } from './components/LoginView';
 import { StoredAccount, saveAccount, restoreLastUsedAccount } from './accountStorage';
 import { InstalledVersion, HandoffPayload } from './types';
 import { t } from './i18n';
-import { buildTheme, chromeColors, tokens } from './theme';
+import type { I18nKey } from './i18n';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { TooltipProvider } from './ui/tooltip';
 import {
   GetPendingHandoff,
   DismissHandoff,
@@ -21,46 +21,24 @@ import {
 } from '../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
 
-const drawerWidth = 240;
-
-export type ThemeMode = 'dark' | 'light';
-
-const THEME_STORAGE_KEY = 'theme_mode';
-
 interface NavItem {
   id: string;
   labelKey: 'nav.play' | 'nav.versions' | 'nav.accounts' | 'nav.settings';
-  icon: typeof Home;
+  icon: typeof Play;
 }
 
 const navItems: NavItem[] = [
-  { id: 'home', labelKey: 'nav.play', icon: Home },
-  { id: 'versions', labelKey: 'nav.versions', icon: Gamepad },
-  { id: 'accounts', labelKey: 'nav.accounts', icon: Group },
+  { id: 'home', labelKey: 'nav.play', icon: Play },
+  { id: 'versions', labelKey: 'nav.versions', icon: Package },
+  { id: 'accounts', labelKey: 'nav.accounts', icon: Users },
   { id: 'settings', labelKey: 'nav.settings', icon: Settings },
 ];
 
 export default function App() {
   const [selectedView, setSelectedView] = useState<string>('home');
   const [selectedVersion, setSelectedVersion] = useState<InstalledVersion | null>(null);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [currentAccount, setCurrentAccount] = useState<StoredAccount | null>(null);
   const [showLogin, setShowLogin] = useState(false);
-
-  // Theme mode (dark baseline, light kept) — persisted locally.
-  const [themeMode, setThemeMode] = useState<ThemeMode>(() =>
-    localStorage.getItem(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark',
-  );
-  const theme = useMemo(() => buildTheme(themeMode), [themeMode]);
-  const chrome = chromeColors(themeMode);
-  const handleChangeTheme = (mode: ThemeMode) => {
-    setThemeMode(mode);
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, mode);
-    } catch (err) {
-      console.error('Failed to persist theme mode:', err);
-    }
-  };
 
   // Match handoff state (INTEROP-SPEC): pending payload, readable
   // degradation notice, join progress and failure text.
@@ -266,7 +244,7 @@ export default function App() {
           />
         );
       case 'settings':
-        return <SettingsView themeMode={themeMode} onChangeTheme={handleChangeTheme} />;
+        return <SettingsView />;
       default:
         return (
           <HomeView
@@ -279,152 +257,102 @@ export default function App() {
     }
   };
 
-  const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen);
-  };
-
-  const getCurrentTitle = () => {
-    if (showLogin) return 'Login';
+  const getCurrentTitle = (): I18nKey => {
+    if (showLogin) return 'login.title';
     const item = navItems.find(n => n.id === selectedView);
-    return item ? t(item.labelKey) : t('nav.play');
+    return item ? item.labelKey : 'nav.play';
   };
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: 'background.default' }}>
-        <AppBar
-          position="fixed"
-          sx={{
-            width: { sm: `calc(100% - ${drawerWidth}px)` },
-            ml: { sm: `${drawerWidth}px` },
-            backgroundColor: chrome.appBar,
-            color: themeMode === 'dark' ? 'white' : 'text.primary',
-          }}
-        >
-        <Toolbar>
-          <IconButton
-            color="inherit"
-            aria-label="open drawer"
-            edge="start"
-            onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: { sm: 'none' } }}
-          >
-            <Menu />
-          </IconButton>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            {getCurrentTitle()}
-          </Typography>
-          {!showLogin && !currentAccount && (
-            <IconButton color="inherit" onClick={() => setShowLogin(true)}>
-              <ArrowBack />
-            </IconButton>
-          )}
-        </Toolbar>
-      </AppBar>
+    <TooltipProvider>
+      <div className="flex h-screen overflow-hidden bg-base text-ink">
+        {/* Persistent sidebar */}
+        <aside className="flex w-[224px] shrink-0 flex-col border-r border-edge bg-panel">
+          <div className="px-5 pb-6 pt-6">
+            <div className="flex items-center gap-2.5">
+              <span className="flex size-7 items-center justify-center rounded-md border border-edge-strong bg-white/6 text-xs font-bold text-ink">
+                S
+              </span>
+              <span className="text-sm font-semibold text-ink">Samuel Client</span>
+            </div>
+          </div>
 
-      <Box
-        component="nav"
-        sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
-        aria-label="mailbox folders"
-      >
-        <Drawer
-          variant="temporary"
-          open={mobileOpen}
-          onClose={handleDrawerToggle}
-          ModalProps={{
-            keepMounted: true,
-          }}
-          sx={{
-            display: { xs: 'block', sm: 'none' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth, backgroundColor: chrome.drawer },
-          }}
-        >
-          <Box onClick={handleDrawerToggle} sx={{ textAlign: 'center' }}>
-            <Typography variant="h6" sx={{ my: 2, color: chrome.drawerText }}>Minecraft</Typography>
-            <List>
-              {navItems.map((item) => (
-                <ListItem key={item.id}>
-                  <ListItemButton
-                    selected={selectedView === item.id && !showLogin}
-                    onClick={() => {
-                      setSelectedView(item.id);
-                      setShowLogin(false);
-                    }}
-                  >
-                    <ListItemIcon sx={{ color: selectedView === item.id && !showLogin ? chrome.drawerText : chrome.drawerMuted }}>
-                      <item.icon />
-                    </ListItemIcon>
-                    <ListItemText primary={t(item.labelKey)} sx={{ color: selectedView === item.id && !showLogin ? chrome.drawerText : chrome.drawerMuted }} />
-                  </ListItemButton>
-                </ListItem>
-              ))}
-            </List>
-          </Box>
-        </Drawer>
-
-        <Drawer
-          variant="permanent"
-          sx={{
-            display: { xs: 'none', sm: 'block' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth, backgroundColor: chrome.drawer },
-          }}
-          open
-        >
-          <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography variant="h6" sx={{ color: chrome.drawerText }}>Samuel Client</Typography>
-          </Box>
-          <List>
-            {navItems.map((item) => (
-              <ListItem key={item.id}>
-                <ListItemButton
-                  selected={selectedView === item.id && !showLogin}
+          <nav className="flex flex-col gap-1 px-3" aria-label="Primary">
+            {navItems.map(item => {
+              const active = selectedView === item.id && !showLogin;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-current={active ? 'page' : undefined}
                   onClick={() => {
                     setSelectedView(item.id);
                     setShowLogin(false);
                   }}
-                  sx={{
-                    borderRadius: tokens.radius.md,
-                    mx: 1,
-                    mb: 0.5,
-                    '&.Mui-selected': { backgroundColor: tokens.color.accent, '&:hover': { backgroundColor: tokens.color.accentDark } },
-                  }}
+                  className={`flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm font-medium transition-colors duration-150 ease-standard ${
+                    active ? 'bg-white/7 text-ink' : 'text-ink-muted hover:bg-white/4 hover:text-ink'
+                  }`}
                 >
-                  <ListItemIcon sx={{ color: selectedView === item.id && !showLogin ? 'white' : chrome.drawerMuted }}>
-                    <item.icon />
-                  </ListItemIcon>
-                  <ListItemText primary={t(item.labelKey)} sx={{ color: selectedView === item.id && !showLogin ? 'white' : chrome.drawerText }} />
-                </ListItemButton>
-              </ListItem>
-            ))}
-          </List>
-        </Drawer>
-      </Box>
+                  <item.icon className="size-4 shrink-0" aria-hidden />
+                  {t(item.labelKey)}
+                </button>
+              );
+            })}
+          </nav>
 
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          p: 3,
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
-          backgroundColor: 'background.default',
-          minHeight: '100vh',
-        }}
-      >
-        <Toolbar />
-        <HandoffBanner
-          handoff={handoff}
-          notice={handoffNotice}
-          hasAccount={!!currentAccount}
-          joining={joiningMatch}
-          error={joinError}
-          onJoin={handleHandoffJoin}
-          onLogin={() => setShowLogin(true)}
-          onDismiss={handleHandoffDismiss}
-        />
-        {renderView()}
-      </Box>
-      </Box>
-    </ThemeProvider>
+          <div className="mt-auto p-3">
+            {currentAccount ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedView('accounts');
+                  setShowLogin(false);
+                }}
+                className="flex w-full items-center gap-2.5 rounded-md border border-edge bg-raised p-2.5 text-left transition-colors duration-150 hover:border-edge-strong"
+              >
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-edge-strong bg-white/6 text-xs font-semibold text-ink">
+                  {currentAccount.username.charAt(0).toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-ink">
+                    {currentAccount.username}
+                  </span>
+                  <Badge
+                    tone={currentAccount.authType === 'authlib-injector' ? 'success' : 'neutral'}
+                    className="mt-0.5"
+                  >
+                    {currentAccount.authType === 'authlib-injector' ? t('play.online') : t('play.offline')}
+                  </Badge>
+                </span>
+              </button>
+            ) : (
+              <Button variant="secondary" className="w-full" onClick={() => setShowLogin(true)}>
+                {t('nav.signIn')}
+              </Button>
+            )}
+          </div>
+        </aside>
+
+        {/* Single-column main content */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-[880px] px-10 py-9">
+            <header className="mb-6">
+              <h1 className="text-display font-semibold tracking-tight text-ink">{t(getCurrentTitle())}</h1>
+            </header>
+            <HandoffBanner
+              handoff={handoff}
+              notice={handoffNotice}
+              hasAccount={!!currentAccount}
+              joining={joiningMatch}
+              error={joinError}
+              onJoin={handleHandoffJoin}
+              onLogin={() => setShowLogin(true)}
+              onDismiss={handleHandoffDismiss}
+            />
+            {renderView()}
+          </div>
+        </main>
+      </div>
+    </TooltipProvider>
   );
 }

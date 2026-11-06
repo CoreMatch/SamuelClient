@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Box, Typography, Card, CardContent, Chip, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Tooltip, Slider, Alert, Snackbar, ToggleButton, ToggleButtonGroup } from '@mui/material';
-import { Add, Delete, Star, Edit, Check, X, Save, Memory, FolderOpen } from '@mui/icons-material';
+import { FolderOpen, Pencil, Plus, Save, Star, Trash2, X } from 'lucide-react';
 import {
   GetLauncherConfig,
   GetJavaInstallations,
@@ -11,8 +10,13 @@ import {
   SetDefaultJavaInstallation,
 } from '../../wailsjs/go/main/App';
 import { LoadingSkeleton } from './states';
-import { tokens } from '../theme';
 import { t } from '../i18n';
+import { Button, IconButton } from '../ui/button';
+import { TextField } from '../ui/field';
+import { Slider } from '../ui/progress';
+import { Callout } from '../ui/callout';
+import { Dialog, AlertDialog } from '../ui/dialog';
+import { Tooltip } from '../ui/tooltip';
 
 interface JavaInstallation {
   id: number;
@@ -42,12 +46,9 @@ const MIN_MEMORY_MB = 256;
 const MAX_GAME_DIMENSION = 3840;
 const MIN_GAME_DIMENSION = 320;
 
-interface SettingsViewProps {
-  themeMode: 'dark' | 'light';
-  onChangeTheme: (mode: 'dark' | 'light') => void;
-}
+const sectionClasses = 'rounded-lg border border-edge bg-panel p-6';
 
-export default function SettingsView({ themeMode, onChangeTheme }: SettingsViewProps) {
+export default function SettingsView() {
   const [config, setConfig] = useState<LauncherConfig | null>(null);
   const [javaInstallations, setJavaInstallations] = useState<JavaInstallation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,6 +58,7 @@ export default function SettingsView({ themeMode, onChangeTheme }: SettingsViewP
   const [newJavaPath, setNewJavaPath] = useState('');
   const [newJavaName, setNewJavaName] = useState('');
   const [dialogError, setDialogError] = useState('');
+  const [deleteJavaId, setDeleteJavaId] = useState<number | null>(null);
 
   // Memory settings draft (the values shown in inputs/sliders before saving).
   // Kept separate from `config` so the user can tweak without losing the
@@ -103,7 +105,7 @@ export default function SettingsView({ themeMode, onChangeTheme }: SettingsViewP
         setError(result.error);
       }
     } catch {
-      setError('Failed to fetch Java installations');
+      setError(t('settings.javaFetchFailed'));
     } finally {
       setLoading(false);
     }
@@ -115,22 +117,22 @@ export default function SettingsView({ themeMode, onChangeTheme }: SettingsViewP
   // slider caps defined above.
   const validateMemorySettings = (): string => {
     if (minMemory < MIN_MEMORY_MB) {
-      return `Minimum memory must be at least ${MIN_MEMORY_MB} MB`;
+      return t('settings.err.minMemoryMin', { min: MIN_MEMORY_MB });
     }
     if (maxMemory < MIN_MEMORY_MB) {
-      return `Maximum memory must be at least ${MIN_MEMORY_MB} MB`;
+      return t('settings.err.maxMemoryMin', { min: MIN_MEMORY_MB });
     }
     if (maxMemory > MAX_MEMORY_MB) {
-      return `Maximum memory cannot exceed ${MAX_MEMORY_MB} MB`;
+      return t('settings.err.maxMemoryMax', { max: MAX_MEMORY_MB });
     }
     if (minMemory > maxMemory) {
-      return 'Minimum memory cannot exceed maximum memory';
+      return t('settings.err.minGtMax');
     }
     if (gameWidth < MIN_GAME_DIMENSION || gameWidth > MAX_GAME_DIMENSION) {
-      return `Game width must be between ${MIN_GAME_DIMENSION} and ${MAX_GAME_DIMENSION}`;
+      return t('settings.err.widthRange', { min: MIN_GAME_DIMENSION, max: MAX_GAME_DIMENSION });
     }
     if (gameHeight < MIN_GAME_DIMENSION || gameHeight > MAX_GAME_DIMENSION) {
-      return `Game height must be between ${MIN_GAME_DIMENSION} and ${MAX_GAME_DIMENSION}`;
+      return t('settings.err.heightRange', { min: MIN_GAME_DIMENSION, max: MAX_GAME_DIMENSION });
     }
     return '';
   };
@@ -172,11 +174,12 @@ export default function SettingsView({ themeMode, onChangeTheme }: SettingsViewP
         setGameHeight(result.data.game_height ?? gameHeight);
         setDirty(false);
         setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
       } else {
-        setSaveError(result.error || 'Failed to save settings');
+        setSaveError(result.error || t('settings.failedSave'));
       }
     } catch {
-      setSaveError('Failed to save settings');
+      setSaveError(t('settings.failedSave'));
     } finally {
       setSavingConfig(false);
     }
@@ -196,7 +199,7 @@ export default function SettingsView({ themeMode, onChangeTheme }: SettingsViewP
   const handleAddJava = async () => {
     setDialogError('');
     if (!newJavaPath.trim()) {
-      setDialogError('Java path is required');
+      setDialogError(t('settings.javaPathRequired'));
       return;
     }
 
@@ -208,10 +211,10 @@ export default function SettingsView({ themeMode, onChangeTheme }: SettingsViewP
         setNewJavaPath('');
         setNewJavaName('');
       } else {
-        setDialogError(result.error || 'Failed to add Java installation');
+        setDialogError(result.error || t('settings.javaAddFailed'));
       }
     } catch {
-      setDialogError('Failed to add Java installation');
+      setDialogError(t('settings.javaAddFailed'));
     }
   };
 
@@ -232,25 +235,23 @@ export default function SettingsView({ themeMode, onChangeTheme }: SettingsViewP
         setNewJavaPath('');
         setNewJavaName('');
       } else {
-        setDialogError(result.error || 'Failed to update Java installation');
+        setDialogError(result.error || t('settings.javaUpdateFailed'));
       }
     } catch {
-      setDialogError('Failed to update Java installation');
+      setDialogError(t('settings.javaUpdateFailed'));
     }
   };
 
   const handleDeleteJava = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this Java installation?')) return;
-
     try {
       const result = await DeleteJavaInstallation(id);
       if (result.success) {
         fetchJavaInstallations();
       } else {
-        setError(result.error || 'Failed to delete Java installation');
+        setError(result.error || t('settings.javaDeleteFailed'));
       }
     } catch {
-      setError('Failed to delete Java installation');
+      setError(t('settings.javaDeleteFailed'));
     }
   };
 
@@ -260,10 +261,10 @@ export default function SettingsView({ themeMode, onChangeTheme }: SettingsViewP
       if (result.success) {
         fetchJavaInstallations();
       } else {
-        setError(result.error || 'Failed to set default Java');
+        setError(result.error || t('settings.javaDefaultFailed'));
       }
     } catch {
-      setError('Failed to set default Java');
+      setError(t('settings.javaDefaultFailed'));
     }
   };
 
@@ -284,531 +285,329 @@ export default function SettingsView({ themeMode, onChangeTheme }: SettingsViewP
   };
 
   if (loading) {
-    return (
-      <Box>
-        <LoadingSkeleton rows={4} />
-      </Box>
-    );
+    return <LoadingSkeleton rows={4} />;
   }
 
+  const defaultJava = javaInstallations.find(j => j.is_default);
+
   return (
-    <Box>
+    <div className="flex flex-col gap-6">
       {error && (
-        <Typography sx={{ color: tokens.color.danger, marginBottom: 2 }}>{error}</Typography>
+        <Callout tone="danger" onDismiss={() => setError('')}>
+          {error}
+        </Callout>
       )}
 
-      <Card sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg, marginBottom: 2 }}>
-        <CardContent>
-          <Typography variant="h6" sx={{ color: 'text.primary', marginBottom: 2 }}>
-            {t('settings.appearance')}
-          </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Typography sx={{ color: 'text.secondary' }}>{t('settings.theme')}</Typography>
-            <ToggleButtonGroup
-              value={themeMode}
-              exclusive
-              size="small"
-              onChange={(_, value) => {
-                if (value) onChangeTheme(value);
-              }}
-            >
-              <ToggleButton value="dark">{t('settings.themeDark')}</ToggleButton>
-              <ToggleButton value="light">{t('settings.themeLight')}</ToggleButton>
-            </ToggleButtonGroup>
-          </Box>
-        </CardContent>
-      </Card>
-
-      <Card sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg, marginBottom: 2 }}>
-        <CardContent>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-            <Typography variant="h6" sx={{ color: 'text.primary' }}>
-              Java Installations
-            </Typography>
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<Add />}
-              onClick={openAddDialog}
-            >
-              Add Java
-            </Button>
-          </Box>
-
-          {javaInstallations.length === 0 ? (
-            <Typography sx={{ color: 'text.secondary' }}>No Java installations found. Click "Add Java" to add one.</Typography>
-          ) : (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {javaInstallations.map((java) => (
-                <Box
-                  key={java.id}
-                  sx={{
-                    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-                    padding: 2,
-                    borderRadius: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 1
-                  }}
-                >
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Tooltip title={java.is_default ? 'Default Java' : 'Set as default'}>
-                      <IconButton
-                        onClick={() => handleSetDefault(java.id)}
-                        sx={{ color: java.is_default ? tokens.color.warning : 'text.secondary' }}
-                      >
-                        <Star />
-                      </IconButton>
-                    </Tooltip>
-                    <div style={{ flex: 1 }}>
-                      <Typography sx={{ color: 'text.primary', fontWeight: 'bold' }}>
-                        {java.friendly_name || `Java ${java.version}`}
-                      </Typography>
-                      <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
-                        {java.version}
-                      </Typography>
-                    </div>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Tooltip title="Edit">
-                        <IconButton onClick={() => openEditDialog(java)} sx={{ color: 'text.secondary' }}>
-                          <Edit />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete">
-                        <IconButton onClick={() => handleDeleteJava(java.id)} sx={{ color: tokens.color.danger }}>
-                          <Delete />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </Box>
-                  <Chip
-                    label={java.path}
-                    sx={{
-                      backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                      color: 'text.primary',
-                      fontSize: '0.75rem',
-                      maxWidth: '100%',
-                      wordBreak: 'break-all'
-                    }}
-                  />
-                </Box>
-              ))}
-            </Box>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg, marginBottom: 2 }}>
-        <CardContent>
-          <Typography variant="h6" sx={{ color: 'text.primary', marginBottom: 2 }}>
-            Path Configuration
-          </Typography>
-
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <div>
-              <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>Java Path</Typography>
-              {(() => {
-                const defaultJava = javaInstallations.find(j => j.is_default);
-                return defaultJava ? (
-                  <Box sx={{ marginTop: 1 }}>
-                    <Typography sx={{ color: 'text.primary', fontWeight: 'bold' }}>
-                      {defaultJava.friendly_name || `Java ${defaultJava.version}`}
-                    </Typography>
-                    <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
-                      Version: {defaultJava.version}
-                    </Typography>
-                    <Chip
-                      label={defaultJava.path}
-                      sx={{
-                        backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                        color: 'text.primary',
-                        marginTop: 1,
-                        maxWidth: '100%',
-                        wordBreak: 'break-all',
-                        fontSize: '0.75rem'
-                      }}
-                    />
-                  </Box>
-                ) : (
-                  <Chip
-                    label={config?.java_path || 'Not configured'}
-                    sx={{
-                      backgroundColor: 'rgba(255, 255, 255, 0.12)',
-                      color: 'text.primary',
-                      marginTop: 1,
-                      maxWidth: '100%',
-                      wordBreak: 'break-all'
-                    }}
-                  />
-                );
-              })()}
-            </div>
-
-            <div>
-              <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>Game Directory</Typography>
-              <Chip
-                label={config?.game_dir || 'Not configured'}
-                sx={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.12)',
-                  color: 'text.primary',
-                  marginTop: 1,
-                  maxWidth: '100%',
-                  wordBreak: 'break-all'
-                }}
-              />
-            </div>
-          </Box>
-        </CardContent>
-      </Card>
-
-      <Card sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg, marginBottom: 2 }}>
-        <CardContent>
-          <Typography variant="h6" sx={{ color: 'text.primary', marginBottom: 2 }}>
-            {t('settings.folders')}
-          </Typography>
-          <Button
-            variant="outlined"
-            startIcon={<FolderOpen />}
-            onClick={() => window.open('file:///home/lnb/.minecraft/mods', '_blank')}
-          >
-            {t('settings.modsFolder')}
+      {/* Java installations */}
+      <section className={sectionClasses}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-ink">{t('settings.java')}</h2>
+          <Button size="sm" onClick={openAddDialog}>
+            <Plus className="size-3.5" aria-hidden />
+            {t('settings.addJava')}
           </Button>
-        </CardContent>
-      </Card>
+        </div>
 
-      <Card sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg }}>
-        <CardContent>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Memory sx={{ color: tokens.color.info }} />
-              <Typography variant="h6" sx={{ color: 'text.primary' }}>
-                Memory &amp; JVM Settings
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button
-                onClick={handleResetConfig}
-                disabled={!dirty || savingConfig}
-                sx={{ color: 'text.secondary' }}
-                startIcon={<X />}
-              >
-                Reset
-              </Button>
-              <Button
-                onClick={handleSaveConfig}
-                disabled={!dirty || savingConfig}
-                variant="contained"
-                color="primary"
-                startIcon={<Save />}
-              >
-                {savingConfig ? 'Saving...' : 'Save'}
-              </Button>
-            </Box>
-          </Box>
+        {javaInstallations.length === 0 ? (
+          <p className="text-sm text-ink-muted">{t('settings.noJava')}</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {javaInstallations.map(java => (
+              <div key={java.id} className="rounded-md border border-edge bg-raised p-4">
+                <div className="flex items-center gap-3">
+                  <Tooltip label={java.is_default ? t('settings.defaultJava') : t('settings.setDefault')}>
+                    <IconButton
+                      label={java.is_default ? t('settings.defaultJava') : t('settings.setDefault')}
+                      onClick={() => handleSetDefault(java.id)}
+                    >
+                      <Star
+                        className={`size-4 ${java.is_default ? 'fill-warn text-warn' : ''}`}
+                        aria-hidden
+                      />
+                    </IconButton>
+                  </Tooltip>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-ink">
+                      {java.friendly_name || `Java ${java.version}`}
+                    </p>
+                    <p className="font-mono text-xs text-ink-faint">{java.version}</p>
+                  </div>
+                  <Tooltip label={t('settings.edit')}>
+                    <IconButton label={t('settings.edit')} onClick={() => openEditDialog(java)}>
+                      <Pencil className="size-4" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip label={t('common.delete')}>
+                    <IconButton label={t('common.delete')} tone="danger" onClick={() => setDeleteJavaId(java.id)}>
+                      <Trash2 className="size-4" />
+                    </IconButton>
+                  </Tooltip>
+                </div>
+                <p className="mt-2 break-all rounded bg-white/4 px-2 py-1 font-mono text-xs text-ink-muted">
+                  {java.path}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
-          {saveError && (
-            <Alert severity="error" sx={{ marginBottom: 2 }} onClose={() => setSaveError('')}>
+      {/* Paths */}
+      <section className={sectionClasses}>
+        <h2 className="mb-4 text-base font-semibold text-ink">{t('settings.paths')}</h2>
+        <div className="flex flex-col gap-4">
+          <div>
+            <p className="text-xs font-medium text-ink-muted">{t('settings.javaPath')}</p>
+            {defaultJava ? (
+              <div className="mt-1.5">
+                <p className="text-sm font-medium text-ink">
+                  {defaultJava.friendly_name || `Java ${defaultJava.version}`}
+                </p>
+                <p className="mt-0.5 text-xs text-ink-muted">
+                  {t('settings.versionLabel', { version: defaultJava.version })}
+                </p>
+                <p className="mt-1.5 break-all rounded bg-white/4 px-2 py-1 font-mono text-xs text-ink-muted">
+                  {defaultJava.path}
+                </p>
+              </div>
+            ) : (
+              <p className="mt-1.5 break-all rounded bg-white/4 px-2 py-1 font-mono text-xs text-ink-muted">
+                {config?.java_path || t('settings.notConfigured')}
+              </p>
+            )}
+          </div>
+          <div>
+            <p className="text-xs font-medium text-ink-muted">{t('settings.gameDir')}</p>
+            <p className="mt-1.5 break-all rounded bg-white/4 px-2 py-1 font-mono text-xs text-ink-muted">
+              {config?.game_dir || t('settings.notConfigured')}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Folders */}
+      <section className={sectionClasses}>
+        <h2 className="mb-4 text-base font-semibold text-ink">{t('settings.folders')}</h2>
+        <Button variant="secondary" onClick={() => window.open('file:///home/lnb/.minecraft/mods', '_blank')}>
+          <FolderOpen className="size-4" aria-hidden />
+          {t('settings.modsFolder')}
+        </Button>
+      </section>
+
+      {/* Memory & JVM */}
+      <section className={sectionClasses}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-base font-semibold text-ink">{t('settings.memory')}</h2>
+          <div className="flex items-center gap-2">
+            {saveSuccess && <span className="text-xs text-ok">{t('settings.saved')}</span>}
+            <Button variant="secondary" size="sm" onClick={handleResetConfig} disabled={!dirty || savingConfig}>
+              <X className="size-3.5" aria-hidden />
+              {t('settings.reset')}
+            </Button>
+            <Button size="sm" onClick={handleSaveConfig} disabled={!dirty || savingConfig} loading={savingConfig}>
+              {!savingConfig && <Save className="size-3.5" aria-hidden />}
+              {savingConfig ? t('settings.saving') : t('settings.save')}
+            </Button>
+          </div>
+        </div>
+
+        {saveError && (
+          <div className="mb-4">
+            <Callout tone="danger" onDismiss={() => setSaveError('')}>
               {saveError}
-            </Alert>
-          )}
+            </Callout>
+          </div>
+        )}
 
-          <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem', marginBottom: 1 }}>
-            Maximum Memory: <Box component="span" sx={{ color: 'text.primary', fontWeight: 'bold' }}>{maxMemory} MB</Box>
-            <Box component="span" sx={{ color: 'text.secondary', marginLeft: 1 }}>(-Xmx{maxMemory}m)</Box>
-          </Typography>
-          <Slider
-            value={maxMemory}
-            min={MIN_MEMORY_MB}
-            max={MAX_MEMORY_MB}
-            step={256}
-            marks={[
-              { value: 1024, label: '1G' },
-              { value: 2048, label: '2G' },
-              { value: 4096, label: '4G' },
-              { value: 8192, label: '8G' },
-              { value: 16384, label: '16G' }
-            ]}
-            valueLabelDisplay="auto"
-            valueLabelFormat={(v) => `${v} MB`}
-            onChange={(_, value) => {
-              setMaxMemory(value as number);
-              setDirty(true);
-            }}
-            sx={{
-              color: tokens.color.info,
-              marginBottom: 2,
-              '& .MuiSlider-markLabel': { color: 'text.secondary', fontSize: '0.75rem' }
-            }}
-          />
-          <TextField
-            type="number"
-            label="Maximum Memory (MB)"
-            variant="outlined"
-            size="small"
-            value={maxMemory}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              if (!Number.isNaN(v)) {
+        <div className="flex flex-col gap-6">
+          <div>
+            <div className="mb-2 flex items-baseline justify-between">
+              <span className="text-sm text-ink-muted">
+                {t('settings.maxMemory')}{' '}
+                <span className="font-mono text-xs text-ink-faint">(-Xmx{maxMemory}m)</span>
+              </span>
+              <span className="font-mono text-sm text-ink">{maxMemory} MB</span>
+            </div>
+            <Slider
+              ariaLabel={t('settings.maxMemory')}
+              value={maxMemory}
+              min={MIN_MEMORY_MB}
+              max={MAX_MEMORY_MB}
+              step={256}
+              onValueChange={v => {
                 setMaxMemory(v);
                 setDirty(true);
-              }
-            }}
-            slotProps={{ htmlInput: { min: MIN_MEMORY_MB, max: MAX_MEMORY_MB, step: 256 } }}
-            sx={{
-              marginBottom: 3,
-              width: 240,
-              input: { color: 'text.primary' },
-              label: { color: 'text.secondary' },
-              '& .MuiOutlinedInput-root': {
-                '& fieldset': { borderColor: tokens.color.divider },
-                '&:hover fieldset': { borderColor: tokens.color.info },
-                '&.Mui-focused fieldset': { borderColor: tokens.color.info }
-              }
-            }}
-          />
+              }}
+            />
+            <input
+              type="number"
+              aria-label={t('settings.maxMemory')}
+              value={maxMemory}
+              min={MIN_MEMORY_MB}
+              max={MAX_MEMORY_MB}
+              step={256}
+              onChange={e => {
+                const v = Number(e.target.value);
+                if (!Number.isNaN(v)) {
+                  setMaxMemory(v);
+                  setDirty(true);
+                }
+              }}
+              className="mt-3 h-9 w-56 rounded-md border border-edge bg-raised px-3 font-mono text-sm text-ink transition-colors duration-150 hover:border-edge-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong"
+            />
+          </div>
 
-          <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem', marginBottom: 1 }}>
-            Minimum Memory: <Box component="span" sx={{ color: 'text.primary', fontWeight: 'bold' }}>{minMemory} MB</Box>
-            <Box component="span" sx={{ color: 'text.secondary', marginLeft: 1 }}>(-Xms{minMemory}m)</Box>
-          </Typography>
-          <Slider
-            value={Math.min(minMemory, maxMemory)}
-            min={MIN_MEMORY_MB}
-            max={maxMemory}
-            step={256}
-            marks={[
-              { value: MIN_MEMORY_MB, label: `${MIN_MEMORY_MB}M` },
-              { value: Math.round(maxMemory / 2), label: `${Math.round(maxMemory / 2)}M` },
-              { value: maxMemory, label: `${maxMemory}M` }
-            ]}
-            valueLabelDisplay="auto"
-            valueLabelFormat={(v) => `${v} MB`}
-            onChange={(_, value) => {
-              setMinMemory(value as number);
-              setDirty(true);
-            }}
-            sx={{
-              color: tokens.color.success,
-              marginBottom: 2,
-              '& .MuiSlider-markLabel': { color: 'text.secondary', fontSize: '0.75rem' }
-            }}
-          />
-          <TextField
-            type="number"
-            label="Minimum Memory (MB)"
-            variant="outlined"
-            size="small"
-            value={minMemory}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              if (!Number.isNaN(v)) {
+          <div>
+            <div className="mb-2 flex items-baseline justify-between">
+              <span className="text-sm text-ink-muted">
+                {t('settings.minMemory')}{' '}
+                <span className="font-mono text-xs text-ink-faint">(-Xms{minMemory}m)</span>
+              </span>
+              <span className="font-mono text-sm text-ink">{minMemory} MB</span>
+            </div>
+            <Slider
+              ariaLabel={t('settings.minMemory')}
+              value={Math.min(minMemory, maxMemory)}
+              min={MIN_MEMORY_MB}
+              max={maxMemory}
+              step={256}
+              onValueChange={v => {
                 setMinMemory(v);
                 setDirty(true);
-              }
-            }}
-            slotProps={{ htmlInput: { min: MIN_MEMORY_MB, max: MAX_MEMORY_MB, step: 256 } }}
-            sx={{
-              marginBottom: 3,
-              width: 240,
-              input: { color: 'text.primary' },
-              label: { color: 'text.secondary' },
-              '& .MuiOutlinedInput-root': {
-                '& fieldset': { borderColor: tokens.color.divider },
-                '&:hover fieldset': { borderColor: tokens.color.info },
-                '&.Mui-focused fieldset': { borderColor: tokens.color.info }
-              }
-            }}
-          />
+              }}
+            />
+            <input
+              type="number"
+              aria-label={t('settings.minMemory')}
+              value={minMemory}
+              min={MIN_MEMORY_MB}
+              max={MAX_MEMORY_MB}
+              step={256}
+              onChange={e => {
+                const v = Number(e.target.value);
+                if (!Number.isNaN(v)) {
+                  setMinMemory(v);
+                  setDirty(true);
+                }
+              }}
+              className="mt-3 h-9 w-56 rounded-md border border-edge bg-raised px-3 font-mono text-sm text-ink transition-colors duration-150 hover:border-edge-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong"
+            />
+          </div>
 
-          <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem', marginBottom: 1 }}>
-            Additional JVM Arguments
-          </Typography>
           <TextField
-            label="Java Args"
-            variant="outlined"
-            fullWidth
-            multiline
-            minRows={2}
-            maxRows={4}
+            label={t('settings.javaArgsLabel')}
             value={javaArgs}
-            onChange={(e) => {
+            onChange={e => {
               setJavaArgs(e.target.value);
               setDirty(true);
             }}
             placeholder="e.g., -XX:+UseG1GC -XX:MaxGCPauseMillis=50"
-            sx={{
-              marginBottom: 3,
-              input: { color: 'text.primary' },
-              textarea: { color: 'text.primary', fontFamily: 'monospace', fontSize: '0.875rem' },
-              label: { color: 'text.secondary' },
-              '& .MuiOutlinedInput-root': {
-                '& fieldset': { borderColor: tokens.color.divider },
-                '&:hover fieldset': { borderColor: tokens.color.info },
-                '&.Mui-focused fieldset': { borderColor: tokens.color.info }
-              }
-            }}
           />
 
-          <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem', marginBottom: 1 }}>
-            Game Window Size
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 2, marginBottom: 2 }}>
-            <TextField
-              type="number"
-              label="Width"
-              variant="outlined"
-              size="small"
-              value={gameWidth}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                if (!Number.isNaN(v)) {
-                  setGameWidth(v);
-                  setDirty(true);
-                }
-              }}
-              slotProps={{ htmlInput: { min: MIN_GAME_DIMENSION, max: MAX_GAME_DIMENSION, step: 1 } }}
-              sx={{
-                width: 140,
-                input: { color: 'text.primary' },
-                label: { color: 'text.secondary' },
-                '& .MuiOutlinedInput-root': {
-                  '& fieldset': { borderColor: tokens.color.divider },
-                  '&:hover fieldset': { borderColor: tokens.color.info },
-                  '&.Mui-focused fieldset': { borderColor: tokens.color.info }
-                }
-              }}
-            />
-            <TextField
-              type="number"
-              label="Height"
-              variant="outlined"
-              size="small"
-              value={gameHeight}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                if (!Number.isNaN(v)) {
-                  setGameHeight(v);
-                  setDirty(true);
-                }
-              }}
-              slotProps={{ htmlInput: { min: MIN_GAME_DIMENSION, max: MAX_GAME_DIMENSION, step: 1 } }}
-              sx={{
-                width: 140,
-                input: { color: 'text.primary' },
-                label: { color: 'text.secondary' },
-                '& .MuiOutlinedInput-root': {
-                  '& fieldset': { borderColor: tokens.color.divider },
-                  '&:hover fieldset': { borderColor: tokens.color.info },
-                  '&.Mui-focused fieldset': { borderColor: tokens.color.info }
-                }
-              }}
-            />
-          </Box>
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-ink-muted">{t('settings.windowSize')}</p>
+            <div className="flex gap-3">
+              <input
+                type="number"
+                aria-label={t('play.width')}
+                value={gameWidth}
+                min={MIN_GAME_DIMENSION}
+                max={MAX_GAME_DIMENSION}
+                onChange={e => {
+                  const v = Number(e.target.value);
+                  if (!Number.isNaN(v)) {
+                    setGameWidth(v);
+                    setDirty(true);
+                  }
+                }}
+                className="h-9 w-36 rounded-md border border-edge bg-raised px-3 font-mono text-sm text-ink transition-colors duration-150 hover:border-edge-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong"
+              />
+              <input
+                type="number"
+                aria-label={t('play.height')}
+                value={gameHeight}
+                min={MIN_GAME_DIMENSION}
+                max={MAX_GAME_DIMENSION}
+                onChange={e => {
+                  const v = Number(e.target.value);
+                  if (!Number.isNaN(v)) {
+                    setGameHeight(v);
+                    setDirty(true);
+                  }
+                }}
+                className="h-9 w-36 rounded-md border border-edge bg-raised px-3 font-mono text-sm text-ink transition-colors duration-150 hover:border-edge-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong"
+              />
+            </div>
+          </div>
 
-          <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem', marginBottom: 1 }}>
-            JVM Args Preview
-          </Typography>
-          <Chip
-            label={
-              `-Xms${minMemory}m -Xmx${maxMemory}m ` +
-              (javaArgs.trim() ? `${javaArgs.trim()} ` : '') +
-              `--width ${gameWidth} --height ${gameHeight}`
-            }
-            sx={{
-              backgroundColor: 'rgba(255, 255, 255, 0.08)',
-              color: 'text.primary',
-              fontFamily: 'monospace',
-              fontSize: '0.75rem',
-              maxWidth: '100%',
-              height: 'auto',
-              whiteSpace: 'normal',
-              padding: '8px 12px',
-              wordBreak: 'break-all'
-            }}
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-ink-muted">{t('settings.jvmPreview')}</p>
+            <p className="break-all rounded bg-white/4 px-3 py-2 font-mono text-xs text-ink-muted">
+              {`-Xms${minMemory}m -Xmx${maxMemory}m ` +
+                (javaArgs.trim() ? `${javaArgs.trim()} ` : '') +
+                `--width ${gameWidth} --height ${gameHeight}`}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Add / edit Java dialog */}
+      <Dialog
+        open={openDialog}
+        onOpenChange={open => {
+          setOpenDialog(open);
+          if (!open) {
+            setEditingJava(null);
+            setNewJavaPath('');
+            setNewJavaName('');
+            setDialogError('');
+          }
+        }}
+        title={editingJava ? t('settings.editJavaTitle') : t('settings.addJavaTitle')}
+        closeLabel={t('common.close')}
+      >
+        <div className="flex flex-col gap-4">
+          <TextField
+            label={t('settings.javaPath')}
+            value={newJavaPath}
+            onChange={e => setNewJavaPath(e.target.value)}
+            placeholder="/usr/bin/java"
           />
-        </CardContent>
-      </Card>
-
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md">
-        <DialogTitle sx={{ backgroundColor: 'background.paper', color: 'text.primary' }}>
-          {editingJava ? 'Edit Java Installation' : 'Add Java Installation'}
-        </DialogTitle>
-        <DialogContent sx={{ backgroundColor: 'background.paper', color: 'text.primary' }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
-            <TextField
-              label="Java Path"
-              variant="outlined"
-              fullWidth
-              value={newJavaPath}
-              onChange={(e) => setNewJavaPath(e.target.value)}
-              placeholder="e.g., /usr/bin/java or C:\Program Files\Java\jdk17\bin\java.exe"
-              sx={{
-                input: { color: 'text.primary' },
-                label: { color: 'text.secondary' },
-                '& .MuiOutlinedInput-root': {
-                  '& fieldset': { borderColor: tokens.color.divider },
-                  '&:hover fieldset': { borderColor: tokens.color.info },
-                  '&.Mui-focused fieldset': { borderColor: tokens.color.info }
-                }
-              }}
-            />
-            <TextField
-              label="Friendly Name (Optional)"
-              variant="outlined"
-              fullWidth
-              value={newJavaName}
-              onChange={(e) => setNewJavaName(e.target.value)}
-              placeholder="e.g., Java 17 (Forge)"
-              sx={{
-                input: { color: 'text.primary' },
-                label: { color: 'text.secondary' },
-                '& .MuiOutlinedInput-root': {
-                  '& fieldset': { borderColor: tokens.color.divider },
-                  '&:hover fieldset': { borderColor: tokens.color.info },
-                  '&.Mui-focused fieldset': { borderColor: tokens.color.info }
-                }
-              }}
-            />
-            {dialogError && (
-              <Typography sx={{ color: tokens.color.danger, fontSize: '0.875rem' }}>{dialogError}</Typography>
-            )}
-          </Box>
-        </DialogContent>
-        <DialogActions sx={{ backgroundColor: 'background.paper' }}>
-          <Button
-            onClick={() => {
-              setOpenDialog(false);
-              setEditingJava(null);
-              setNewJavaPath('');
-              setNewJavaName('');
-              setDialogError('');
-            }}
-            sx={{ color: 'text.secondary' }}
-            startIcon={<X />}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={editingJava ? handleUpdateJava : handleAddJava}
-            variant="contained"
-            color="primary"
-            startIcon={<Check />}
-          >
-            {editingJava ? 'Update' : 'Add'}
-          </Button>
-        </DialogActions>
+          <TextField
+            label={t('settings.friendlyName')}
+            value={newJavaName}
+            onChange={e => setNewJavaName(e.target.value)}
+            placeholder="e.g., Java 17 (Forge)"
+          />
+          {dialogError && <Callout tone="danger">{dialogError}</Callout>}
+          <div className="mt-2 flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setOpenDialog(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={editingJava ? handleUpdateJava : handleAddJava}>
+              {editingJava ? t('settings.update') : t('settings.addJava')}
+            </Button>
+          </div>
+        </div>
       </Dialog>
 
-      <Snackbar
-        open={saveSuccess}
-        autoHideDuration={3000}
-        onClose={() => setSaveSuccess(false)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      >
-        <Alert severity="success" onClose={() => setSaveSuccess(false)} sx={{ width: '100%' }}>
-          Memory settings saved
-        </Alert>
-      </Snackbar>
-    </Box>
+      {/* Delete Java confirmation */}
+      <AlertDialog
+        open={deleteJavaId !== null}
+        onOpenChange={open => {
+          if (!open) setDeleteJavaId(null);
+        }}
+        title={t('settings.deleteJavaTitle')}
+        description={t('settings.deleteJavaConfirm')}
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
+        onConfirm={() => {
+          if (deleteJavaId !== null) {
+            handleDeleteJava(deleteJavaId);
+          }
+          setDeleteJavaId(null);
+        }}
+      />
+    </div>
   );
 }

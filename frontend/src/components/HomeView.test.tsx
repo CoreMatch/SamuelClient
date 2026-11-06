@@ -55,10 +55,13 @@ function emptyLists() {
   mockGetForgeVersions.mockResolvedValue({ success: true, data: [], error: '' });
 }
 
-// Selects the Minecraft version through the MUI select so fetchLoaders runs.
-async function selectVersion(name: string) {
-  fireEvent.mouseDown(screen.getAllByRole('combobox')[0]);
-  fireEvent.click(await screen.findByRole('option', { name }));
+// Opens the nth Radix select (combobox role) via keyboard and picks the
+// option by accessible name.
+async function selectOption(index: number, name: string) {
+  fireEvent.keyDown(screen.getAllByRole('combobox')[index], { key: 'Enter' });
+  const option = await screen.findByRole('option', { name });
+  fireEvent.pointerUp(option);
+  fireEvent.click(option);
 }
 
 describe('HomeView', () => {
@@ -154,13 +157,12 @@ describe('HomeView', () => {
       />,
     );
 
-    await selectVersion('1.99');
+    await selectOption(0, '1.99');
 
     // The loader dropdown offers the fabric loader once fetchLoaders resolves;
     // picking it installs through the binding.
     await waitFor(() => expect(mockGetFabricVersions).toHaveBeenCalled());
-    fireEvent.mouseDown(screen.getAllByRole('combobox')[1]);
-    fireEvent.click(await screen.findByRole('option', { name: 'fabric 0.15.0' }));
+    await selectOption(1, 'fabric 0.15.0');
 
     await waitFor(() =>
       expect(mockInstallFabricLoader).toHaveBeenCalledWith('1.99', '0.15.0', ''),
@@ -196,11 +198,10 @@ describe('HomeView', () => {
       />,
     );
 
-    await selectVersion('1.99');
+    await selectOption(0, '1.99');
 
     await waitFor(() => expect(mockGetForgeVersions).toHaveBeenCalled());
-    fireEvent.mouseDown(screen.getAllByRole('combobox')[1]);
-    fireEvent.click(await screen.findByRole('option', { name: 'forge 47.2.0' }));
+    await selectOption(1, 'forge 47.2.0');
 
     expect(await screen.findByText('forge installer failed')).toBeTruthy();
     expect(mockInstallForgeLoader).toHaveBeenCalledWith('1.99', '47.2.0', '');

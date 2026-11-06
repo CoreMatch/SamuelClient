@@ -1,30 +1,15 @@
 import { useState, useEffect } from 'react';
-import {
-  Box,
-  Typography,
-  Button,
-  Paper,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Slider,
-  TextField,
-  CircularProgress,
-  Alert,
-  Collapse,
-  Divider,
-} from '@mui/material';
-import {
-  PlayArrow,
-  Settings,
-  ExpandMore,
-  ExpandLess,
-} from '@mui/icons-material';
-import { StoredAccount } from '../accountStorage';
-import { InstalledVersion } from '../types';
-import { tokens } from '../theme';
+import { Play } from 'lucide-react';
+import type { StoredAccount } from '../accountStorage';
+import type { InstalledVersion } from '../types';
+import { t } from '../i18n';
 import GetStartedChecklist from './GetStartedChecklist';
+import { Button } from '../ui/button';
+import { Select } from '../ui/select';
+import { Field, NumberField, TextField } from '../ui/field';
+import { Slider } from '../ui/progress';
+import { Callout } from '../ui/callout';
+import { Badge } from '../ui/badge';
 import {
   GetJavaInstallations,
   GetInstalledVersions,
@@ -112,7 +97,6 @@ export default function HomeView({
   const [currentVersion, setCurrentVersion] = useState<InstalledVersion | null>(selectedVersion);
   const [loaders, setLoaders] = useState<ModLoader[]>([]);
   const [settings, setSettings] = useState<LauncherSettings>(DEFAULT_SETTINGS);
-  const [showSettings, setShowSettings] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState('');
   const [liveLogs, setLiveLogs] = useState<LiveLogLine[]>([]);
@@ -279,7 +263,7 @@ export default function HomeView({
       return;
     }
     if (!currentVersion) {
-      setError('Please select a Minecraft version first');
+      setError(t('play.selectVersionFirst'));
       return;
     }
 
@@ -295,10 +279,10 @@ export default function HomeView({
       if (result.success) {
         await loadVersions();
       } else {
-        setError(result.error || 'Failed to install loader');
+        setError(result.error || t('play.loaderInstallFailed'));
       }
     } catch {
-      setError('Failed to install loader. Please try again.');
+      setError(t('play.loaderInstallFailed'));
     } finally {
       setInstallingLoader(null);
     }
@@ -313,7 +297,7 @@ export default function HomeView({
 
   const handleLaunch = async () => {
     if (!currentVersion || !currentAccount) {
-      setError('Please select a version and account');
+      setError(t('play.selectVersionAccount'));
       return;
     }
 
@@ -355,290 +339,171 @@ export default function HomeView({
         localStorage.setItem('has_launched_game', '1');
         setHasLaunched(true);
       } else {
-        setError(result.error || 'Failed to launch game');
+        setError(result.error || t('play.launchFailed'));
       }
     } catch {
-      setError('Failed to launch game. Please try again.');
+      setError(t('play.launchFailed'));
     } finally {
       setLaunching(false);
     }
   };
 
-  const memoryMarks = [
-    { value: 512, label: '512MB' },
-    { value: 1024, label: '1GB' },
-    { value: 2048, label: '2GB' },
-    { value: 4096, label: '4GB' },
-    { value: 8192, label: '8GB' },
-  ];
-
   return (
-    <Box>
-
+    <div className="flex flex-col gap-6">
       <GetStartedChecklist
         hasAccount={!!currentAccount}
         installedCount={versions.length}
         hasLaunched={hasLaunched}
       />
 
-      <Collapse in={!!error}>
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+      {error && (
+        <Callout tone="danger" onDismiss={() => setError('')}>
           {error}
-        </Alert>
-      </Collapse>
+        </Callout>
+      )}
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
-        {/* Left Panel - Version Selection */}
-        <Paper sx={{ p: 3, backgroundColor: 'background.paper', borderRadius: tokens.radius.lg }}>
-          <Typography variant="h6" sx={{ color: 'white', mb: 2 }}>
-            Select Version
-          </Typography>
-
-          <FormControl fullWidth sx={{ mb: 3 }}>
-            <InputLabel sx={{ color: 'text.secondary' }}>Minecraft Version</InputLabel>
+      <section className="rounded-lg border border-edge bg-panel p-6">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+          <Field label={t('play.version')} htmlFor="play-version">
             <Select
+              ariaLabel={t('play.version')}
               value={currentVersion?.id || ''}
-              onChange={(e) => handleVersionChange(e.target.value)}
-              label="Minecraft Version"
-              sx={{
-                color: 'white',
-                '.MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
-                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.accent },
-                '.MuiSvgIcon-root': { color: 'text.secondary' },
-              }}
-            >
-              {versions.length === 0 ? (
-                <MenuItem disabled value="">
-                  No versions installed
-                </MenuItem>
-              ) : (
-                versions.map((v) => (
-                  <MenuItem key={v.id} value={v.id}>
-                    {v.id}
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </FormControl>
+              onValueChange={handleVersionChange}
+              placeholder={t('play.noVersions')}
+              options={versions.map(v => ({ value: v.id, label: v.id }))}
+            />
+          </Field>
 
-          <FormControl fullWidth sx={{ mb: 3 }}>
-            <InputLabel sx={{ color: 'text.secondary' }}>Mod Loader</InputLabel>
+          <Field label={t('play.loader')} htmlFor="play-loader">
             <Select
+              ariaLabel={t('play.loader')}
               value={settings.selectedLoader}
-              onChange={(e) => handleLoaderChange(e.target.value)}
-              label="Mod Loader"
+              onValueChange={handleLoaderChange}
               disabled={installingLoader !== null}
-              sx={{
-                color: 'white',
-                '.MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
-                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.accent },
-                '.MuiSvgIcon-root': { color: 'text.secondary' },
-              }}
-            >
-              {loaders.map((l) => (
-                <MenuItem key={l.name} value={l.name}>
-                  {l.name === 'none' ? 'None' : l.name.replace('-', ' ')}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+              options={loaders.map(l => ({
+                value: l.name,
+                label: l.name === 'none' ? t('play.none') : l.name.replace('-', ' '),
+              }))}
+            />
+          </Field>
 
-          <FormControl fullWidth sx={{ mb: 3 }}>
-            <InputLabel sx={{ color: 'text.secondary' }}>Java</InputLabel>
+          <Field label={t('play.java')} htmlFor="play-java">
             <Select
-              value={selectedJava?.id || ''}
-              onChange={(e) => {
-                const java = javaInstallations.find(j => j.id === e.target.value);
+              ariaLabel={t('play.java')}
+              value={selectedJava ? String(selectedJava.id) : ''}
+              onValueChange={value => {
+                const java = javaInstallations.find(j => String(j.id) === value);
                 setSelectedJava(java || null);
               }}
-              label="Java"
-              sx={{
-                color: 'white',
-                '.MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
-                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.accent },
-                '.MuiSvgIcon-root': { color: 'text.secondary' },
-              }}
-            >
-              {javaInstallations.length === 0 ? (
-                <MenuItem disabled value="">
-                  No Java installed
-                </MenuItem>
-              ) : (
-                javaInstallations.map((j) => (
-                  <MenuItem key={j.id} value={j.id}>
-                    {j.friendly_name || `Java ${j.version}`} ({j.version})
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </FormControl>
+              placeholder={t('play.noJava')}
+              options={javaInstallations.map(j => ({
+                value: String(j.id),
+                label: `${j.friendly_name || `Java ${j.version}`} (${j.version})`,
+              }))}
+            />
+          </Field>
+        </div>
 
-          <Divider sx={{ borderColor: tokens.color.divider, my: 2 }} />
-
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
-              Account
-            </Typography>
-          </Box>
-
+        <div className="mt-5 flex items-center justify-between border-t border-edge pt-5">
+          <span className="text-xs font-medium text-ink-muted">{t('play.account')}</span>
           {currentAccount ? (
-            <Box sx={{ backgroundColor: 'rgba(255, 255, 255, 0.06)', p: 2, borderRadius: 1 }}>
-              <Typography sx={{ color: 'white' }}>{currentAccount.username}</Typography>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                {currentAccount.authType === 'authlib-injector' ? 'Online' : 'Offline'}
-              </Typography>
-            </Box>
+            <span className="flex items-center gap-2">
+              <span className="text-sm font-medium text-ink">{currentAccount.username}</span>
+              <Badge tone={currentAccount.authType === 'authlib-injector' ? 'success' : 'neutral'}>
+                {currentAccount.authType === 'authlib-injector' ? t('play.online') : t('play.offline')}
+              </Badge>
+            </span>
           ) : (
-            <Typography sx={{ color: tokens.color.danger }}>No account selected</Typography>
+            <span className="text-sm text-danger">{t('play.noAccount')}</span>
           )}
-        </Paper>
+        </div>
 
-        {/* Right Panel - Settings */}
-        <Paper sx={{ p: 3, backgroundColor: 'background.paper', borderRadius: tokens.radius.lg }}>
-          <Box
-            sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, cursor: 'pointer' }}
-            onClick={() => setShowSettings(!showSettings)}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Settings sx={{ color: 'text.secondary' }} />
-              <Typography variant="h6" sx={{ color: 'white' }}>
-                Launch Settings
-              </Typography>
-            </Box>
-            {showSettings ? <ExpandLess sx={{ color: 'text.secondary' }} /> : <ExpandMore sx={{ color: 'text.secondary' }} />}
-          </Box>
+        <div className="mt-5 border-t border-edge pt-5">
+          <h3 className="text-xs font-medium text-ink-muted">{t('play.launchSettings')}</h3>
 
-          <Collapse in={!showSettings}>
-            <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-              Memory: {settings.maxMemory}MB | Resolution: {settings.gameWidth}x{settings.gameHeight}
-            </Typography>
-          </Collapse>
-
-          <Collapse in={showSettings}>
-            <Box sx={{ pt: 1 }}>
-              <Typography gutterBottom sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
-                Maximum Memory: {settings.maxMemory}MB
-              </Typography>
+          <div className="mt-4 flex flex-col gap-5">
+            <div>
+              <div className="mb-2 flex items-baseline justify-between">
+                <span className="text-sm text-ink-muted">{t('play.maxMemory')}</span>
+                <span className="font-mono text-sm text-ink">{settings.maxMemory} MB</span>
+              </div>
               <Slider
+                ariaLabel={t('play.maxMemory')}
                 value={settings.maxMemory}
-                onChange={(_, value) => handleSettingChange('maxMemory', value as number)}
+                onValueChange={value => handleSettingChange('maxMemory', value)}
                 min={512}
                 max={16384}
                 step={256}
-                marks={memoryMarks}
-                sx={{
-                  color: tokens.color.accent,
-                  '& .MuiSlider-markLabel': { color: 'text.secondary', fontSize: '0.7rem' },
-                }}
               />
+            </div>
 
-              <TextField
-                fullWidth
-                label="JVM Arguments"
-                value={settings.javaArgs}
-                onChange={(e) => handleSettingChange('javaArgs', e.target.value)}
-                placeholder="-XX:+UseG1GC"
-                size="small"
-                sx={{
-                  mt: 2,
-                  '& .MuiInputBase-input': { color: 'white' },
-                  '& .MuiInputLabel-root': { color: 'text.secondary' },
-                  '& .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
-                }}
+            <div className="grid grid-cols-2 gap-4">
+              <NumberField
+                label={t('play.width')}
+                value={settings.gameWidth}
+                min={1}
+                onChange={e => handleSettingChange('gameWidth', parseInt(e.target.value) || 854)}
               />
+              <NumberField
+                label={t('play.height')}
+                value={settings.gameHeight}
+                min={1}
+                onChange={e => handleSettingChange('gameHeight', parseInt(e.target.value) || 480)}
+              />
+            </div>
 
-              <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
-                <TextField
-                  label="Width"
-                  type="number"
-                  value={settings.gameWidth}
-                  onChange={(e) => handleSettingChange('gameWidth', parseInt(e.target.value) || 854)}
-                  size="small"
-                  sx={{
-                    flex: 1,
-                    '& .MuiInputBase-input': { color: 'white' },
-                    '& .MuiInputLabel-root': { color: 'text.secondary' },
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
-                  }}
-                />
-                <TextField
-                  label="Height"
-                  type="number"
-                  value={settings.gameHeight}
-                  onChange={(e) => handleSettingChange('gameHeight', parseInt(e.target.value) || 480)}
-                  size="small"
-                  sx={{
-                    flex: 1,
-                    '& .MuiInputBase-input': { color: 'white' },
-                    '& .MuiInputLabel-root': { color: 'text.secondary' },
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
-                  }}
-                />
-              </Box>
-            </Box>
-          </Collapse>
-        </Paper>
-      </Box>
+            <TextField
+              label={t('play.jvmArgs')}
+              value={settings.javaArgs}
+              onChange={e => handleSettingChange('javaArgs', e.target.value)}
+              placeholder="-XX:+UseG1GC"
+              className="font-mono"
+            />
+          </div>
+        </div>
 
-      {/* Logs Panel */}
-      <Collapse in={showLogs}>
-        <Paper sx={{ p: 3, backgroundColor: 'background.paper', borderRadius: tokens.radius.lg, mt: 3 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6" sx={{ color: 'white' }}>
-              Logs
-            </Typography>
-          </Box>
+        <div className="mt-6 flex items-center gap-3">
+          <Button variant="secondary" onClick={onOpenSettings} className="h-11">
+            {t('nav.settings')}
+          </Button>
+          <Button
+            size="lg"
+            className="h-12 flex-1 text-base"
+            onClick={handleLaunch}
+            disabled={launching || !currentVersion || !currentAccount}
+            loading={launching}
+          >
+            {!launching && <Play className="size-4" aria-hidden />}
+            {launching ? t('play.launching') : t('play.play')}
+          </Button>
+        </div>
+      </section>
 
-          <Box sx={{ height: 200, backgroundColor: tokens.color.deep, borderRadius: 1, overflowY: 'auto', p: 2 }}>
-              {liveLogs.length > 0 ? (
-                // ADR-0004: live game output streamed over "launcher:log".
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  {liveLogs.map((l, i) => (
-                    <Box key={i} sx={{ display: 'flex', gap: 2, fontSize: '0.875rem' }}>
-                      <span style={{ color: tokens.color.textMuted, fontSize: '0.75rem' }}>{l.ts}</span>
-                      <span style={{ color: l.source === 'stderr' ? tokens.color.warning : tokens.color.info, fontWeight: 'bold' }}>
-                        [{l.source.toUpperCase()}]
-                      </span>
-                      <span style={{ color: tokens.color.text, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{l.line}</span>
-                    </Box>
-                  ))}
-                </Box>
-              ) : (
-                <Typography sx={{ color: 'text.secondary', textAlign: 'center', py: 4 }}>
-                  No logs available
-                </Typography>
-              )}
-          </Box>
-        </Paper>
-      </Collapse>
-
-      {/* Launch Button */}
-      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', gap: 2 }}>
-        <Button
-          variant="outlined"
-          startIcon={<Settings />}
-          onClick={onOpenSettings}
-          sx={{ borderColor: tokens.color.divider, color: 'text.secondary' }}
-        >
-          Settings
-        </Button>
-        <Button
-          variant="contained"
-          startIcon={launching ? <CircularProgress size={20} color="inherit" /> : <PlayArrow />}
-          onClick={handleLaunch}
-          disabled={launching || !currentVersion || !currentAccount}
-          sx={{
-            px: 4,
-            py: 1.5,
-            backgroundColor: tokens.color.accent,
-            fontSize: '1.1rem',
-            '&:hover': { backgroundColor: tokens.color.accentDark },
-            '&:disabled': { backgroundColor: 'rgba(255, 255, 255, 0.12)', color: 'text.secondary' },
-          }}
-        >
-          {launching ? 'Launching...' : 'Play'}
-        </Button>
-      </Box>
-    </Box>
+      {showLogs && (
+        <section className="rounded-lg border border-edge bg-panel p-6">
+          <h3 className="text-base font-semibold text-ink">{t('play.logs')}</h3>
+          <div className="mt-3 h-56 overflow-y-auto rounded-md bg-base p-4 font-mono text-xs">
+            {liveLogs.length > 0 ? (
+              // ADR-0004: live game output streamed over "launcher:log".
+              <div className="flex flex-col gap-1">
+                {liveLogs.map((l, i) => (
+                  <div key={i} className="flex gap-2.5">
+                    <span className="shrink-0 text-ink-faint">{l.ts}</span>
+                    <span
+                      className={`shrink-0 font-semibold ${l.source === 'stderr' ? 'text-warn' : 'text-info'}`}
+                    >
+                      [{l.source.toUpperCase()}]
+                    </span>
+                    <span className="break-all whitespace-pre-wrap text-ink-muted">{l.line}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="py-8 text-center text-ink-faint">{t('play.noLogs')}</p>
+            )}
+          </div>
+        </section>
+      )}
+    </div>
   );
 }

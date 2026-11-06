@@ -1,35 +1,11 @@
 import { useState, useEffect } from 'react';
-import {
-  Box,
-  Typography,
-  List,
-  ListItem,
-  ListItemAvatar,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
-  Avatar,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Chip,
-  Divider,
-} from '@mui/material';
-import {
-  Person,
-  Delete,
-  Add,
-  CheckCircle,
-  Wifi,
-  WifiOff,
-} from '@mui/icons-material';
-
+import { BadgeCheck, Plus, Trash2, Users } from 'lucide-react';
 import { StoredAccount, ACCOUNTS_STORAGE_KEY } from '../accountStorage';
 import { EmptyState } from './states';
 import { t } from '../i18n';
-import { tokens } from '../theme';
+import { Button, IconButton } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { AlertDialog } from '../ui/dialog';
 
 interface AccountManagerProps {
   onSelectAccount: (account: StoredAccount) => void;
@@ -94,127 +70,99 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
     onAddAccount();
   };
 
-  const getAuthTypeIcon = (authType: string) => {
-    return authType === 'authlib-injector' ? (
-      <Wifi sx={{ color: tokens.color.success }} />
-    ) : (
-      <WifiOff sx={{ color: 'text.secondary' }} />
-    );
-  };
-
-  const getAuthTypeLabel = (authType: string) => {
-    return authType === 'authlib-injector' ? 'Online' : 'Offline';
+  const authServerHost = (account: StoredAccount): string => {
+    if (!account.authServer) return '';
+    try {
+      return new URL(account.authServer).hostname;
+    } catch {
+      return account.authServer;
+    }
   };
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Button variant="contained" startIcon={<Add />} onClick={handleAddAccount}>
-          Add Account
+    <div>
+      <div className="mb-2 flex justify-end">
+        <Button onClick={handleAddAccount}>
+          <Plus className="size-4" aria-hidden />
+          {t('accounts.add')}
         </Button>
-      </Box>
+      </div>
 
-      <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-        Select an account to login. Click the delete button to remove an account.
-      </Typography>
+      <p className="mb-4 text-sm text-ink-muted">{t('accounts.hint')}</p>
 
       {accounts.length === 0 ? (
         <EmptyState
-          icon={<Person sx={{ fontSize: 64, mb: 2, opacity: 0.5, color: 'text.secondary' }} />}
+          icon={<Users className="size-12 opacity-60" aria-hidden />}
           title={t('accounts.emptyTitle')}
           hint={t('accounts.emptyHint')}
-          actionLabel="Add Account"
+          actionLabel={t('accounts.add')}
           onAction={handleAddAccount}
         />
       ) : (
-        <List sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg }}>
+        <div className="rounded-lg border border-edge bg-panel">
           {accounts.map((account, index) => (
-            <Box key={account.id}>
-              <ListItem
-                sx={{
-                  cursor: 'pointer',
-                  '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.06)' },
-                  backgroundColor: account.lastUsed ? 'rgba(255, 255, 255, 0.06)' : 'transparent',
+            <div
+              key={account.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => handleSelectAccount(account)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleSelectAccount(account);
+                }
+              }}
+              aria-label={t('accounts.select', { username: account.username })}
+              className={`flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-white/4 ${
+                index > 0 ? 'border-t border-edge' : ''
+              } ${account.lastUsed ? 'bg-white/4' : ''}`}
+            >
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-edge-strong bg-white/6 text-sm font-semibold text-ink">
+                {account.username.charAt(0).toUpperCase()}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-sm font-medium text-ink">{account.username}</span>
+                  {account.lastUsed && (
+                    <BadgeCheck className="size-4 shrink-0 text-ok" aria-label={t('accounts.lastUsed')} />
+                  )}
+                </div>
+                <div className="mt-1 flex items-center gap-1.5">
+                  <Badge tone={account.authType === 'authlib-injector' ? 'success' : 'neutral'}>
+                    {account.authType === 'authlib-injector' ? t('accounts.online') : t('accounts.offline')}
+                  </Badge>
+                  {account.authServer && (
+                    <span className="truncate text-xs text-ink-faint">{authServerHost(account)}</span>
+                  )}
+                </div>
+              </div>
+              <IconButton
+                label={t('common.delete')}
+                tone="danger"
+                onClick={e => {
+                  e.stopPropagation();
+                  handleDeleteClick(account);
                 }}
-                onClick={() => handleSelectAccount(account)}
               >
-                <ListItemAvatar>
-                  <Avatar sx={{ backgroundColor: tokens.color.accent }}>
-                    <Person />
-                  </Avatar>
-                </ListItemAvatar>
-                <ListItemText
-                  primary={
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography sx={{ color: 'text.primary' }}>{account.username}</Typography>
-                      {account.lastUsed && (
-                        <CheckCircle sx={{ fontSize: 16, color: tokens.color.success }} />
-                      )}
-                    </Box>
-                  }
-                  secondary={
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                      <Chip
-                        size="small"
-                        icon={getAuthTypeIcon(account.authType)}
-                        label={getAuthTypeLabel(account.authType)}
-                        sx={{
-                          height: 24,
-                          backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                          color: account.authType === 'authlib-injector' ? tokens.color.success : 'text.secondary',
-                        }}
-                      />
-                      {account.authServer && (
-                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                          {new URL(account.authServer).hostname}
-                        </Typography>
-                      )}
-                    </Box>
-                  }
-                />
-                <ListItemSecondaryAction>
-                  <IconButton
-                    edge="end"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteClick(account);
-                    }}
-                    sx={{ color: tokens.color.danger }}
-                  >
-                    <Delete />
-                  </IconButton>
-                </ListItemSecondaryAction>
-              </ListItem>
-              {index < accounts.length - 1 && <Divider sx={{ borderColor: tokens.color.divider }} />}
-            </Box>
+                <Trash2 className="size-4" />
+              </IconButton>
+            </div>
           ))}
-        </List>
+        </div>
       )}
 
-      <Dialog
+      <AlertDialog
         open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-        slotProps={{ paper: { sx: { backgroundColor: 'background.paper', backgroundImage: 'none' } } }}
-      >
-        <DialogTitle sx={{ color: 'text.primary' }}>Delete Account</DialogTitle>
-        <DialogContent>
-          <Typography sx={{ color: 'text.secondary' }}>
-            Are you sure you want to delete the account "{accountToDelete?.username}"?
-            This action cannot be undone.
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setDeleteDialogOpen(false)} sx={{ color: 'text.secondary' }}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleConfirmDelete}
-            sx={{ backgroundColor: tokens.color.danger, color: tokens.color.deep, '&:hover': { backgroundColor: '#ef5350' } }}
-          >
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+        onOpenChange={open => {
+          setDeleteDialogOpen(open);
+          if (!open) setAccountToDelete(null);
+        }}
+        title={t('accounts.deleteTitle')}
+        description={t('accounts.deleteConfirm', { username: accountToDelete?.username ?? '' })}
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
+        onConfirm={handleConfirmDelete}
+      />
+    </div>
   );
 }
