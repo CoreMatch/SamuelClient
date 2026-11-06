@@ -60,7 +60,7 @@ SamuelClient is a **cross-platform Minecraft launcher built with Wails**:
   with Wails").
 - Commits: `4284748` (full launcher functionality), `23bf03a` (Java management),
   `da69467` (auto-detected system Java), `f87dea6` (launcher config
-  persistence), `19fd6c3` (rename to Samuel Client + authlib).
+  persistence), `19fd6c3` (rename to Samuel Client + HRPAuth login).
 - CMCL residue check: `git log --all --full-history -- "*cmcl*"` shows no
   `cmcl.jar` was ever committed, and a repo-wide search finds no CMCL
   reference in code, build scripts, README, or CI.

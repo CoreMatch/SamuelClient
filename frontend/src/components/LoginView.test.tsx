@@ -1,16 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import LoginView, { LoggedInAccount } from './LoginView';
-import { AuthlibLogin } from '../../wailsjs/go/main/App';
+import { HRPAuthLogin } from '../../wailsjs/go/main/App';
 
 // The Wails bindings are replaced with test doubles; LoginView must never
 // reach a real backend.
 vi.mock('../../wailsjs/go/main/App', () => ({
-  GetAuthlibMeta: vi.fn(),
-  AuthlibLogin: vi.fn(),
+  HRPAuthLogin: vi.fn(),
 }));
 
-const mockAuthlibLogin = vi.mocked(AuthlibLogin);
+const mockHRPAuthLogin = vi.mocked(HRPAuthLogin);
 
 // Opens the auth-type select (first combobox) and picks an option by name.
 async function selectAuthType(name: string) {
@@ -25,19 +24,19 @@ describe('LoginView', () => {
     vi.clearAllMocks();
   });
 
-  it('rejects authlib login without credentials before calling the backend', async () => {
+  it('rejects HRPAuth login without credentials before calling the backend', async () => {
     const onLoginSuccess = vi.fn();
     render(<LoginView onLoginSuccess={onLoginSuccess} onSwitchToAccounts={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Login' }));
 
     expect(await screen.findByText('Username and password are required')).toBeTruthy();
-    expect(mockAuthlibLogin).not.toHaveBeenCalled();
+    expect(mockHRPAuthLogin).not.toHaveBeenCalled();
     expect(onLoginSuccess).not.toHaveBeenCalled();
   });
 
-  it('propagates the account on successful authlib login', async () => {
-    mockAuthlibLogin.mockResolvedValue({
+  it('propagates the account on successful HRPAuth login', async () => {
+    mockHRPAuthLogin.mockResolvedValue({
       success: true,
       data: {
         accessToken: 'access-1',
@@ -58,17 +57,14 @@ describe('LoginView', () => {
     expect(account.username).toBe('Steve');
     expect(account.uuid).toBe('uuid-1');
     expect(account.accessToken).toBe('access-1');
-    expect(account.authType).toBe('authlib-injector');
-    expect(mockAuthlibLogin).toHaveBeenCalledWith(
-      'https://backend.auth.samuelcheston.com/',
-      'steve',
-      'secret',
-      '',
-    );
+    expect(account.authType).toBe('hrpauth');
+    // The endpoint is built in — no server argument travels through the
+    // binding anymore.
+    expect(mockHRPAuthLogin).toHaveBeenCalledWith('steve', 'secret', '');
   });
 
-  it('surfaces the backend error on failed authlib login', async () => {
-    mockAuthlibLogin.mockResolvedValue({
+  it('surfaces the backend error on failed HRPAuth login', async () => {
+    mockHRPAuthLogin.mockResolvedValue({
       success: false,
       data: null,
       error: 'Invalid credentials',
@@ -97,7 +93,7 @@ describe('LoginView', () => {
     expect(account.authType).toBe('offline');
     expect(account.username).toBe('offline-steve');
     expect(account.uuid).not.toBe('');
-    expect(mockAuthlibLogin).not.toHaveBeenCalled();
+    expect(mockHRPAuthLogin).not.toHaveBeenCalled();
   });
 
   it('requires a username for offline login', async () => {

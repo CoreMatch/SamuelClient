@@ -27,8 +27,7 @@ type MinecraftAccount struct {
 	Username    string    `json:"username"`
 	AccessToken string    `json:"access_token,omitempty"`
 	ClientToken string    `json:"client_token,omitempty"`
-	AuthType    string    `json:"auth_type"`             // "offline", "microsoft", "authlib-injector"
-	AuthServer  string    `json:"auth_server,omitempty"` // For authlib-injector
+	AuthType    string    `json:"auth_type"` // "offline" or "hrpauth"
 	PlayerUUID  string    `json:"player_uuid,omitempty"`
 	PlayerName  string    `json:"player_name,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -77,16 +76,6 @@ type LauncherConfig struct {
 	// that server via --server/--port (match handoff flow, INTEROP-SPEC §6).
 	JoinServer string `json:"join_server,omitempty"`
 	JoinPort   int    `json:"join_port,omitempty"`
-}
-
-// AuthServer represents an authlib-injector server
-type AuthServer struct {
-	ID        int64     `json:"id"`
-	Name      string    `json:"name"`
-	URL       string    `json:"url"`
-	IconURL   string    `json:"icon_url,omitempty"`
-	IsDefault bool      `json:"is_default"`
-	CreatedAt time.Time `json:"created_at"`
 }
 
 // JavaInstallation represents a Java installation

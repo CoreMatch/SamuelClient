@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { BadgeCheck, Plus, Trash2, Users } from 'lucide-react';
-import { StoredAccount, ACCOUNTS_STORAGE_KEY } from '../accountStorage';
+import { StoredAccount, ACCOUNTS_STORAGE_KEY, migrateAccountsIfNeeded } from '../accountStorage';
 import { EmptyState } from './states';
 import { t } from '../i18n';
 import { Button, IconButton } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { AlertDialog } from '../ui/dialog';
+import { Callout } from '../ui/callout';
 
 interface AccountManagerProps {
   onSelectAccount: (account: StoredAccount) => void;
@@ -16,6 +17,7 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
   const [accounts, setAccounts] = useState<StoredAccount[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [accountToDelete, setAccountToDelete] = useState<StoredAccount | null>(null);
+  const [legacyNotice, setLegacyNotice] = useState('');
 
   useEffect(() => {
     loadAccounts();
@@ -23,6 +25,7 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
 
   const loadAccounts = () => {
     try {
+      migrateAccountsIfNeeded();
       const stored = localStorage.getItem(ACCOUNTS_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
@@ -43,6 +46,13 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
   };
 
   const handleSelectAccount = (account: StoredAccount) => {
+    // Legacy (non-HRPAuth Yggdrasil) accounts cannot be used anymore; give
+    // a short readable notice instead of selecting or silently dropping them.
+    if (account.legacy) {
+      setLegacyNotice(t('accounts.legacyNotice'));
+      return;
+    }
+    setLegacyNotice('');
     // Update last used
     const updatedAccounts = accounts.map(acc => ({
       ...acc,
@@ -70,15 +80,6 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
     onAddAccount();
   };
 
-  const authServerHost = (account: StoredAccount): string => {
-    if (!account.authServer) return '';
-    try {
-      return new URL(account.authServer).hostname;
-    } catch {
-      return account.authServer;
-    }
-  };
-
   return (
     <div>
       <div className="mb-3 flex justify-end">
@@ -87,6 +88,14 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
           {t('accounts.add')}
         </Button>
       </div>
+
+      {legacyNotice && (
+        <div className="mb-4">
+          <Callout tone="warning" onDismiss={() => setLegacyNotice('')}>
+            {legacyNotice}
+          </Callout>
+        </div>
+      )}
 
       {accounts.length === 0 ? (
         <EmptyState
@@ -125,11 +134,12 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
                   )}
                 </div>
                 <div className="mt-1.5 flex items-center gap-2">
-                  <Badge tone={account.authType === 'authlib-injector' ? 'success' : 'neutral'}>
-                    {account.authType === 'authlib-injector' ? t('accounts.online') : t('accounts.offline')}
-                  </Badge>
-                  {account.authServer && (
-                    <span className="truncate text-sm text-ink-faint">{authServerHost(account)}</span>
+                  {account.legacy ? (
+                    <Badge tone="warning">{t('accounts.legacy')}</Badge>
+                  ) : (
+                    <Badge tone={account.authType === 'hrpauth' ? 'success' : 'neutral'}>
+                      {account.authType === 'hrpauth' ? t('accounts.hrpauth') : t('accounts.offline')}
+                    </Badge>
                   )}
                 </div>
               </div>

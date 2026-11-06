@@ -143,16 +143,12 @@ func TestBindingValidationFailures(t *testing.T) {
 		call    func() *models.ApiResponse
 		wantErr string
 	}{
-		{"GetAuthlibMeta empty server", func() *models.ApiResponse { return app.GetAuthlibMeta("") }, "server is required"},
 		{"GetFabricVersions empty mc", func() *models.ApiResponse { return app.GetFabricVersions("") }, "mc version is required"},
 		{"GetForgeVersions empty mc", func() *models.ApiResponse { return app.GetForgeVersions("") }, "mc version is required"},
-		{"AuthlibLogin empty server", func() *models.ApiResponse { return app.AuthlibLogin("", "u", "p", "") }, "server is required"},
-		{"AuthlibLogin empty username", func() *models.ApiResponse { return app.AuthlibLogin("s", "", "p", "") }, "username and password are required"},
-		{"AuthlibLogin empty password", func() *models.ApiResponse { return app.AuthlibLogin("s", "u", "", "") }, "username and password are required"},
-		{"AuthlibRefresh empty server", func() *models.ApiResponse { return app.AuthlibRefresh("", "at", "ct", "") }, "server is required"},
-		{"AuthlibRefresh empty tokens", func() *models.ApiResponse { return app.AuthlibRefresh("s", "", "", "") }, "access token and client token are required"},
-		{"AuthlibValidate empty server", func() *models.ApiResponse { return app.AuthlibValidate("", "at", "") }, "server is required"},
-		{"AuthlibValidate empty token", func() *models.ApiResponse { return app.AuthlibValidate("s", "", "") }, "access token is required"},
+		{"HRPAuthLogin empty username", func() *models.ApiResponse { return app.HRPAuthLogin("", "p", "") }, "username and password are required"},
+		{"HRPAuthLogin empty password", func() *models.ApiResponse { return app.HRPAuthLogin("u", "", "") }, "username and password are required"},
+		{"HRPAuthRefresh empty tokens", func() *models.ApiResponse { return app.HRPAuthRefresh("", "", "") }, "access token and client token are required"},
+		{"HRPAuthValidate empty token", func() *models.ApiResponse { return app.HRPAuthValidate("", "") }, "access token is required"},
 		{"DownloadVersion empty id", func() *models.ApiResponse { return app.DownloadVersion("", "") }, "version_id is required"},
 		{"InstallFabricLoader empty mc", func() *models.ApiResponse { return app.InstallFabricLoader("", "0.15.0", "") }, "mc version is required"},
 		{"InstallFabricLoader empty loader", func() *models.ApiResponse { return app.InstallFabricLoader("1.99", "", "") }, "loader version is required"},
@@ -254,14 +250,23 @@ func TestJavaInstallationDetectionFailure(t *testing.T) {
 
 // ==================== HTTP-backed bindings against httptest ====================
 
-const yggdrasilAuthResponse = `{
+const hrpauthAuthResponse = `{
 	"accessToken": "access-123",
 	"clientToken": "client-456",
 	"availableProfiles": [{"id": "p1", "name": "PlayerOne"}],
 	"selectedProfile": {"id": "p1", "name": "PlayerOne"}
 }`
 
-func TestAuthlibLoginBindingSuccessGeneratesClientToken(t *testing.T) {
+// pointHRPAuthAt aims the built-in HRPAuth endpoint at a test server for the
+// duration of one test and restores the production value afterwards.
+func pointHRPAuthAt(t *testing.T, url string) {
+	t.Helper()
+	old := services.HRPAuthBaseURL
+	services.HRPAuthBaseURL = url
+	t.Cleanup(func() { services.HRPAuthBaseURL = old })
+}
+
+func TestHRPAuthLoginBindingSuccessGeneratesClientToken(t *testing.T) {
 	var gotBody map[string]interface{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/authserver/authenticate" {
@@ -270,14 +275,15 @@ func TestAuthlibLoginBindingSuccessGeneratesClientToken(t *testing.T) {
 		}
 		body, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(body, &gotBody)
-		io.WriteString(w, yggdrasilAuthResponse)
+		io.WriteString(w, hrpauthAuthResponse)
 	}))
 	defer srv.Close()
+	pointHRPAuthAt(t, srv.URL)
 
 	app := newTestApp()
-	result := app.AuthlibLogin(srv.URL, "alice", "secret", "")
+	result := app.HRPAuthLogin("alice", "secret", "")
 	if !result.Success {
-		t.Fatalf("AuthlibLogin failed: %s", result.Error)
+		t.Fatalf("HRPAuthLogin failed: %s", result.Error)
 	}
 
 	// The binding must have generated a 32-char client token on its own.
@@ -295,24 +301,23 @@ func TestAuthlibLoginBindingSuccessGeneratesClientToken(t *testing.T) {
 	}
 }
 
-func TestAuthBindingsFailureMapping(t *testing.T) {
-	// A closed server simulates an unreachable auth server: the binding must
-	// map the transport error into ApiResponse.Error, never panic.
+func TestHRPAuthBindingsFailureMapping(t *testing.T) {
+	// A closed server simulates an unreachable auth endpoint: the binding
+	// must map the transport error into ApiResponse.Error, never panic.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
-	url := srv.URL
 	srv.Close()
+	pointHRPAuthAt(t, srv.URL)
 
 	app := newTestApp()
-	wantFailure(t, app.AuthlibLogin(url, "u", "p", ""), "")
-	wantFailure(t, app.AuthlibRefresh(url, "at", "ct", ""), "")
-	wantFailure(t, app.AuthlibValidate(url, "at", ""), "")
-	wantFailure(t, app.GetAuthlibMeta(url), "")
+	wantFailure(t, app.HRPAuthLogin("u", "p", ""), "")
+	wantFailure(t, app.HRPAuthRefresh("at", "ct", ""), "")
+	wantFailure(t, app.HRPAuthValidate("at", ""), "")
 }
 
 func TestRefreshAndValidateBindingSuccess(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/authserver/refresh", func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, yggdrasilAuthResponse)
+		io.WriteString(w, hrpauthAuthResponse)
 	})
 	mux.HandleFunc("/authserver/validate", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -322,18 +327,19 @@ func TestRefreshAndValidateBindingSuccess(t *testing.T) {
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
+	pointHRPAuthAt(t, srv.URL)
 
 	app := newTestApp()
-	if result := app.AuthlibRefresh(srv.URL, "at", "ct", "p1"); !result.Success {
-		t.Fatalf("AuthlibRefresh failed: %s", result.Error)
+	if result := app.HRPAuthRefresh("at", "ct", "p1"); !result.Success {
+		t.Fatalf("HRPAuthRefresh failed: %s", result.Error)
 	}
-	if result := app.AuthlibValidate(srv.URL, "at", "ct"); !result.Success {
-		t.Fatalf("AuthlibValidate failed: %s", result.Error)
+	if result := app.HRPAuthValidate("at", "ct"); !result.Success {
+		t.Fatalf("HRPAuthValidate failed: %s", result.Error)
 	}
 
-	meta := app.GetAuthlibMeta(srv.URL)
+	meta := app.authService.GetHRPAuthMeta()
 	if !meta.Success {
-		t.Fatalf("GetAuthlibMeta failed: %s", meta.Error)
+		t.Fatalf("GetHRPAuthMeta failed: %s", meta.Error)
 	}
 	data, ok := meta.Data.(map[string]interface{})
 	if !ok {
@@ -698,7 +704,7 @@ func TestDownloadVersionBindingFailure(t *testing.T) {
 
 // LaunchGame's success path spawns a real detached game process and is
 // deliberately not exercised here (see TESTING-TODO.md); validation and the
-// pre-flight authlib metadata fetch are the in-scope parts.
+// pre-flight HRPAuth metadata fetch are the in-scope parts.
 
 func TestLaunchGameValidationOnly(t *testing.T) {
 	app := newTestApp()

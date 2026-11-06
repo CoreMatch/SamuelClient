@@ -56,17 +56,6 @@ func (a *App) emit(event string, payload interface{}) {
 	wailsruntime.EventsEmit(a.ctx, event, payload)
 }
 
-// ==================== Auth (read) ====================
-
-// GetAuthlibMeta fetches the authlib-injector metadata document of the given
-// auth server. Used by the login view to validate/preview a custom server.
-func (a *App) GetAuthlibMeta(server string) *models.ApiResponse {
-	if server == "" {
-		return &models.ApiResponse{Success: false, Error: "server is required"}
-	}
-	return a.authService.GetAuthlibMeta(server)
-}
-
 // ==================== Versions & loaders (read) ====================
 
 // GetVersions returns the BMCLAPI version manifest list.
@@ -257,42 +246,34 @@ func (a *App) GetInstalledVersions() *models.ApiResponse {
 // Wails binding and never traverse a local HTTP socket (ADR-0004). None of
 // the values are written to logs.
 
-// AuthlibLogin authenticates against an authlib-injector (Yggdrasil) server.
-// The plaintext password is passed in-process to the auth service only.
-func (a *App) AuthlibLogin(server, username, password, clientToken string) *models.ApiResponse {
-	if server == "" {
-		return &models.ApiResponse{Success: false, Error: "server is required"}
-	}
+// HRPAuthLogin authenticates against the built-in HRPAuth endpoint. There is
+// no generic/configurable Yggdrasil entry point. The plaintext password is
+// passed in-process to the auth service only.
+func (a *App) HRPAuthLogin(username, password, clientToken string) *models.ApiResponse {
 	if username == "" || password == "" {
 		return &models.ApiResponse{Success: false, Error: "username and password are required"}
 	}
 	if clientToken == "" {
 		clientToken = newClientToken()
 	}
-	return a.authService.AuthenticateWithAuthlib(server, username, password, clientToken)
+	return a.authService.AuthenticateWithHRPAuth(username, password, clientToken)
 }
 
-// AuthlibRefresh refreshes an access token, optionally binding it to a
+// HRPAuthRefresh refreshes an access token, optionally binding it to a
 // specific profile.
-func (a *App) AuthlibRefresh(server, accessToken, clientToken, selectedProfileID string) *models.ApiResponse {
-	if server == "" {
-		return &models.ApiResponse{Success: false, Error: "server is required"}
-	}
+func (a *App) HRPAuthRefresh(accessToken, clientToken, selectedProfileID string) *models.ApiResponse {
 	if accessToken == "" || clientToken == "" {
 		return &models.ApiResponse{Success: false, Error: "access token and client token are required"}
 	}
-	return a.authService.RefreshAuthlibTokenWithProfile(server, accessToken, clientToken, selectedProfileID)
+	return a.authService.RefreshHRPAuthTokenWithProfile(accessToken, clientToken, selectedProfileID)
 }
 
-// AuthlibValidate checks whether a stored access token is still valid.
-func (a *App) AuthlibValidate(server, accessToken, clientToken string) *models.ApiResponse {
-	if server == "" {
-		return &models.ApiResponse{Success: false, Error: "server is required"}
-	}
+// HRPAuthValidate checks whether a stored access token is still valid.
+func (a *App) HRPAuthValidate(accessToken, clientToken string) *models.ApiResponse {
 	if accessToken == "" {
 		return &models.ApiResponse{Success: false, Error: "access token is required"}
 	}
-	return a.authService.ValidateAuthlibToken(server, accessToken, clientToken)
+	return a.authService.ValidateHRPAuthToken(accessToken, clientToken)
 }
 
 // newClientToken generates a random 32-character client token.
@@ -415,7 +396,6 @@ type LaunchGameRequest struct {
 	AccessToken   string `json:"access_token"`
 	ClientToken   string `json:"client_token"`
 	AuthType      string `json:"auth_type"`
-	AuthServer    string `json:"auth_server"`
 	AuthlibJar    string `json:"authlib_jar"`
 	AuthlibMeta   string `json:"authlib_meta"`
 	GameDir       string `json:"game_dir"`
@@ -473,12 +453,12 @@ func (a *App) LaunchGame(req LaunchGameRequest) *models.ApiResponse {
 	}
 
 	// 配置预获取: if the caller didn't supply the metadata JSON, fetch it from
-	// the authlib server (required pre-launch step per the authlib-injector
-	// wiki). On failure we still launch; authlib-injector can fall back to a
-	// runtime fetch.
+	// HRPAuth (required pre-launch step per the authlib-injector wiki). On
+	// failure we still launch; authlib-injector can fall back to a runtime
+	// fetch.
 	authlibMeta := req.AuthlibMeta
-	if authlibMeta == "" && strings.EqualFold(req.AuthType, "authlib-injector") && req.AuthServer != "" {
-		metaResult := a.authService.GetAuthlibMeta(req.AuthServer)
+	if authlibMeta == "" && services.IsHRPAuthAccount(req.AuthType) {
+		metaResult := a.authService.GetHRPAuthMeta()
 		if metaResult.Success {
 			if data, ok := metaResult.Data.(map[string]interface{}); ok {
 				if raw, ok := data["raw"].(string); ok {
@@ -528,7 +508,6 @@ func (a *App) LaunchGame(req LaunchGameRequest) *models.ApiResponse {
 		AccessToken: req.AccessToken,
 		ClientToken: req.ClientToken,
 		AuthType:    req.AuthType,
-		AuthServer:  req.AuthServer,
 	}
 
 	logCallback := func(source, line string) {

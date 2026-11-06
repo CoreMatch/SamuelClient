@@ -193,10 +193,9 @@ After the migration landed, the owner decided a second round of reductions:
    methods; no debug-only bindings remain.
 3. **Two intentional behavior fixes from the migration — do not treat them as
    suspicious drift**:
-   - LoginView reads the custom auth-server name from `meta.serverName` (the
-     documented shape of `AuthService.GetAuthlibMeta`); the old code read a
-     top-level `serverName` that was always undefined, and the fetch itself
-     only ever worked in dev mode.
+   - HRPAuth metadata is fetched backend-side (`AuthService.GetHRPAuthMeta`)
+     and only used for the launch-time `-Dauthlibinjector.yggdrasil.prefetched`
+     prefetch; the login UI carries no auth-server data at all.
    - `clientToken` generation now uses `crypto/rand`
      (`bindings.go::newClientToken`); the old HTTP handler produced a
      deterministic, non-random placeholder string.

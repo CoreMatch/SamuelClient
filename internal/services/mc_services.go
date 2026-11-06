@@ -28,6 +28,24 @@ type AuthService struct {
 	client *http.Client
 }
 
+// HRPAuthBaseURL is the built-in HRPAuth endpoint (the HA ecosystem's
+// Minecraft-facing Yggdrasil API, HRPAuth-Yggdrasil-API). It is fixed at
+// deployment time; the UI exposes no way to edit or switch auth servers.
+// Declared as a var so tests can point it at an httptest server.
+var HRPAuthBaseURL = "https://backend.auth.samuelcheston.com/"
+
+// IsHRPAuthAccount reports whether an account type is the HRPAuth flavor.
+// The legacy "authlib-injector" value (pre-migration stored accounts) is
+// accepted so un-migrated data keeps working.
+func IsHRPAuthAccount(authType string) bool {
+	switch strings.ToLower(authType) {
+	case "hrpauth", "authlib-injector":
+		return true
+	default:
+		return false
+	}
+}
+
 // NewAuthService creates a new AuthService
 func NewAuthService() *AuthService {
 	return &AuthService{
@@ -174,12 +192,12 @@ func resolveALI(requestURL, ali string) (string, error) {
 	return base.ResolveReference(ref).String(), nil
 }
 
-// GetAuthlibMeta fetches authlib-injector server metadata.
+// GetHRPAuthMeta fetches the HRPAuth authlib-injector metadata document.
 //
 // Returns the decoded struct, the raw JSON body (so the launcher can pass it
 // to -Dauthlibinjector.yggdrasil.prefetched) and the resolved API URL.
-func (a *AuthService) GetAuthlibMeta(authServerURL string) *models.ApiResponse {
-	metaURL := strings.TrimSuffix(authServerURL, "/") + "/"
+func (a *AuthService) GetHRPAuthMeta() *models.ApiResponse {
+	metaURL := strings.TrimSuffix(HRPAuthBaseURL, "/") + "/"
 
 	meta, rawBody, resolvedURL, err := a.getMetaWithRedirects(metaURL)
 	if err != nil {
@@ -196,12 +214,12 @@ func (a *AuthService) GetAuthlibMeta(authServerURL string) *models.ApiResponse {
 	}
 }
 
-// AuthenticateWithAuthlib authenticates with an authlib-injector server
+// AuthenticateWithHRPAuth authenticates against HRPAuth.
 //
 // Per the wiki, the request MUST include `agent: {name:"Minecraft", version:1}`
 // and `requestUser: true` so the launcher receives the user object.
-func (a *AuthService) AuthenticateWithAuthlib(authServerURL, username, password, clientToken string) *models.ApiResponse {
-	url := strings.TrimSuffix(authServerURL, "/") + "/authserver/authenticate"
+func (a *AuthService) AuthenticateWithHRPAuth(username, password, clientToken string) *models.ApiResponse {
+	url := strings.TrimSuffix(HRPAuthBaseURL, "/") + "/authserver/authenticate"
 
 	reqBody := AuthlibAuthRequest{
 		Username:    username,
@@ -246,7 +264,7 @@ func (a *AuthService) AuthenticateWithAuthlib(authServerURL, username, password,
 	return &models.ApiResponse{Success: true, Data: authResp}
 }
 
-// RefreshAuthlibTokenWithProfile refreshes an authlib-injector access token.
+// RefreshHRPAuthTokenWithProfile refreshes a HRPAuth access token.
 //
 // Per the wiki, the refresh request:
 //   - sets `requestUser: true` so the launcher receives the user object
@@ -256,8 +274,8 @@ func (a *AuthService) AuthenticateWithAuthlib(authServerURL, username, password,
 //
 // If selectedProfileID is non-empty it is sent as `selectedProfile.id` so
 // the server binds the new token to that profile; pass "" to omit it.
-func (a *AuthService) RefreshAuthlibTokenWithProfile(authServerURL, accessToken, clientToken, selectedProfileID string) *models.ApiResponse {
-	url := strings.TrimSuffix(authServerURL, "/") + "/authserver/refresh"
+func (a *AuthService) RefreshHRPAuthTokenWithProfile(accessToken, clientToken, selectedProfileID string) *models.ApiResponse {
+	url := strings.TrimSuffix(HRPAuthBaseURL, "/") + "/authserver/refresh"
 
 	reqBody := map[string]interface{}{
 		"accessToken": accessToken,
@@ -302,13 +320,13 @@ func (a *AuthService) RefreshAuthlibTokenWithProfile(authServerURL, accessToken,
 	return &models.ApiResponse{Success: true, Data: authResp}
 }
 
-// ValidateAuthlibToken calls POST /authserver/validate to check whether a
-// stored accessToken (and optional clientToken) is still valid. The wiki
-// requires a 204 No Content response on success; any other status means the
-// token is invalid. This is a prerequisite of the launcher's token
+// ValidateHRPAuthToken calls POST /authserver/validate on HRPAuth to check
+// whether a stored accessToken (and optional clientToken) is still valid.
+// The wiki requires a 204 No Content response on success; any other status
+// means the token is invalid. This is a prerequisite of the launcher's token
 // validity-check flow described in the launcher technical spec.
-func (a *AuthService) ValidateAuthlibToken(authServerURL, accessToken, clientToken string) *models.ApiResponse {
-	url := strings.TrimSuffix(authServerURL, "/") + "/authserver/validate"
+func (a *AuthService) ValidateHRPAuthToken(accessToken, clientToken string) *models.ApiResponse {
+	url := strings.TrimSuffix(HRPAuthBaseURL, "/") + "/authserver/validate"
 
 	reqBody := map[string]string{
 		"accessToken": accessToken,
@@ -1851,11 +1869,13 @@ func (l *LauncherService) BuildLaunchCommand(config models.LauncherConfig, versi
 	args = append(args, "-Djava.library.path="+nativesDir)
 	args = append(args, extraJVM...)
 
-	// Authlib-Injector: -javaagent:/path/authlib-injector.jar=<auth-server>
-	if strings.EqualFold(account.AuthType, "authlib-injector") && config.AuthlibJar != "" && account.AuthServer != "" {
-		args = append(args, fmt.Sprintf("-javaagent:%s=%s", config.AuthlibJar, strings.TrimRight(account.AuthServer, "/")))
+	// Authlib-Injector: -javaagent:/path/authlib-injector.jar=<HRPAuth>
+	// The injected auth server is always the built-in HRPAuth endpoint —
+	// there is no generic/configurable Yggdrasil entry point.
+	if IsHRPAuthAccount(account.AuthType) && config.AuthlibJar != "" {
+		args = append(args, fmt.Sprintf("-javaagent:%s=%s", config.AuthlibJar, strings.TrimRight(HRPAuthBaseURL, "/")))
 		// 配置预获取: -Dauthlibinjector.yggdrasil.prefetched=<Base64(meta JSON)>
-		// The metadata is fetched once via GetAuthlibMeta and cached; passing
+		// The metadata is fetched once via GetHRPAuthMeta and cached; passing
 		// it here lets authlib-injector avoid a network round-trip at game
 		// startup and prevents a crash if the network drops mid-launch.
 		if config.AuthlibMetaJSON != "" {

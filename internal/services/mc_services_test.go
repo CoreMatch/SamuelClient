@@ -51,7 +51,34 @@ const testMetaJSON = `{
 	"skinDomains": ["skin.example.com"]
 }`
 
-func TestGetAuthlibMeta(t *testing.T) {
+// pointHRPAuthAt aims the built-in HRPAuth endpoint at a test server for the
+// duration of one test and restores the production value afterwards.
+func pointHRPAuthAt(t *testing.T, url string) {
+	t.Helper()
+	old := HRPAuthBaseURL
+	HRPAuthBaseURL = url
+	t.Cleanup(func() { HRPAuthBaseURL = old })
+}
+
+func TestIsHRPAuthAccount(t *testing.T) {
+	cases := []struct {
+		authType string
+		want     bool
+	}{
+		{"hrpauth", true},
+		{"HRPAuth", true},
+		{"authlib-injector", true}, // legacy pre-migration value
+		{"offline", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := IsHRPAuthAccount(tc.authType); got != tc.want {
+			t.Errorf("IsHRPAuthAccount(%q) = %v, want %v", tc.authType, got, tc.want)
+		}
+	}
+}
+
+func TestGetHRPAuthMeta(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
@@ -61,11 +88,12 @@ func TestGetAuthlibMeta(t *testing.T) {
 		io.WriteString(w, testMetaJSON)
 	}))
 	defer srv.Close()
+	pointHRPAuthAt(t, srv.URL)
 
 	auth := NewAuthService()
-	result := auth.GetAuthlibMeta(srv.URL)
+	result := auth.GetHRPAuthMeta()
 	if !result.Success {
-		t.Fatalf("GetAuthlibMeta failed: %s", result.Error)
+		t.Fatalf("GetHRPAuthMeta failed: %s", result.Error)
 	}
 
 	data, ok := result.Data.(map[string]interface{})
@@ -91,7 +119,7 @@ func TestGetAuthlibMeta(t *testing.T) {
 	}
 }
 
-func TestGetAuthlibMetaFollowsALIRedirect(t *testing.T) {
+func TestGetHRPAuthMetaFollowsALIRedirect(t *testing.T) {
 	var srvURL string
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -106,11 +134,12 @@ func TestGetAuthlibMetaFollowsALIRedirect(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 	srvURL = srv.URL
+	pointHRPAuthAt(t, srv.URL)
 
 	auth := NewAuthService()
-	result := auth.GetAuthlibMeta(srv.URL)
+	result := auth.GetHRPAuthMeta()
 	if !result.Success {
-		t.Fatalf("GetAuthlibMeta with ALI redirect failed: %s", result.Error)
+		t.Fatalf("GetHRPAuthMeta with ALI redirect failed: %s", result.Error)
 	}
 	data := result.Data.(map[string]interface{})
 	if data["resolved_url"] != srv.URL+"/api" {
@@ -122,13 +151,14 @@ func TestGetAuthlibMetaFollowsALIRedirect(t *testing.T) {
 	}
 }
 
-func TestGetAuthlibMetaHTTPError(t *testing.T) {
+func TestGetHRPAuthMetaHTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
 	defer srv.Close()
+	pointHRPAuthAt(t, srv.URL)
 
-	result := NewAuthService().GetAuthlibMeta(srv.URL)
+	result := NewAuthService().GetHRPAuthMeta()
 	if result.Success {
 		t.Fatal("expected failure for HTTP 500")
 	}
@@ -137,7 +167,7 @@ func TestGetAuthlibMetaHTTPError(t *testing.T) {
 	}
 }
 
-func TestAuthenticateWithAuthlib(t *testing.T) {
+func TestAuthenticateWithHRPAuth(t *testing.T) {
 	var gotBody map[string]interface{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/authserver/authenticate" {
@@ -156,11 +186,12 @@ func TestAuthenticateWithAuthlib(t *testing.T) {
 		}`)
 	}))
 	defer srv.Close()
+	pointHRPAuthAt(t, srv.URL)
 
 	auth := NewAuthService()
-	result := auth.AuthenticateWithAuthlib(srv.URL, "alice", "secret", "client-456")
+	result := auth.AuthenticateWithHRPAuth("alice", "secret", "client-456")
 	if !result.Success {
-		t.Fatalf("AuthenticateWithAuthlib failed: %s", result.Error)
+		t.Fatalf("AuthenticateWithHRPAuth failed: %s", result.Error)
 	}
 
 	// The request must follow the Yggdrasil shape.
@@ -187,15 +218,16 @@ func TestAuthenticateWithAuthlib(t *testing.T) {
 	}
 }
 
-func TestAuthenticateWithAuthlibErrorMessage(t *testing.T) {
+func TestAuthenticateWithHRPAuthErrorMessage(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
 		io.WriteString(w, `{"errorMessage": "Invalid credentials. Invalid username or password."}`)
 	}))
 	defer srv.Close()
+	pointHRPAuthAt(t, srv.URL)
 
-	result := NewAuthService().AuthenticateWithAuthlib(srv.URL, "alice", "wrong", "")
+	result := NewAuthService().AuthenticateWithHRPAuth("alice", "wrong", "")
 	if result.Success {
 		t.Fatal("expected failure for 403")
 	}
@@ -204,7 +236,7 @@ func TestAuthenticateWithAuthlibErrorMessage(t *testing.T) {
 	}
 }
 
-func TestRefreshAuthlibTokenWithProfile(t *testing.T) {
+func TestRefreshHRPAuthTokenWithProfile(t *testing.T) {
 	var gotBody map[string]interface{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/authserver/refresh" {
@@ -216,9 +248,10 @@ func TestRefreshAuthlibTokenWithProfile(t *testing.T) {
 		io.WriteString(w, `{"accessToken": "new-token", "clientToken": "client-456", "selectedProfile": {"id": "p1", "name": "PlayerOne"}}`)
 	}))
 	defer srv.Close()
+	pointHRPAuthAt(t, srv.URL)
 
 	auth := NewAuthService()
-	result := auth.RefreshAuthlibTokenWithProfile(srv.URL, "old-token", "client-456", "p1")
+	result := auth.RefreshHRPAuthTokenWithProfile("old-token", "client-456", "p1")
 	if !result.Success {
 		t.Fatalf("refresh failed: %s", result.Error)
 	}
@@ -235,7 +268,7 @@ func TestRefreshAuthlibTokenWithProfile(t *testing.T) {
 	}
 }
 
-func TestValidateAuthlibToken(t *testing.T) {
+func TestValidateHRPAuthToken(t *testing.T) {
 	cases := []struct {
 		name      string
 		status    int
@@ -255,8 +288,9 @@ func TestValidateAuthlibToken(t *testing.T) {
 				io.WriteString(w, tc.body)
 			}))
 			defer srv.Close()
+			pointHRPAuthAt(t, srv.URL)
 
-			result := NewAuthService().ValidateAuthlibToken(srv.URL, "token", "client")
+			result := NewAuthService().ValidateHRPAuthToken("token", "client")
 			if result.Success != tc.wantOK {
 				t.Fatalf("Success = %v, want %v (error: %s)", result.Success, tc.wantOK, result.Error)
 			}
@@ -302,13 +336,14 @@ func TestResolveALI(t *testing.T) {
 	}
 }
 
-func TestGetAuthlibMetaInvalidJSON(t *testing.T) {
+func TestGetHRPAuthMetaInvalidJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "this is not json")
 	}))
 	defer srv.Close()
+	pointHRPAuthAt(t, srv.URL)
 
-	result := NewAuthService().GetAuthlibMeta(srv.URL)
+	result := NewAuthService().GetHRPAuthMeta()
 	if result.Success {
 		t.Fatal("expected failure for a non-JSON metadata body")
 	}
@@ -318,7 +353,7 @@ func TestGetAuthlibMetaInvalidJSON(t *testing.T) {
 }
 
 // A refresh without profile selection must send no selectedProfile.
-func TestRefreshAuthlibTokenWithoutProfileOmitsSelectedProfile(t *testing.T) {
+func TestRefreshHRPAuthTokenWithoutProfileOmitsSelectedProfile(t *testing.T) {
 	var gotBody map[string]interface{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -326,8 +361,9 @@ func TestRefreshAuthlibTokenWithoutProfileOmitsSelectedProfile(t *testing.T) {
 		io.WriteString(w, `{"accessToken": "new-token", "clientToken": "client-456"}`)
 	}))
 	defer srv.Close()
+	pointHRPAuthAt(t, srv.URL)
 
-	result := NewAuthService().RefreshAuthlibTokenWithProfile(srv.URL, "old-token", "client-456", "")
+	result := NewAuthService().RefreshHRPAuthTokenWithProfile("old-token", "client-456", "")
 	if !result.Success {
 		t.Fatalf("refresh failed: %s", result.Error)
 	}
@@ -339,7 +375,7 @@ func TestRefreshAuthlibTokenWithoutProfileOmitsSelectedProfile(t *testing.T) {
 	}
 }
 
-func TestRefreshAuthlibTokenErrors(t *testing.T) {
+func TestRefreshHRPAuthTokenErrors(t *testing.T) {
 	cases := []struct {
 		name      string
 		status    int
@@ -357,8 +393,9 @@ func TestRefreshAuthlibTokenErrors(t *testing.T) {
 				io.WriteString(w, tc.body)
 			}))
 			defer srv.Close()
+			pointHRPAuthAt(t, srv.URL)
 
-			result := NewAuthService().RefreshAuthlibTokenWithProfile(srv.URL, "token", "client", "")
+			result := NewAuthService().RefreshHRPAuthTokenWithProfile("token", "client", "")
 			if result.Success {
 				t.Fatal("expected failure")
 			}
@@ -1702,9 +1739,10 @@ func TestBuildLaunchCommandFabricArguments(t *testing.T) {
 	}
 }
 
-func TestBuildLaunchCommandAuthlibInjector(t *testing.T) {
+func TestBuildLaunchCommandHRPAuthInjector(t *testing.T) {
 	gameDir := t.TempDir()
 	writeVersionJSON(t, gameDir, "1.99", testVersionJSON)
+	pointHRPAuthAt(t, "https://auth.example.com/")
 
 	metaJSON := `{"meta":{"serverName":"TestAuth"}}`
 	svc := NewLauncherService()
@@ -1721,8 +1759,7 @@ func TestBuildLaunchCommandAuthlibInjector(t *testing.T) {
 			UUID:        "abcd",
 			AccessToken: "at",
 			ClientToken: "ct",
-			AuthType:    "authlib-injector",
-			AuthServer:  "https://auth.example.com/",
+			AuthType:    "hrpauth",
 		},
 	)
 	if err != nil {
@@ -1730,6 +1767,7 @@ func TestBuildLaunchCommandAuthlibInjector(t *testing.T) {
 	}
 
 	joined := strings.Join(args, "\x00")
+	// The injected auth server is always the built-in HRPAuth endpoint.
 	wantAgent := "-javaagent:/opt/authlib-injector.jar=https://auth.example.com"
 	if !strings.Contains(joined, wantAgent) {
 		t.Errorf("args missing %q\nfull args: %v", wantAgent, args)
@@ -1739,7 +1777,7 @@ func TestBuildLaunchCommandAuthlibInjector(t *testing.T) {
 		t.Errorf("args missing prefetched meta %q", wantPrefetched)
 	}
 	if !strings.Contains(joined, "mojang") {
-		t.Errorf("authlib-injector userType must be mojang, args: %v", args)
+		t.Errorf("hrpauth userType must be mojang, args: %v", args)
 	}
 }
 

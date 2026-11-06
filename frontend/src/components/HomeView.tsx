@@ -318,7 +318,6 @@ export default function HomeView({
         access_token: currentAccount.accessToken,
         client_token: currentAccount.clientToken,
         auth_type: currentAccount.authType,
-        auth_server: currentAccount.authServer || '',
         authlib_jar: localStorage.getItem('authlib_jar_path') || '',
         authlib_meta: '',
         game_dir: '',
@@ -409,8 +408,8 @@ export default function HomeView({
           {currentAccount ? (
             <span className="flex items-center gap-3">
               <span className="text-base font-medium text-ink">{currentAccount.username}</span>
-              <Badge tone={currentAccount.authType === 'authlib-injector' ? 'success' : 'neutral'}>
-                {currentAccount.authType === 'authlib-injector' ? t('play.online') : t('play.offline')}
+              <Badge tone={currentAccount.authType === 'hrpauth' ? 'success' : 'neutral'}>
+                {currentAccount.authType === 'hrpauth' ? t('play.hrpauth') : t('play.offline')}
               </Badge>
             </span>
           ) : (

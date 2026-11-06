@@ -48,7 +48,7 @@ export default function App() {
   const [joinError, setJoinError] = useState('');
 
   useEffect(() => {
-    // Restore the last-used account. authlib-injector tokens are validated
+    // Restore the last-used account. HRPAuth tokens are validated
     // silently and refreshed when stale; if both fail the login view opens so
     // the user is prompted to sign in again (PENDING-DECISIONS #11).
     restoreLastUsedAccount().then(({ account, needsReLogin }) => {
@@ -141,7 +141,6 @@ export default function App() {
         access_token: account.accessToken,
         client_token: account.clientToken,
         auth_type: account.authType,
-        auth_server: account.authServer || '',
         authlib_jar: localStorage.getItem('authlib_jar_path') || '',
         authlib_meta: '',
         game_dir: '',
@@ -318,10 +317,10 @@ export default function App() {
                     {currentAccount.username}
                   </span>
                   <Badge
-                    tone={currentAccount.authType === 'authlib-injector' ? 'success' : 'neutral'}
+                    tone={currentAccount.authType === 'hrpauth' ? 'success' : 'neutral'}
                     className="mt-1"
                   >
-                    {currentAccount.authType === 'authlib-injector' ? t('play.online') : t('play.offline')}
+                    {currentAccount.authType === 'hrpauth' ? t('play.hrpauth') : t('play.offline')}
                   </Badge>
                 </span>
               </button>
