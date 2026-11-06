@@ -48,7 +48,7 @@ func main() {
 		MatchType:  "bedwars",
 		MapName:    "Aquarium",
 		ServerHost: "127.0.0.1", // unreachable test target
-		ServerPort: 9,            // discard port: nothing listens here
+		ServerPort: 9,           // discard port: nothing listens here
 	})
 	printStatus("initial", status)
 
