@@ -3,7 +3,7 @@ package main
 // smoke_test.go is the end-to-end smoke test requested in TESTING-TODO #1:
 // it drives the three user-visible steps — login → version install → launch —
 // through the real Wails binding methods against in-process fake servers.
-// No real network, real accounts, or GUI are involved: the Yggdrasil server
+// No real network, real accounts, or GUI are involved: the HRPAuth server
 // and the BMCLAPI mirror are httptest servers, and the "game" is a shell
 // script standing in for java.
 

@@ -16,7 +16,7 @@ A cross-platform Minecraft launcher built with [Wails](https://wails.io/) (Go + 
 | Layer    | Technology |
 |----------|------------|
 | Backend  | Go 1.25, [Wails v2](https://wails.io/), [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) |
-| Frontend | React 19, TypeScript 5, [Vite 6](https://vitejs.dev/), [Material UI v9](https://mui.com/) |
+| Frontend | React 19, TypeScript 5, [Vite 6](https://vitejs.dev/), Tailwind CSS v4 + Radix UI primitives (shared `@ha/ui` design system) |
 | Build    | Wails CLI (WebKitGTK 2.41+ on Linux) |
 
 ## Project layout
@@ -34,8 +34,8 @@ SamuelClient/
 │   └── services/           # Auth, download, and launcher services
 ├── frontend/
 │   ├── src/
-│   │   ├── components/     # React views (Home, Versions, Accounts, Mods, Settings, Login)
-│   │   ├── App.tsx         # Main app shell with navigation drawer
+│   │   ├── components/     # React views (Play, Versions, Accounts, Settings, Login)
+│   │   ├── App.tsx         # Main app shell with the persistent sidebar
 │   │   └── main.tsx        # React entry point
 │   ├── index.html
 │   ├── package.json
@@ -56,6 +56,11 @@ SamuelClient/
   - **Windows**: MinGW-w64 / MSYS2, WebView2 runtime
 
 Verify your environment with `wails doctor`.
+
+The frontend consumes the shared `@ha/ui` design system through a `file:`
+dependency (`frontend/package.json` → `../../ha-ui`), so a checkout of
+[CoreMatch/ha-ui](https://github.com/CoreMatch/ha-ui) must sit next to this
+repository (`../ha-ui`) before `npm ci` / `wails dev` / `wails build`.
 
 ## Getting started
 
@@ -136,13 +141,12 @@ straight into the match server using its own logged-in account.
 
 ## Frontend
 
-The UI is a single-page React app written in TypeScript and built with Vite. Material UI provides the component library. Views are organized around a left navigation drawer:
+The UI is a single-page React app written in TypeScript and built with Vite. Styling and primitives come from Tailwind CSS v4 and Radix UI, consumed through the shared dark-only `@ha/ui` design system. Views are organized around a persistent left sidebar:
 
 - **Play** — launch the currently selected version with the active account
-- **Versions** — browse, download, and select Minecraft versions
+- **Versions** — browse, download, and select Minecraft versions (three-step install wizard)
 - **Accounts** — add and switch between offline and HRPAuth accounts
-- **Mods** — open the active profile's `mods` folder
-- **Settings** — application preferences
+- **Settings** — application preferences (Java runtimes, paths, memory, mods folder)
 
 Run frontend-only checks:
 
@@ -163,5 +167,4 @@ This project is licensed under the **GNU Affero General Public License v3.0** �
 ## Acknowledgements
 
 - [Wails](https://wails.io/) — Go + web frontend framework
-- [Material UI](https://mui.com/) — React component library
 - [authlib-injector](https://github.com/yushijinhun/authlib-injector) — Yggdrasil authentication reference
