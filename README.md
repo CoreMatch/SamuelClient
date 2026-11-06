@@ -82,7 +82,7 @@ The output binary is written to `build/bin/` (`SamuelClient` / `SamuelClient.exe
 ## Backend interface
 
 The frontend talks to the backend exclusively through Wails bindings (there is
-no local HTTP listener). All bound methods return one uniform response shape:
+no frontend-facing HTTP listener). All bound methods return one uniform response shape:
 `{ success, data, error }`.
 
 | Area | Bindings |
@@ -91,10 +91,12 @@ no local HTTP listener). All bound methods return one uniform response shape:
 | Versions (read) | `GetVersions`, `GetFabricVersions`, `GetForgeVersions`, `GetInstalledVersions` |
 | Java (read) | `GetJavaInstallations` |
 | Config (read) | `GetLauncherConfig` |
+| Match handoff (read) | `GetPendingHandoff`, `GetInteropStatus` |
 | Auth (write) | `AuthlibLogin`, `AuthlibRefresh`, `AuthlibValidate` |
 | Install / launch | `DownloadVersion`, `InstallFabricLoader`, `InstallForgeLoader`, `LaunchGame` |
 | Config (write) | `UpdateLauncherConfig` |
 | Java (write) | `AddJavaInstallation`, `UpdateJavaInstallation`, `DeleteJavaInstallation`, `SetDefaultJavaInstallation` |
+| Match handoff (write) | `DismissHandoff` |
 
 Live data is pushed from Go to the frontend via Wails runtime events:
 
@@ -104,6 +106,34 @@ Live data is pushed from Go to the frontend via Wails runtime events:
 - `download:progress` — progress while `DownloadVersion` installs a version
   or `InstallFabricLoader`/`InstallForgeLoader` install a mod loader.
   Payload: `{ "version_id": string, "stage": "jar" | "library" | "native" | "asset" | "loader", "name": string, "downloaded": number, "total": number }`.
+- `interop:handoff` — match handoff lifecycle from the matchmaking client.
+  Payload: `{ "status": "pending" | "dismissed" | "gone" | "invalid" | "version_mismatch" | "pull_timeout", "handoff": <payload when pending>, "message": <readable text for degraded statuses> }`.
+
+## Match handoff (MatchCore interop)
+
+SamuelClient is the receiver of the MatchCore match handoff protocol
+(`INTEROP-SPEC.md`, protocol v1): after matchmaking succeeds, the
+matchmaking client hands the match over and SamuelClient launches the game
+straight into the match server using its own logged-in account.
+
+- Loopback-only HTTP listener on `127.0.0.1` with a per-process random
+  token, published in a 0600 discovery file under
+  `$XDG_RUNTIME_DIR/matchcore-interop/samuel-client.json` (pid-checked by
+  readers; removed on clean exit).
+- The `matchcore://join?...` deep link is an invocation hint only (handoff
+  id + protocol version, never credentials). On Linux the launcher
+  self-registers an `x-scheme-handler/matchcore` .desktop entry at startup;
+  Windows/macOS registration is a documented gap.
+- If the launcher was woken by a deep link, it pulls the match parameters
+  from the matchmaking client's loopback endpoint (30 s retry window) and
+  then behaves like a pushed handoff.
+- Joining requires a logged-in account; when none is available the UI
+  guides login and auto-resumes the handoff afterwards. Unreachable match
+  servers, missing game versions, protocol mismatches and expired handoffs
+  all degrade with readable messages — the matchmaking result is never
+  dropped silently.
+- Match results are still reported by the BedwarsRel plugin; the launcher
+  only gets the player into the server.
 
 ## Frontend
 
