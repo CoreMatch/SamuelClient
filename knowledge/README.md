@@ -39,3 +39,4 @@ Each entry is one page in ADR style:
 | [0003](0003-zero-contract-coverage.md) | Zero Contract Coverage in HA-Contract | accepted |
 | [0004](0004-local-http-boundary.md) | Local HTTP Boundary: Retire Direct Frontend→Gin HTTP in Favor of Wails Bindings | accepted |
 | [0005](0005-frontend-test-framework-evaluation.md) | Frontend Test Framework: Vitest + React Testing Library | accepted |
+| [0006](0006-match-handoff-boundary.md) | Match Handoff Boundary: Loopback Interop Listener Beside the Wails Binding Surface | accepted |

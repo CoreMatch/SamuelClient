@@ -1883,6 +1883,12 @@ func (l *LauncherService) BuildLaunchCommand(config models.LauncherConfig, versi
 	if config.GameHeight > 0 {
 		gameArgs = append(gameArgs, "--height", fmt.Sprintf("%d", config.GameHeight))
 	}
+	// Match handoff (INTEROP-SPEC §6): go straight into the match server.
+	// JoinServer is strictly validated before reaching this point because it
+	// is placed on the command line verbatim.
+	if config.JoinServer != "" {
+		gameArgs = append(gameArgs, "--server", config.JoinServer, "--port", strconv.Itoa(config.JoinPort))
+	}
 	gameArgs = append(gameArgs, extraGame...)
 
 	// Forge 1.12.x and older use LaunchWrapper and need --tweakClass

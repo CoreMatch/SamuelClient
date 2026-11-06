@@ -6,9 +6,18 @@ import VersionManager from './components/VersionManager';
 import AccountManager from './components/AccountManager';
 import ModManager from './components/ModManager';
 import SettingsView from './components/SettingsView';
+import HandoffBanner from './components/HandoffBanner';
 import LoginView, { LoggedInAccount } from './components/LoginView';
 import { StoredAccount, saveAccount, restoreLastUsedAccount } from './accountStorage';
-import { InstalledVersion } from './types';
+import { InstalledVersion, HandoffPayload } from './types';
+import { t } from './i18n';
+import {
+  GetPendingHandoff,
+  DismissHandoff,
+  GetInstalledVersions,
+  LaunchGame,
+} from '../wailsjs/go/main/App';
+import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
 
 const drawerWidth = 240;
 
@@ -33,6 +42,13 @@ export default function App() {
   const [currentAccount, setCurrentAccount] = useState<StoredAccount | null>(null);
   const [showLogin, setShowLogin] = useState(false);
 
+  // Match handoff state (INTEROP-SPEC): pending payload, readable
+  // degradation notice, join progress and failure text.
+  const [handoff, setHandoff] = useState<HandoffPayload | null>(null);
+  const [handoffNotice, setHandoffNotice] = useState('');
+  const [joiningMatch, setJoiningMatch] = useState(false);
+  const [joinError, setJoinError] = useState('');
+
   useEffect(() => {
     // Restore the last-used account. authlib-injector tokens are validated
     // silently and refreshed when stale; if both fail the login view opens so
@@ -45,11 +61,143 @@ export default function App() {
     });
   }, []);
 
+  // Re-hydrate a pending handoff (survives reload) and follow backend
+  // lifecycle events (INTEROP-SPEC §6/§7).
+  useEffect(() => {
+    GetPendingHandoff()
+      .then(result => {
+        if (result.success && result.data?.status === 'pending' && result.data.handoff) {
+          setHandoff(result.data.handoff as HandoffPayload);
+        }
+      })
+      .catch(() => {});
+
+    EventsOn('interop:handoff', (payload: { status?: string; handoff?: HandoffPayload; message?: string }) => {
+      if (!payload || !payload.status) return;
+      if (payload.status === 'pending') {
+        if (payload.handoff) {
+          setHandoff(payload.handoff);
+          setJoinError('');
+          setHandoffNotice('');
+        }
+        return;
+      }
+      if (payload.status === 'dismissed') {
+        setHandoff(null);
+        setJoinError('');
+        return;
+      }
+      // gone / pull_timeout / version_mismatch / invalid: readable
+      // degradation, never a silent drop.
+      setHandoff(null);
+      setJoinError('');
+      if (payload.message) {
+        setHandoffNotice(payload.message);
+      }
+    });
+    return () => {
+      EventsOff('interop:handoff');
+    };
+  }, []);
+
+  // Launch the pending handoff's match with the given account: pick an
+  // installed version (game_version hint > current selection > first
+  // complete install) and go straight into the match server. Failures keep
+  // the handoff pending so the result is not lost.
+  const joinHandoff = async (account: StoredAccount) => {
+    if (!handoff) return;
+    setJoiningMatch(true);
+    setJoinError('');
+    try {
+      interface BackendVersion {
+        id: string;
+        type: string;
+        has_json: boolean;
+        has_jar: boolean;
+      }
+      let complete: BackendVersion[] = [];
+      try {
+        const versionsResult = await GetInstalledVersions();
+        if (versionsResult.success && Array.isArray(versionsResult.data?.versions)) {
+          complete = (versionsResult.data.versions as BackendVersion[]).filter(v => v.has_json && v.has_jar);
+        }
+      } catch {
+        // fall through: reported as "no version" below
+      }
+
+      const hint = handoff.match.join_target.game_version;
+      const chosen =
+        (hint && complete.find(v => v.id === hint)) ||
+        (selectedVersion && complete.find(v => v.id === selectedVersion.id)) ||
+        complete[0];
+      if (!chosen) {
+        setJoinError(t('handoff.noVersion'));
+        return;
+      }
+
+      const result = await LaunchGame({
+        version_id: chosen.id,
+        version_type: chosen.type,
+        username: account.username,
+        uuid: account.uuid,
+        access_token: account.accessToken,
+        client_token: account.clientToken,
+        auth_type: account.authType,
+        auth_server: account.authServer || '',
+        authlib_jar: localStorage.getItem('authlib_jar_path') || '',
+        authlib_meta: '',
+        game_dir: '',
+        java_path: '',
+        loader_type: '',
+        loader_version: '',
+        max_memory: 0,
+        min_memory: 0,
+        java_args: '',
+        game_width: 0,
+        game_height: 0,
+        join_server: handoff.match.join_target.host,
+        join_port: handoff.match.join_target.port,
+      });
+
+      if (result.success) {
+        await DismissHandoff().catch(() => {});
+        setHandoff(null);
+        setShowLogin(false);
+        setSelectedView('home');
+      } else {
+        setJoinError(t('handoff.launchFailed', { error: result.error || 'unknown error' }));
+      }
+    } catch {
+      setJoinError(t('handoff.launchFailed', { error: 'unexpected failure' }));
+    } finally {
+      setJoiningMatch(false);
+    }
+  };
+
+  const handleHandoffJoin = () => {
+    if (!currentAccount) {
+      setShowLogin(true);
+      return;
+    }
+    joinHandoff(currentAccount);
+  };
+
+  const handleHandoffDismiss = () => {
+    DismissHandoff().catch(() => {});
+    setHandoff(null);
+    setHandoffNotice('');
+    setJoinError('');
+  };
+
   const handleLoginSuccess = (account: LoggedInAccount) => {
     const savedAccount = saveAccount(account);
     setCurrentAccount(savedAccount);
     setShowLogin(false);
     setSelectedView('home');
+    // Auto-resume a pending match handoff after login (INTEROP-SPEC §6).
+    if (handoff) {
+      joinHandoff(savedAccount);
+    }
   };
 
   const handleSelectAccount = (account: StoredAccount) => {
@@ -249,6 +397,16 @@ export default function App() {
         }}
       >
         <Toolbar />
+        <HandoffBanner
+          handoff={handoff}
+          notice={handoffNotice}
+          hasAccount={!!currentAccount}
+          joining={joiningMatch}
+          error={joinError}
+          onJoin={handleHandoffJoin}
+          onLogin={() => setShowLogin(true)}
+          onDismiss={handleHandoffDismiss}
+        />
         {renderView()}
       </Box>
     </Box>

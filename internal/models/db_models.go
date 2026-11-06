@@ -71,6 +71,12 @@ type LauncherConfig struct {
 	// it is Base64-encoded into -Dauthlibinjector.yggdrasil.prefetched per
 	// the authlib-injector wiki (配置预获取). Leave empty to skip prefetching.
 	AuthlibMetaJSON string `json:"authlib_meta_json,omitempty"`
+
+	// JoinServer/JoinPort are launch-only fields (never persisted to the
+	// settings table): when JoinServer is set the game starts directly into
+	// that server via --server/--port (match handoff flow, INTEROP-SPEC §6).
+	JoinServer string `json:"join_server,omitempty"`
+	JoinPort   int    `json:"join_port,omitempty"`
 }
 
 // AuthServer represents an authlib-injector server

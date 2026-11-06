@@ -22,6 +22,15 @@ package main
 //     "native"|"asset"|"loader", "name": string, "downloaded": number,
 //     "total": number}. The "loader" stage is emitted by
 //     InstallFabricLoader/InstallForgeLoader.
+//   - "interop:handoff" — match handoff lifecycle (INTEROP-SPEC.md).
+//     Payload: {"status": "pending"|"dismissed"|"gone"|"invalid"|
+//     "version_mismatch"|"pull_timeout", "handoff": <payload when pending>,
+//     "message": <readable text for degraded statuses>, ...}. Handoff
+//     payloads never carry credentials; the receiver uses its own account.
+//
+// The match handoff arrives over a separate loopback-only, token-protected
+// inter-process listener (INTEROP-SPEC.md) — not through the frontend. The
+// frontend only sees the events and bindings below.
 
 import (
 	"crypto/rand"
@@ -31,6 +40,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"HRPMLW/internal/interop"
 	"HRPMLW/internal/models"
 	"HRPMLW/internal/services"
 
@@ -117,6 +127,54 @@ func (a *App) GetJavaInstallations() *models.ApiResponse {
 // user preferences plus auto-detected Java path and game directory).
 func (a *App) GetLauncherConfig() *models.ApiResponse {
 	return &models.ApiResponse{Success: true, Data: a.launcherService.GetLauncherConfig()}
+}
+
+// ==================== Match handoff (INTEROP-SPEC) ====================
+
+// GetPendingHandoff returns the currently pending match handoff, if any.
+// Data is {"status": "idle"|"pending", "handoff": <payload|nil>}. The
+// payload never contains credentials (protocol-enforced).
+func (a *App) GetPendingHandoff() *models.ApiResponse {
+	a.handoffMu.Lock()
+	pending := a.pendingHandoff
+	a.handoffMu.Unlock()
+
+	if pending == nil {
+		return &models.ApiResponse{Success: true, Data: map[string]interface{}{
+			"status":  "idle",
+			"handoff": nil,
+		}}
+	}
+	return &models.ApiResponse{Success: true, Data: map[string]interface{}{
+		"status":  "pending",
+		"handoff": pending,
+	}}
+}
+
+// DismissHandoff drops the pending handoff (user declined or acknowledged a
+// failure). The frontend is notified via an interop:handoff event with
+// status "dismissed".
+func (a *App) DismissHandoff() *models.ApiResponse {
+	a.handoffMu.Lock()
+	a.pendingHandoff = nil
+	a.handoffMu.Unlock()
+
+	a.emit("interop:handoff", map[string]interface{}{"status": "dismissed"})
+	return &models.ApiResponse{Success: true}
+}
+
+// GetInteropStatus reports the handoff listener state for UI display.
+func (a *App) GetInteropStatus() *models.ApiResponse {
+	running := a.interopServer != nil
+	port := 0
+	if running {
+		port = a.interopServer.Port()
+	}
+	return &models.ApiResponse{Success: true, Data: map[string]interface{}{
+		"running":          running,
+		"port":             port,
+		"protocol_version": interop.ProtocolVersion,
+	}}
 }
 
 // InstalledVersion describes a version present on disk under
@@ -369,6 +427,12 @@ type LaunchGameRequest struct {
 	GameHeight    int    `json:"game_height"`
 	LoaderType    string `json:"loader_type"`
 	LoaderVersion string `json:"loader_version"`
+
+	// JoinServer/JoinPort implement the match handoff (INTEROP-SPEC §6):
+	// when set, the game launches directly into the match server. Validated
+	// and reachability-checked before launch; never persisted.
+	JoinServer string `json:"join_server"`
+	JoinPort   int    `json:"join_port"`
 }
 
 // LaunchGame launches the game for the selected version and account. The
@@ -389,6 +453,23 @@ func (a *App) LaunchGame(req LaunchGameRequest) *models.ApiResponse {
 	gameDir := req.GameDir
 	if gameDir == "" {
 		gameDir = a.launcherService.GetMinecraftDir()
+	}
+
+	// Match handoff preflight (INTEROP-SPEC §6): validate the join target
+	// grammar and dial it before spawning a doomed game process, so an
+	// unreachable match server degrades readably instead of wasting the
+	// matchmaking result.
+	if req.JoinServer != "" {
+		jt := interop.JoinTarget{Host: req.JoinServer, Port: req.JoinPort}
+		if err := jt.Validate(); err != nil {
+			return &models.ApiResponse{Success: false, Error: "invalid join target: " + err.Error()}
+		}
+		if err := interop.CheckReachable(jt.Host, jt.Port, interop.ReachabilityTimeout); err != nil {
+			return &models.ApiResponse{
+				Success: false,
+				Error:   fmt.Sprintf("match server %s:%d is not reachable right now: %v", jt.Host, jt.Port, err),
+			}
+		}
 	}
 
 	// 配置预获取: if the caller didn't supply the metadata JSON, fetch it from
@@ -417,6 +498,8 @@ func (a *App) LaunchGame(req LaunchGameRequest) *models.ApiResponse {
 		GameDir:         gameDir,
 		AuthlibJar:      req.AuthlibJar,
 		AuthlibMetaJSON: authlibMeta,
+		JoinServer:      req.JoinServer,
+		JoinPort:        req.JoinPort,
 	}
 
 	if config.MaxMemory == 0 {
