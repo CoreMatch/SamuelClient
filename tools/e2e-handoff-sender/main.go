@@ -4,9 +4,10 @@
 //
 // Go's internal-package rule forces this program to be compiled inside the
 // MatchCoreArena-Client module; SamuelClient keeps this source under tools/
-// as the reproducible record. The e2e run copied it into a throwaway clone
-// of the MCA client (/tmp/mca-sender-e2e) so the MCA repository itself was
-// never modified.
+// as the reproducible record (the sibling go.mod placeholder excludes it
+// from this module's build). The e2e run copied main.go (only) into a
+// throwaway clone of the MCA client (/tmp/mca-sender-e2e) so the MCA
+// repository itself was never modified.
 //
 // Usage (inside the MCA client module):
 //
