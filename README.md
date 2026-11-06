@@ -1,10 +1,10 @@
 # Samuel Client
 
-A cross-platform Minecraft launcher built with [Wails](https://wails.io/) (Go + React/TypeScript), supporting vanilla, Fabric, and Forge profiles with offline and authlib-injector (Yggdrasil) account authentication.
+A cross-platform Minecraft launcher built with [Wails](https://wails.io/) (Go + React/TypeScript), supporting vanilla, Fabric, and Forge profiles with offline and HRPAuth account authentication.
 
 ## Features
 
-- **Account management** — offline and third-party (authlib-injector / Yggdrasil) login flows, with token refresh and validation
+- **Account management** — offline and HRPAuth login flows, with token refresh and validation
 - **Version management** — browse and download vanilla Minecraft versions, plus Fabric and Forge mod loaders
 - **Mod management** — open the `mods` folder for the active profile directly from the UI
 - **Java management** — track installed Java runtimes and set a default per profile
@@ -87,12 +87,11 @@ no frontend-facing HTTP listener). All bound methods return one uniform response
 
 | Area | Bindings |
 |------|----------|
-| Auth (read) | `GetAuthlibMeta` |
 | Versions (read) | `GetVersions`, `GetFabricVersions`, `GetForgeVersions`, `GetInstalledVersions` |
 | Java (read) | `GetJavaInstallations` |
 | Config (read) | `GetLauncherConfig` |
 | Match handoff (read) | `GetPendingHandoff`, `GetInteropStatus` |
-| Auth (write) | `AuthlibLogin`, `AuthlibRefresh`, `AuthlibValidate` |
+| Auth (write) | `HRPAuthLogin`, `HRPAuthRefresh`, `HRPAuthValidate` |
 | Install / launch | `DownloadVersion`, `InstallFabricLoader`, `InstallForgeLoader`, `LaunchGame` |
 | Config (write) | `UpdateLauncherConfig` |
 | Java (write) | `AddJavaInstallation`, `UpdateJavaInstallation`, `DeleteJavaInstallation`, `SetDefaultJavaInstallation` |
@@ -141,7 +140,7 @@ The UI is a single-page React app written in TypeScript and built with Vite. Mat
 
 - **Play** — launch the currently selected version with the active account
 - **Versions** — browse, download, and select Minecraft versions
-- **Accounts** — add and switch between offline and Yggdrasil accounts
+- **Accounts** — add and switch between offline and HRPAuth accounts
 - **Mods** — open the active profile's `mods` folder
 - **Settings** — application preferences
 

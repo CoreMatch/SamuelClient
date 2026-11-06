@@ -22,7 +22,7 @@ need an owner decision before being acted on.
 1. **LaunchGame success path — covered by an end-to-end smoke test
    (2026-11-05, branch `fix/round3-triage`).** `smoke_test.go`
    (`TestSmokeLoginInstallLaunch`) drives the real bindings through
-   AuthlibLogin (fake Yggdrasil httptest server) → DownloadVersion (fake
+   HRPAuthLogin (fake HRPAuth httptest server) → DownloadVersion (fake
    BMCLAPI httptest server) → LaunchGame (shell-script "java"), then polls
    the launch log for the process's stdout/stderr lines and clean exit. No
    real network, accounts, or GUI. Remaining gap: it exercises a fake java,
@@ -48,7 +48,7 @@ need an owner decision before being acted on.
 7. **Frontend test framework introduced (2026-11-05, branch
    `feat/loader-install`).** Vitest + jsdom + @testing-library/react, wired
    through `vite.config.ts` (`npm test`, also added to CI). Key-interaction
-   coverage: LoginView (authlib validation/success/failure, offline login
+   coverage: LoginView (HRPAuth validation/success/failure, offline login
    via the type select) and HomeView (Play gating, launch request payload,
    backend error surfacing), all Wails bindings mocked. Remaining gap: no
    tests for VersionManager/AccountManager/SettingsView/ModManager yet.
@@ -69,7 +69,7 @@ need an owner decision before being acted on.
      extraction, which is not implemented (see below); kept dead code only
      inflates coverage.
    - `RefreshAuthlibToken` — **DELETED**. Thin wrapper with no caller; the
-     binding calls `RefreshAuthlibTokenWithProfile` directly (the no-profile
+     binding calls `RefreshHRPAuthTokenWithProfile` directly (the no-profile
      case is tested by passing `""`).
    - `GetFabricInstaller` / `DownloadForgeInstaller` — **WIRED**
      (2026-11-05, branch `feat/loader-install`): `InstallFabricLoader`
@@ -193,12 +193,12 @@ import resolves (tsc passes). Diff against frontend call sites:
 
 | Binding | Frontend caller |
 |---|---|
-| `GetAuthlibMeta`, `AuthlibLogin` | LoginView |
+| `HRPAuthLogin` | LoginView |
 | `GetVersions`, `DownloadVersion` | VersionManager |
 | `GetLauncherConfig`, `GetJavaInstallations`, `UpdateLauncherConfig`, `AddJavaInstallation`, `UpdateJavaInstallation`, `DeleteJavaInstallation`, `SetDefaultJavaInstallation` | SettingsView (`GetJavaInstallations` also HomeView) |
 | `GetInstalledVersions`, `GetFabricVersions`, `GetForgeVersions`, `InstallFabricLoader`, `InstallForgeLoader`, `LaunchGame` | HomeView |
-| `AuthlibRefresh` | account restore (`accountStorage.ts`, wired on `fix/nightly-followups`) |
-| `AuthlibValidate` | account restore (`accountStorage.ts`, wired on `fix/nightly-followups`) |
+| `HRPAuthRefresh` | account restore (`accountStorage.ts`, wired on `fix/nightly-followups`) |
+| `HRPAuthValidate` | account restore (`accountStorage.ts`, wired on `fix/nightly-followups`) |
 
 No frontend call targets an unbound method. The two bindings that were
 unused at patrol time are now wired into the localStorage account restore
@@ -227,7 +227,7 @@ plumbing, from item 11 above), #11 (unused auth bindings), #12 (bundle
 splitting).
 
 **Follow-up resolutions (branch `fix/nightly-followups`)**: #11 resolved by
-wiring `AuthlibValidate`/`AuthlibRefresh` into the account restore; #12
+wiring `HRPAuthValidate`/`HRPAuthRefresh` into the account restore; #12
 resolved as status quo (`chunkSizeWarningLimit` raised to 700, no code
 splitting); the govulncheck item (#13 in `PENDING-DECISIONS.md`) resolved
 for this repo: toolchain `go1.26.10`, `x/net` v0.60.0 (x/text v0.42.0,

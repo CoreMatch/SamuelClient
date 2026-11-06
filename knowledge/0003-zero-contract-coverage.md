@@ -24,7 +24,7 @@ by any contract in that repository.
   conflicts with it, the contract wins and this entry must be fixed (see the
   Order of Authority in the index).
 - Cost/limitation: there is no contract gate preventing drift between the
-  launcher and the auth services it calls; changes to the Yggdrasil endpoints
+  launcher and the auth services it calls; changes to the HRPAuth endpoints (Yggdrasil protocol)
   it depends on are only caught at runtime/integration.
 
 ## Evidence
