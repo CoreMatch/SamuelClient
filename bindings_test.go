@@ -8,6 +8,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"testing"
 
 	"HRPMLW/internal/database"
+	"HRPMLW/internal/interop"
 	"HRPMLW/internal/models"
 	"HRPMLW/internal/repository"
 	"HRPMLW/internal/services"
@@ -888,5 +890,67 @@ func TestLaunchGameJoinTargetPreflight(t *testing.T) {
 	result = app.LaunchGame(unreachable)
 	if result.Success || !strings.Contains(result.Error, "not reachable") {
 		t.Errorf("unreachable target: Success=%v Error=%q", result.Success, result.Error)
+	}
+}
+
+// ==================== match handoff bindings ====================
+
+func handoffFixture() *interop.HandoffPayload {
+	return &interop.HandoffPayload{
+		Version:   interop.ProtocolVersion,
+		HandoffID: "9b2f0c1e-3a7d-4e5f-8b21-6c9d0e1f2a3b",
+		ExpiresAt: "2099-01-01T00:00:00Z",
+		Match: interop.MatchInfo{
+			MatchID:    "m-1",
+			Mode:       "bedwars",
+			JoinTarget: interop.JoinTarget{Host: "bw.match.local", Port: 25565},
+		},
+	}
+}
+
+func TestPendingHandoffLifecycle(t *testing.T) {
+	app := newTestApp()
+
+	// Initially idle.
+	idle := app.GetPendingHandoff()
+	if !idle.Success || idle.Data.(map[string]interface{})["status"] != "idle" {
+		t.Fatalf("idle state = %+v", idle.Data)
+	}
+
+	// Accept fills the single slot.
+	payload := handoffFixture()
+	if err := app.acceptHandoff(payload); err != nil {
+		t.Fatalf("acceptHandoff: %v", err)
+	}
+	data := app.GetPendingHandoff().Data.(map[string]interface{})
+	if data["status"] != "pending" || data["handoff"] != payload {
+		t.Fatalf("pending state = %+v", data)
+	}
+
+	// A second handoff while one is pending is busy.
+	if err := app.acceptHandoff(handoffFixture()); !errors.Is(err, interop.ErrSlotBusy) {
+		t.Errorf("second accept = %v, want ErrSlotBusy", err)
+	}
+
+	// Dismiss clears the slot for the next handoff.
+	if result := app.DismissHandoff(); !result.Success {
+		t.Fatalf("DismissHandoff: %+v", result)
+	}
+	if err := app.acceptHandoff(handoffFixture()); err != nil {
+		t.Errorf("accept after dismiss = %v, want nil", err)
+	}
+	_ = app.DismissHandoff()
+}
+
+func TestGetInteropStatusWithoutListener(t *testing.T) {
+	app := newTestApp()
+	result := app.GetInteropStatus()
+	if !result.Success {
+		t.Fatalf("GetInteropStatus: %+v", result)
+	}
+	data := result.Data.(map[string]interface{})
+	if data["running"] != false || data["port"] != 0 ||
+		data["protocol_version"] != interop.ProtocolVersion {
+		t.Errorf("status = %+v", data)
 	}
 }

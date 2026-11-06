@@ -22,6 +22,15 @@ package main
 //     "native"|"asset"|"loader", "name": string, "downloaded": number,
 //     "total": number}. The "loader" stage is emitted by
 //     InstallFabricLoader/InstallForgeLoader.
+//   - "interop:handoff" — match handoff lifecycle (INTEROP-SPEC.md).
+//     Payload: {"status": "pending"|"dismissed"|"gone"|"invalid"|
+//     "version_mismatch"|"pull_timeout", "handoff": <payload when pending>,
+//     "message": <readable text for degraded statuses>, ...}. Handoff
+//     payloads never carry credentials; the receiver uses its own account.
+//
+// The match handoff arrives over a separate loopback-only, token-protected
+// inter-process listener (INTEROP-SPEC.md) — not through the frontend. The
+// frontend only sees the events and bindings below.
 
 import (
 	"crypto/rand"
@@ -118,6 +127,54 @@ func (a *App) GetJavaInstallations() *models.ApiResponse {
 // user preferences plus auto-detected Java path and game directory).
 func (a *App) GetLauncherConfig() *models.ApiResponse {
 	return &models.ApiResponse{Success: true, Data: a.launcherService.GetLauncherConfig()}
+}
+
+// ==================== Match handoff (INTEROP-SPEC) ====================
+
+// GetPendingHandoff returns the currently pending match handoff, if any.
+// Data is {"status": "idle"|"pending", "handoff": <payload|nil>}. The
+// payload never contains credentials (protocol-enforced).
+func (a *App) GetPendingHandoff() *models.ApiResponse {
+	a.handoffMu.Lock()
+	pending := a.pendingHandoff
+	a.handoffMu.Unlock()
+
+	if pending == nil {
+		return &models.ApiResponse{Success: true, Data: map[string]interface{}{
+			"status":  "idle",
+			"handoff": nil,
+		}}
+	}
+	return &models.ApiResponse{Success: true, Data: map[string]interface{}{
+		"status":  "pending",
+		"handoff": pending,
+	}}
+}
+
+// DismissHandoff drops the pending handoff (user declined or acknowledged a
+// failure). The frontend is notified via an interop:handoff event with
+// status "dismissed".
+func (a *App) DismissHandoff() *models.ApiResponse {
+	a.handoffMu.Lock()
+	a.pendingHandoff = nil
+	a.handoffMu.Unlock()
+
+	a.emit("interop:handoff", map[string]interface{}{"status": "dismissed"})
+	return &models.ApiResponse{Success: true}
+}
+
+// GetInteropStatus reports the handoff listener state for UI display.
+func (a *App) GetInteropStatus() *models.ApiResponse {
+	running := a.interopServer != nil
+	port := 0
+	if running {
+		port = a.interopServer.Port()
+	}
+	return &models.ApiResponse{Success: true, Data: map[string]interface{}{
+		"running":          running,
+		"port":             port,
+		"protocol_version": interop.ProtocolVersion,
+	}}
 }
 
 // InstalledVersion describes a version present on disk under
