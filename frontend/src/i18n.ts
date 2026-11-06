@@ -27,7 +27,7 @@ const en = {
   'play.noVersions': 'No versions installed',
   'play.noJava': 'No Java installed',
   'play.none': 'None',
-  'play.online': 'Online',
+  'play.hrpauth': 'HRPAuth',
   'play.offline': 'Offline',
   'play.launchSettings': 'Launch Settings',
   'play.maxMemory': 'Maximum Memory',
@@ -132,8 +132,10 @@ const en = {
   // Accounts
   'accounts.add': 'Add Account',
   'accounts.emptyTitle': 'No accounts',
-  'accounts.online': 'Online',
+  'accounts.hrpauth': 'HRPAuth',
   'accounts.offline': 'Offline',
+  'accounts.legacy': 'Legacy',
+  'accounts.legacyNotice': 'Sign in again with HRPAuth',
   'accounts.deleteTitle': 'Delete Account',
   'accounts.deleteConfirm':
     'Are you sure you want to delete the account "{username}"? This action cannot be undone.',
@@ -143,12 +145,8 @@ const en = {
   // Login
   'login.title': 'Sign in',
   'login.authType': 'Authentication Type',
-  'login.yggdrasil': 'Yggdrasil API',
+  'login.hrpauth': 'HRPAuth',
   'login.offline': 'Offline (Cracked)',
-  'login.authServer': 'Auth Server',
-  'login.customServer': 'Custom Server',
-  'login.customUrl': 'Custom Server URL',
-  'login.addServer': 'Add auth server',
   'login.username': 'Username',
   'login.password': 'Password',
   'login.showPassword': 'Show password',
@@ -157,12 +155,9 @@ const en = {
   'login.manageAccounts': 'Manage Accounts',
   'login.usernameRequired': 'Username is required',
   'login.credentialsRequired': 'Username and password are required',
-  'login.selectServer': 'Please select or add an auth server',
   'login.noProfile': 'No profile found',
   'login.failed': 'Login failed',
   'login.failedRetry': 'Login failed. Please try again.',
-  'login.metaFailed': 'Failed to fetch auth server info',
-  'login.metaConnect': 'Failed to connect to auth server',
 
   // Match handoff (INTEROP-SPEC)
   'handoff.title': 'Match found',

@@ -1,18 +1,11 @@
 import { useState } from 'react';
-import { Eye, EyeOff, RefreshCw } from 'lucide-react';
-import { GetAuthlibMeta, AuthlibLogin } from '../../wailsjs/go/main/App';
+import { Eye, EyeOff } from 'lucide-react';
+import { HRPAuthLogin } from '../../wailsjs/go/main/App';
 import { t } from '../i18n';
 import { Button, IconButton } from '../ui/button';
 import { Select } from '../ui/select';
 import { TextField, Field } from '../ui/field';
 import { Callout } from '../ui/callout';
-
-interface AuthServer {
-  id: string;
-  name: string;
-  url: string;
-  icon?: string;
-}
 
 interface LoginViewProps {
   onLoginSuccess: (account: LoggedInAccount) => void;
@@ -24,84 +17,20 @@ export interface LoggedInAccount {
   uuid: string;
   accessToken: string;
   clientToken: string;
-  authType: 'offline' | 'authlib-injector';
-  authServer?: string;
+  authType: 'offline' | 'hrpauth';
 }
 
-const DEFAULT_AUTH_SERVERS: AuthServer[] = [
-  { id: 'HRPAUTH', name: 'HRPAUTH', url: 'https://backend.auth.samuelcheston.com/' },
-];
-
-const DEFAULT_HRPAUTH_URL = 'https://backend.auth.samuelcheston.com/';
-
 export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginViewProps) {
-  const [authType, setAuthType] = useState<'authlib-injector' | 'offline'>('authlib-injector');
+  const [authType, setAuthType] = useState<'hrpauth' | 'offline'>('hrpauth');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [authServer, setAuthServer] = useState(DEFAULT_HRPAUTH_URL);
-  const [customAuthServer, setCustomAuthServer] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [authServers, setAuthServers] = useState<AuthServer[]>(DEFAULT_AUTH_SERVERS);
-  const [loadingServers, setLoadingServers] = useState(false);
 
   const handleAuthTypeChange = (type: string) => {
-    const next = type as 'offline' | 'authlib-injector';
-    setAuthType(next);
+    setAuthType(type as 'hrpauth' | 'offline');
     setError('');
-    if (next === 'offline') {
-      setAuthServer('offline');
-    } else {
-      // Auto-select HRPAUTH as default when switching to authlib-injector
-      setAuthServer(DEFAULT_HRPAUTH_URL);
-    }
-  };
-
-  const handleAuthServerChange = (serverId: string) => {
-    setAuthServer(serverId);
-    setError('');
-    if (serverId === 'custom') {
-      setCustomAuthServer('');
-    }
-  };
-
-  const loadAuthServers = async (serverUrl: string) => {
-    setLoadingServers(true);
-    try {
-      // ADR-0004: Wails binding instead of the old (dev-only) relative fetch
-      // `/api/v1/auth/meta?server=...`. The metadata document nests the server
-      // name under `meta` (see AuthService.GetAuthlibMeta).
-      const result = await GetAuthlibMeta(serverUrl);
-      if (result.success && result.data) {
-        const newServer: AuthServer = {
-          id: serverUrl,
-          name: result.data.meta?.serverName || serverUrl,
-          url: serverUrl,
-        };
-        setAuthServers(prev => {
-          const filtered = prev.filter(s => s.id !== 'custom');
-          return [...filtered, newServer, { id: 'custom', name: t('login.customServer'), url: 'custom' }];
-        });
-        setAuthServer(serverUrl);
-      } else {
-        setError(result.error || t('login.metaFailed'));
-      }
-    } catch {
-      setError(t('login.metaConnect'));
-    } finally {
-      setLoadingServers(false);
-    }
-  };
-
-  const handleAddCustomServer = () => {
-    if (customAuthServer.trim()) {
-      let serverUrl = customAuthServer.trim();
-      if (!serverUrl.startsWith('http://') && !serverUrl.startsWith('https://')) {
-        serverUrl = 'https://' + serverUrl;
-      }
-      loadAuthServers(serverUrl);
-    }
   };
 
   const handleLogin = async () => {
@@ -128,22 +57,16 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
           authType: 'offline',
         });
       } else {
-        // Authlib-injector login
-        if (!authServer || authServer === 'custom' || !authServer.trim()) {
-          setError(t('login.selectServer'));
-          setLoading(false);
-          return;
-        }
+        // HRPAuth login (the only online provider; the endpoint is built in)
         if (!username.trim() || !password.trim()) {
           setError(t('login.credentialsRequired'));
           setLoading(false);
           return;
         }
 
-        const serverUrl = authServer;
         // ADR-0004: the plaintext password travels only through the in-process
         // Wails binding to the auth service — never over a local HTTP socket.
-        const result = await AuthlibLogin(serverUrl, username.trim(), password, '');
+        const result = await HRPAuthLogin(username.trim(), password, '');
 
         if (result.success && result.data) {
           const profile = result.data.selectedProfile || result.data.availableProfiles?.[0];
@@ -157,8 +80,7 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
             uuid: profile.id,
             accessToken: result.data.accessToken,
             clientToken: result.data.clientToken || generateClientToken(),
-            authType: 'authlib-injector',
-            authServer: serverUrl,
+            authType: 'hrpauth',
           });
         } else {
           setError(result.error || t('login.failed'));
@@ -181,49 +103,11 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
               value={authType}
               onValueChange={handleAuthTypeChange}
               options={[
-                { value: 'authlib-injector', label: t('login.yggdrasil') },
+                { value: 'hrpauth', label: t('login.hrpauth') },
                 { value: 'offline', label: t('login.offline') },
               ]}
             />
           </Field>
-
-          {authType === 'authlib-injector' && (
-            <>
-              <Field label={t('login.authServer')} htmlFor="login-auth-server">
-                <Select
-                  ariaLabel={t('login.authServer')}
-                  value={authServer}
-                  onValueChange={handleAuthServerChange}
-                  options={authServers.map(server => ({
-                    value: server.url || server.id,
-                    label: server.name,
-                  }))}
-                />
-              </Field>
-
-              {authServer === 'custom' && (
-                <div className="flex items-end gap-3">
-                  <TextField
-                    className="flex-1"
-                    label={t('login.customUrl')}
-                    value={customAuthServer}
-                    onChange={e => setCustomAuthServer(e.target.value)}
-                    placeholder="https://auth.example.com"
-                  />
-                  <Button
-                    variant="secondary"
-                    onClick={handleAddCustomServer}
-                    disabled={loadingServers || !customAuthServer.trim()}
-                    loading={loadingServers}
-                    aria-label={t('login.addServer')}
-                    className="shrink-0"
-                  >
-                    {!loadingServers && <RefreshCw className="size-5" aria-hidden />}
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
 
           {error && (
             <Callout tone="danger" onDismiss={() => setError('')}>
@@ -238,7 +122,7 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
             autoComplete="username"
           />
 
-          {authType === 'authlib-injector' && (
+          {authType === 'hrpauth' && (
             <Field label={t('login.password')} htmlFor="login-password">
               <div className="relative">
                 <input
