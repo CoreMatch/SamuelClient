@@ -1,22 +1,63 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@import 'tailwindcss';
+@import '@ha/ui/tokens.css';
+
+/* Let Tailwind scan @ha/ui component sources so any utility used there is
+ * generated for this app too (consumer wiring per @ha/ui README). */
+@source "../node_modules/@ha/ui/src";
+
+/*
+ * SamuelClient direction-B overrides (shared skeleton, family split).
+ *
+ * The token NAMES come from @ha/ui and stay identical across clients; the
+ * values below tune the shared skeleton toward SamuelClient's art direction:
+ * modern product feel (Linear/Vercel temperament) — softer surfaces,
+ * restrained translucent borders, generous whitespace — versus the MCA
+ * client's hard-edged competitive treatment. Only surface/edge values are
+ * retuned; ink ladder, accent, semantics, radii, motion and z-tiers are
+ * consumed exactly as shipped by @ha/ui.
+ */
+:root {
+  color-scheme: dark;
+
+  --ha-base: #0e1013;                  /* softer page background */
+  --ha-panel: #14171c;                 /* softer cards/panels */
+  --ha-raised: #1a1e25;                /* softer raised insets */
+  --ha-edge: rgba(255, 255, 255, 0.08);        /* translucent hairline */
+  --ha-edge-strong: rgba(255, 255, 255, 0.16); /* translucent emphasis */
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   width: 100%;
 }
 
 body {
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  background-color: #16213e;
-  color: rgba(255, 255, 255, 0.87);
+  margin: 0;
+  background-color: var(--ha-base);
+  color: var(--ha-ink);
+  /* Mirrors the @ha/ui --font-sans contract (Inter, bundled locally). */
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 pre {
   white-space: pre-wrap;
   word-wrap: break-word;
-  font-family: 'Courier New', Courier, monospace;
+  /* Mirrors the @ha/ui --font-mono contract (JetBrains Mono, local). */
+  font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+}
+
+::selection {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Quiet, consistent scrollbars for the dark surfaces. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
 }
