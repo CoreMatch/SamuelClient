@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Package, Play, Settings, Users } from 'lucide-react';
+import { Asset, type AssetId } from '@ha/ui';
 import HomeView from './components/HomeView';
 import VersionManager from './components/VersionManager';
 import AccountManager from './components/AccountManager';
@@ -24,14 +24,14 @@ import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
 interface NavItem {
   id: string;
   labelKey: 'nav.play' | 'nav.versions' | 'nav.accounts' | 'nav.settings';
-  icon: typeof Play;
+  icon: AssetId;
 }
 
 const navItems: NavItem[] = [
-  { id: 'home', labelKey: 'nav.play', icon: Play },
-  { id: 'versions', labelKey: 'nav.versions', icon: Package },
-  { id: 'accounts', labelKey: 'nav.accounts', icon: Users },
-  { id: 'settings', labelKey: 'nav.settings', icon: Settings },
+  { id: 'home', labelKey: 'nav.play', icon: 'icon-play' },
+  { id: 'versions', labelKey: 'nav.versions', icon: 'icon-version' },
+  { id: 'accounts', labelKey: 'nav.accounts', icon: 'icon-friends' },
+  { id: 'settings', labelKey: 'nav.settings', icon: 'icon-settings' },
 ];
 
 export default function App() {
@@ -269,10 +269,8 @@ export default function App() {
         <aside className="flex w-[248px] shrink-0 flex-col border-r border-edge bg-panel">
           <div className="px-6 pb-8 pt-8">
             <div className="flex items-center gap-3">
-              <span className="flex size-8 items-center justify-center rounded-md border border-edge-strong bg-white/6 text-sm font-bold text-ink">
-                S
-              </span>
-              <span className="text-base font-semibold text-ink">Samuel Client</span>
+              <Asset id="brand-samuel" size={32} className="text-accent" title="Samuel" />
+              <span className="text-base font-semibold text-ink">Samuel</span>
             </div>
           </div>
 
@@ -292,7 +290,7 @@ export default function App() {
                     active ? 'bg-white/7 text-ink' : 'text-ink-muted hover:bg-white/4 hover:text-ink'
                   }`}
                 >
-                  <item.icon className="size-5 shrink-0" aria-hidden />
+                  <Asset id={item.icon} size={20} className={active ? 'text-accent' : ''} />
                   {t(item.labelKey)}
                 </button>
               );
@@ -309,9 +307,7 @@ export default function App() {
                 }}
                 className="flex w-full items-center gap-3 rounded-md border border-edge bg-raised p-3 text-left transition-colors duration-150 hover:border-edge-strong"
               >
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-edge-strong bg-white/6 text-sm font-semibold text-ink">
-                  {currentAccount.username.charAt(0).toUpperCase()}
-                </span>
+                <Asset id="mode-avatar" size={36} className="text-ink-muted" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-base font-medium text-ink">
                     {currentAccount.username}

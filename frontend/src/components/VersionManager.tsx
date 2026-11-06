@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { CircleCheck, Download, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
+import { Asset } from '@ha/ui';
 import type { InstalledVersion } from '../types';
 import InstallWizard from './InstallWizard';
 import { EmptyState } from './states';
@@ -74,7 +75,7 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
       <TabsContent value="installed">
         {installedVersions.length === 0 ? (
           <EmptyState
-            icon={<Download className="size-14 opacity-60" aria-hidden />}
+            asset="state-no-installed-version"
             title={t('versions.emptyTitle')}
             actionLabel={t('versions.browse')}
             onAction={() => setTabValue('install')}
@@ -100,7 +101,7 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
                 <div className="min-w-0">
                   <div className="flex items-center gap-2.5">
                     <span className="text-base font-medium text-ink">{version.id}</span>
-                    <CircleCheck className="size-5 text-ok" aria-hidden />
+                    <Asset id="icon-check" size={20} className="text-ok" />
                   </div>
                   <div className="mt-1.5 flex items-center gap-2">
                     <Badge tone={getVersionTypeTone(version.type)}>{version.type}</Badge>

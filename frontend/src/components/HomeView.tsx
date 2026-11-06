@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Play } from 'lucide-react';
+import { Asset, patternStyle } from '@ha/ui';
 import type { StoredAccount } from '../accountStorage';
 import type { InstalledVersion } from '../types';
 import { t } from '../i18n';
@@ -361,7 +361,7 @@ export default function HomeView({
         </Callout>
       )}
 
-      <section className="rounded-lg bg-panel p-8">
+      <section className="rounded-lg bg-panel p-8" style={patternStyle('pattern-grid-fine')}>
         <div className="flex flex-col gap-6">
           <Field label={t('play.version')} htmlFor="play-version">
             <Select
@@ -472,7 +472,7 @@ export default function HomeView({
             disabled={launching || !currentVersion || !currentAccount}
             loading={launching}
           >
-            {!launching && <Play className="size-5" aria-hidden />}
+            {!launching && <Asset id="icon-launch" size={20} />}
             {launching ? t('play.launching') : t('play.play')}
           </Button>
         </div>

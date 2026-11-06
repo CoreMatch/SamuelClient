@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { BadgeCheck, Plus, Trash2, Users } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
+import { Asset } from '@ha/ui';
 import { StoredAccount, ACCOUNTS_STORAGE_KEY, migrateAccountsIfNeeded } from '../accountStorage';
 import { EmptyState } from './states';
 import { t } from '../i18n';
@@ -99,7 +100,7 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
 
       {accounts.length === 0 ? (
         <EmptyState
-          icon={<Users className="size-14 opacity-60" aria-hidden />}
+          asset="state-not-logged-in"
           title={t('accounts.emptyTitle')}
           actionLabel={t('accounts.add')}
           onAction={handleAddAccount}
@@ -123,14 +124,12 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
                 index > 0 ? 'border-t border-edge' : ''
               } ${account.lastUsed ? 'bg-white/4' : ''}`}
             >
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-full border border-edge-strong bg-white/6 text-base font-semibold text-ink">
-                {account.username.charAt(0).toUpperCase()}
-              </span>
+              <Asset id="mode-avatar" size={40} className="text-ink-faint" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate text-base font-medium text-ink">{account.username}</span>
                   {account.lastUsed && (
-                    <BadgeCheck className="size-5 shrink-0 text-ok" aria-label={t('accounts.lastUsed')} />
+                    <Asset id="icon-check" size={20} className="text-ok" title={t('accounts.lastUsed')} />
                   )}
                 </div>
                 <div className="mt-1.5 flex items-center gap-2">
