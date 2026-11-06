@@ -7,7 +7,7 @@ import AccountManager from './components/AccountManager';
 import ModManager from './components/ModManager';
 import SettingsView from './components/SettingsView';
 import LoginView, { LoggedInAccount } from './components/LoginView';
-import { StoredAccount, saveAccount } from './accountStorage';
+import { StoredAccount, saveAccount, restoreLastUsedAccount } from './accountStorage';
 import { InstalledVersion } from './types';
 
 const drawerWidth = 240;
@@ -34,24 +34,16 @@ export default function App() {
   const [showLogin, setShowLogin] = useState(false);
 
   useEffect(() => {
-    // Load last used account
-    loadLastUsedAccount();
-  }, []);
-
-  const loadLastUsedAccount = () => {
-    try {
-      const stored = localStorage.getItem('minecraft_accounts');
-      if (stored) {
-        const accounts: StoredAccount[] = JSON.parse(stored);
-        const lastUsed = accounts.find(acc => acc.lastUsed);
-        if (lastUsed) {
-          setCurrentAccount(lastUsed);
-        }
+    // Restore the last-used account. authlib-injector tokens are validated
+    // silently and refreshed when stale; if both fail the login view opens so
+    // the user is prompted to sign in again (PENDING-DECISIONS #11).
+    restoreLastUsedAccount().then(({ account, needsReLogin }) => {
+      setCurrentAccount(account);
+      if (needsReLogin) {
+        setShowLogin(true);
       }
-    } catch (err) {
-      console.error('Failed to load last used account:', err);
-    }
-  };
+    });
+  }, []);
 
   const handleLoginSuccess = (account: LoggedInAccount) => {
     const savedAccount = saveAccount(account);
