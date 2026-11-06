@@ -49,11 +49,11 @@ export default function HandoffBanner({
 
   if (!handoff) {
     return (
-      <div className="mb-6 flex items-center gap-3">
+      <div className="mb-8 flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <Callout tone="info">{notice}</Callout>
         </div>
-        <Button variant="ghost" size="sm" onClick={onDismiss}>
+        <Button variant="ghost" onClick={onDismiss}>
           {t('handoff.ok')}
         </Button>
       </div>
@@ -66,23 +66,23 @@ export default function HandoffBanner({
   const remaining = formatRemaining(expiresMs - now);
 
   return (
-    <section className="mb-6 rounded-lg border border-ok/40 bg-panel">
-      <div className="flex flex-wrap items-start justify-between gap-4 p-5">
+    <section className="mb-8 rounded-lg border border-ok/40 bg-panel">
+      <div className="flex flex-wrap items-start justify-between gap-5 p-6">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="size-2 rounded-full bg-success" aria-hidden />
-            <h2 className="text-base font-semibold text-ink">{t('handoff.title')}</h2>
+          <div className="flex items-center gap-2.5">
+            <span className="size-2.5 rounded-full bg-ok" aria-hidden />
+            <h2 className="text-xl font-semibold text-ink">{t('handoff.title')}</h2>
           </div>
-          <p className="mt-1.5 text-sm text-ink-muted">
+          <p className="mt-2 text-sm text-ink-muted">
             {t('handoff.mode', { mode: match.mode })}
             {match.map_name ? ` · ${t('handoff.map', { map: match.map_name })}` : ''}
           </p>
-          <p className="mt-0.5 font-mono text-xs text-ink-muted">
+          <p className="mt-1 font-mono text-sm text-ink-muted">
             {t('handoff.server', { host: match.join_target.host, port: match.join_target.port })}
           </p>
           {match.players && match.players.length > 0 && (
-            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-ink-faint">{t('handoff.players')}:</span>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-sm text-ink-faint">{t('handoff.players')}:</span>
               {match.players.map(player => (
                 <Badge key={player.uuid || player.username}>{player.username}</Badge>
               ))}
@@ -90,7 +90,7 @@ export default function HandoffBanner({
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-3">
           {!expired && hasAccount && (
             <Button onClick={onJoin} disabled={joining} loading={joining}>
               {joining ? t('handoff.joining') : t('handoff.joinNow')}
@@ -106,21 +106,21 @@ export default function HandoffBanner({
       </div>
 
       {!expired && (remaining || !hasAccount) && (
-        <div className="flex flex-wrap items-center gap-4 border-t border-edge px-5 py-2.5">
+        <div className="flex flex-wrap items-center gap-4 border-t border-edge px-6 py-3.5">
           {remaining && (
-            <span className="inline-flex items-center gap-1.5 font-mono text-xs text-warn">
-              <Clock className="size-3.5" aria-hidden />
+            <span className="inline-flex items-center gap-2 font-mono text-sm text-warn">
+              <Clock className="size-4" aria-hidden />
               {t('handoff.expiresIn', { time: remaining })}
             </span>
           )}
           {!hasAccount && (
-            <span className="text-xs text-warn">{t('handoff.loginRequired')}</span>
+            <span className="text-sm text-warn">{t('handoff.loginRequired')}</span>
           )}
         </div>
       )}
 
       {(expired || error) && (
-        <div className="flex flex-col gap-2 border-t border-edge px-5 py-3">
+        <div className="flex flex-col gap-3 border-t border-edge px-6 py-4">
           {expired && <Callout tone="warning">{t('handoff.expired')}</Callout>}
           {error && <Callout tone="danger">{error}</Callout>}
         </div>

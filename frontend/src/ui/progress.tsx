@@ -7,7 +7,7 @@ export function Progress({ value }: { value: number | null }) {
   return (
     <ProgressPrimitive.Root
       value={value ?? undefined}
-      className="relative h-1.5 w-full overflow-hidden rounded-full bg-white/8"
+      className="relative h-2 w-full overflow-hidden rounded-full bg-white/8"
     >
       <ProgressPrimitive.Indicator
         className="h-full rounded-full bg-accent transition-transform duration-200 ease-standard"
@@ -46,13 +46,13 @@ export function Slider({
       max={max}
       step={step}
       aria-label={ariaLabel}
-      className="relative flex h-5 w-full touch-none select-none items-center"
+      className="relative flex h-6 w-full touch-none select-none items-center"
     >
-      <SliderPrimitive.Track className="relative h-1.5 grow rounded-full bg-white/10">
+      <SliderPrimitive.Track className="relative h-2 grow rounded-full bg-white/10">
         <SliderPrimitive.Range className="absolute h-full rounded-full bg-accent" />
       </SliderPrimitive.Track>
       <SliderPrimitive.Thumb
-        className="block size-4 rounded-full border border-edge-strong bg-text shadow-[0_2px_8px_rgba(0,0,0,0.4)] transition-transform duration-150 hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong"
+        className="block size-5 rounded-full border border-edge-strong bg-ink shadow-[0_2px_8px_rgba(0,0,0,0.4)] transition-transform duration-150 hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong"
         aria-label={ariaLabel}
       />
     </SliderPrimitive.Root>

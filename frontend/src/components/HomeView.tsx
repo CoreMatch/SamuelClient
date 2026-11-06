@@ -349,7 +349,7 @@ export default function HomeView({
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <GetStartedChecklist
         hasAccount={!!currentAccount}
         installedCount={versions.length}
@@ -362,8 +362,8 @@ export default function HomeView({
         </Callout>
       )}
 
-      <section className="rounded-lg border border-edge bg-panel p-6">
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+      <section className="rounded-lg bg-panel p-8">
+        <div className="flex flex-col gap-6">
           <Field label={t('play.version')} htmlFor="play-version">
             <Select
               ariaLabel={t('play.version')}
@@ -404,11 +404,11 @@ export default function HomeView({
           </Field>
         </div>
 
-        <div className="mt-5 flex items-center justify-between border-t border-edge pt-5">
-          <span className="text-xs font-medium text-ink-muted">{t('play.account')}</span>
+        <div className="mt-8 flex items-center justify-between border-t border-edge pt-8">
+          <span className="text-sm font-medium text-ink-muted">{t('play.account')}</span>
           {currentAccount ? (
-            <span className="flex items-center gap-2">
-              <span className="text-sm font-medium text-ink">{currentAccount.username}</span>
+            <span className="flex items-center gap-3">
+              <span className="text-base font-medium text-ink">{currentAccount.username}</span>
               <Badge tone={currentAccount.authType === 'authlib-injector' ? 'success' : 'neutral'}>
                 {currentAccount.authType === 'authlib-injector' ? t('play.online') : t('play.offline')}
               </Badge>
@@ -418,14 +418,14 @@ export default function HomeView({
           )}
         </div>
 
-        <div className="mt-5 border-t border-edge pt-5">
-          <h3 className="text-xs font-medium text-ink-muted">{t('play.launchSettings')}</h3>
+        <div className="mt-8 border-t border-edge pt-8">
+          <h3 className="text-sm font-medium text-ink-muted">{t('play.launchSettings')}</h3>
 
-          <div className="mt-4 flex flex-col gap-5">
+          <div className="mt-5 flex flex-col gap-6">
             <div>
-              <div className="mb-2 flex items-baseline justify-between">
+              <div className="mb-3 flex items-baseline justify-between">
                 <span className="text-sm text-ink-muted">{t('play.maxMemory')}</span>
-                <span className="font-mono text-sm text-ink">{settings.maxMemory} MB</span>
+                <span className="font-mono text-base text-ink">{settings.maxMemory} MB</span>
               </div>
               <Slider
                 ariaLabel={t('play.maxMemory')}
@@ -437,7 +437,7 @@ export default function HomeView({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-6">
               <NumberField
                 label={t('play.width')}
                 value={settings.gameWidth}
@@ -462,32 +462,32 @@ export default function HomeView({
           </div>
         </div>
 
-        <div className="mt-6 flex items-center gap-3">
-          <Button variant="secondary" onClick={onOpenSettings} className="h-11">
+        <div className="mt-8 flex items-center gap-4">
+          <Button variant="secondary" size="lg" onClick={onOpenSettings} className="h-14">
             {t('nav.settings')}
           </Button>
           <Button
             size="lg"
-            className="h-12 flex-1 text-base"
+            className="h-14 flex-1 text-lg"
             onClick={handleLaunch}
             disabled={launching || !currentVersion || !currentAccount}
             loading={launching}
           >
-            {!launching && <Play className="size-4" aria-hidden />}
+            {!launching && <Play className="size-5" aria-hidden />}
             {launching ? t('play.launching') : t('play.play')}
           </Button>
         </div>
       </section>
 
       {showLogs && (
-        <section className="rounded-lg border border-edge bg-panel p-6">
-          <h3 className="text-base font-semibold text-ink">{t('play.logs')}</h3>
-          <div className="mt-3 h-56 overflow-y-auto rounded-md bg-base p-4 font-mono text-xs">
+        <section className="rounded-lg bg-panel p-8">
+          <h3 className="text-xl font-semibold text-ink">{t('play.logs')}</h3>
+          <div className="mt-4 h-64 overflow-y-auto rounded-md bg-base p-5 font-mono text-sm">
             {liveLogs.length > 0 ? (
               // ADR-0004: live game output streamed over "launcher:log".
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-1.5">
                 {liveLogs.map((l, i) => (
-                  <div key={i} className="flex gap-2.5">
+                  <div key={i} className="flex gap-3">
                     <span className="shrink-0 text-ink-faint">{l.ts}</span>
                     <span
                       className={`shrink-0 font-semibold ${l.source === 'stderr' ? 'text-warn' : 'text-info'}`}
@@ -499,7 +499,7 @@ export default function HomeView({
                 ))}
               </div>
             ) : (
-              <p className="py-8 text-center text-ink-faint">{t('play.noLogs')}</p>
+              <p className="py-10 text-center text-ink-faint">{t('play.noLogs')}</p>
             )}
           </div>
         </section>

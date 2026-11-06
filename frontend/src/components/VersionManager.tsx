@@ -74,14 +74,13 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
       <TabsContent value="installed">
         {installedVersions.length === 0 ? (
           <EmptyState
-            icon={<Download className="size-12 opacity-60" aria-hidden />}
+            icon={<Download className="size-14 opacity-60" aria-hidden />}
             title={t('versions.emptyTitle')}
-            hint={t('versions.emptyHint')}
             actionLabel={t('versions.browse')}
             onAction={() => setTabValue('install')}
           />
         ) : (
-          <div className="rounded-lg border border-edge bg-panel">
+          <div className="rounded-lg bg-panel">
             {installedVersions.map((version, index) => (
               <div
                 key={version.id}
@@ -94,16 +93,16 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
                     onSelectVersion(version);
                   }
                 }}
-                className={`flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-white/4 ${
+                className={`flex w-full cursor-pointer items-center justify-between gap-3 px-5 py-5 text-left transition-colors duration-150 hover:bg-white/4 ${
                   index > 0 ? 'border-t border-edge' : ''
                 }`}
               >
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-ink">{version.id}</span>
-                    <CircleCheck className="size-4 text-ok" aria-hidden />
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-base font-medium text-ink">{version.id}</span>
+                    <CircleCheck className="size-5 text-ok" aria-hidden />
                   </div>
-                  <div className="mt-1 flex items-center gap-1.5">
+                  <div className="mt-1.5 flex items-center gap-2">
                     <Badge tone={getVersionTypeTone(version.type)}>{version.type}</Badge>
                     {version.loaderType && (
                       <Badge>{`${version.loaderType} ${version.loaderVersion || ''}`}</Badge>
@@ -118,7 +117,7 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
                     handleDelete(version.id);
                   }}
                 >
-                  <Trash2 className="size-4" />
+                  <Trash2 className="size-5" />
                 </IconButton>
               </div>
             ))}

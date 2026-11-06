@@ -11,12 +11,13 @@ describe('GetStartedChecklist', () => {
     expect(screen.getByText('Launch the game')).toBeTruthy();
   });
 
-  it('drops completed steps', () => {
+  it('keeps completed steps visible and struck through', () => {
     render(<GetStartedChecklist hasAccount installedCount={1} hasLaunched={false} />);
-    // Completed items stay visible but struck through; hints disappear.
-    expect(screen.queryByText('Add an account to play online or offline.')).toBeNull();
-    expect(screen.queryByText('Download Minecraft from the Versions page.')).toBeNull();
-    expect(screen.getByText('Pick your version and press Play.')).toBeTruthy();
+    // Completed items stay in the list (struck through); only the labels
+    // remain — no explanatory sentences.
+    expect(screen.getByText('Sign in')).toBeTruthy();
+    expect(screen.getByText('Install a version')).toBeTruthy();
+    expect(screen.getByText('Launch the game')).toBeTruthy();
   });
 
   it('disappears once everything is done', () => {

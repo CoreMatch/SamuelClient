@@ -36,9 +36,9 @@ export function Callout({
   return (
     <div
       role={tone === 'danger' ? 'alert' : 'status'}
-      className={`flex items-start gap-2.5 rounded-md border px-4 py-3 text-sm ${toneClasses[tone]}`}
+      className={`flex items-start gap-3 rounded-md border px-5 py-4 text-sm ${toneClasses[tone]}`}
     >
-      <Icon className="mt-0.5 size-4 shrink-0" aria-hidden />
+      <Icon className="mt-0.5 size-5 shrink-0" aria-hidden />
       <div className="min-w-0 flex-1 break-words">{children}</div>
       {onDismiss && (
         <IconButton label={dismissLabel} onClick={onDismiss} className="-my-1 size-6 hover:bg-transparent">

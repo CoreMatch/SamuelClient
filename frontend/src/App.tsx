@@ -267,17 +267,17 @@ export default function App() {
     <TooltipProvider>
       <div className="flex h-screen overflow-hidden bg-base text-ink">
         {/* Persistent sidebar */}
-        <aside className="flex w-[224px] shrink-0 flex-col border-r border-edge bg-panel">
-          <div className="px-5 pb-6 pt-6">
-            <div className="flex items-center gap-2.5">
-              <span className="flex size-7 items-center justify-center rounded-md border border-edge-strong bg-white/6 text-xs font-bold text-ink">
+        <aside className="flex w-[248px] shrink-0 flex-col border-r border-edge bg-panel">
+          <div className="px-6 pb-8 pt-8">
+            <div className="flex items-center gap-3">
+              <span className="flex size-8 items-center justify-center rounded-md border border-edge-strong bg-white/6 text-sm font-bold text-ink">
                 S
               </span>
-              <span className="text-sm font-semibold text-ink">Samuel Client</span>
+              <span className="text-base font-semibold text-ink">Samuel Client</span>
             </div>
           </div>
 
-          <nav className="flex flex-col gap-1 px-3" aria-label="Primary">
+          <nav className="flex flex-col gap-1.5 px-4" aria-label="Primary">
             {navItems.map(item => {
               const active = selectedView === item.id && !showLogin;
               return (
@@ -289,18 +289,18 @@ export default function App() {
                     setSelectedView(item.id);
                     setShowLogin(false);
                   }}
-                  className={`flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm font-medium transition-colors duration-150 ease-standard ${
+                  className={`flex h-10 w-full items-center gap-3 rounded-md px-3.5 text-base font-medium transition-colors duration-150 ease-standard ${
                     active ? 'bg-white/7 text-ink' : 'text-ink-muted hover:bg-white/4 hover:text-ink'
                   }`}
                 >
-                  <item.icon className="size-4 shrink-0" aria-hidden />
+                  <item.icon className="size-5 shrink-0" aria-hidden />
                   {t(item.labelKey)}
                 </button>
               );
             })}
           </nav>
 
-          <div className="mt-auto p-3">
+          <div className="mt-auto p-4">
             {currentAccount ? (
               <button
                 type="button"
@@ -308,18 +308,18 @@ export default function App() {
                   setSelectedView('accounts');
                   setShowLogin(false);
                 }}
-                className="flex w-full items-center gap-2.5 rounded-md border border-edge bg-raised p-2.5 text-left transition-colors duration-150 hover:border-edge-strong"
+                className="flex w-full items-center gap-3 rounded-md border border-edge bg-raised p-3 text-left transition-colors duration-150 hover:border-edge-strong"
               >
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-edge-strong bg-white/6 text-xs font-semibold text-ink">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-edge-strong bg-white/6 text-sm font-semibold text-ink">
                   {currentAccount.username.charAt(0).toUpperCase()}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-ink">
+                  <span className="block truncate text-base font-medium text-ink">
                     {currentAccount.username}
                   </span>
                   <Badge
                     tone={currentAccount.authType === 'authlib-injector' ? 'success' : 'neutral'}
-                    className="mt-0.5"
+                    className="mt-1"
                   >
                     {currentAccount.authType === 'authlib-injector' ? t('play.online') : t('play.offline')}
                   </Badge>
@@ -335,8 +335,8 @@ export default function App() {
 
         {/* Single-column main content */}
         <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[880px] px-10 py-9">
-            <header className="mb-6">
+          <div className="mx-auto w-full max-w-[980px] px-14 py-12">
+            <header className="mb-10">
               <h1 className="text-display font-semibold tracking-tight text-ink">{t(getCurrentTitle())}</h1>
             </header>
             <HandoffBanner

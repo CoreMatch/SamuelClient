@@ -23,7 +23,7 @@ export function Tooltip({
       <TooltipPrimitive.Portal>
         <TooltipPrimitive.Content
           sideOffset={6}
-          className="z-(--ha-z-modal) rounded-md border border-edge bg-raised px-2 py-1 text-xs text-ink shadow-[0_8px_24px_rgba(0,0,0,0.4)]"
+          className="z-(--ha-z-modal) rounded-md border border-edge bg-raised px-2.5 py-1.5 text-sm text-ink shadow-[0_8px_24px_rgba(0,0,0,0.4)]"
         >
           {label}
         </TooltipPrimitive.Content>

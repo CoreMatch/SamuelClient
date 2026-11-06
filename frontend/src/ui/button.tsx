@@ -21,9 +21,9 @@ const variantClasses: Record<Variant, string> = {
 };
 
 const sizeClasses: Record<Size, string> = {
-  sm: 'h-8 gap-1.5 px-3 text-xs',
-  md: 'h-9 gap-2 px-4 text-sm',
-  lg: 'h-11 gap-2 px-6 text-base',
+  sm: 'h-9 gap-1.5 px-3.5 text-sm',
+  md: 'h-11 gap-2 px-5 text-base',
+  lg: 'h-13 gap-2.5 px-7 text-base',
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -44,7 +44,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       className={`inline-flex select-none items-center justify-center rounded-md font-medium transition-colors duration-150 ease-standard focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong disabled:pointer-events-none disabled:opacity-40 ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
       {...rest}
     >
-      {loading && <LoaderCircle className="size-4 animate-spin" aria-hidden />}
+      {loading && <LoaderCircle className="size-5 animate-spin" aria-hidden />}
       {children}
     </button>
   );
@@ -72,7 +72,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       type="button"
       aria-label={label}
       title={label}
-      className={`inline-flex size-8 items-center justify-center rounded-md transition-colors duration-150 ease-standard focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong disabled:pointer-events-none disabled:opacity-40 ${toneClass} ${className}`}
+      className={`inline-flex size-9 items-center justify-center rounded-md transition-colors duration-150 ease-standard focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong disabled:pointer-events-none disabled:opacity-40 ${toneClass} ${className}`}
       {...rest}
     >
       {children}
