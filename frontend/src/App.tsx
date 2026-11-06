@@ -1,19 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { Box, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, AppBar, Toolbar, Typography, IconButton } from '@mui/material';
-import { Gamepad, Home, Settings, Group, Layers, Menu, ArrowBack } from '@mui/icons-material';
+import { Gamepad, Home, Settings, Group, Menu, ArrowBack } from '@mui/icons-material';
 import HomeView from './components/HomeView';
 import VersionManager from './components/VersionManager';
 import AccountManager from './components/AccountManager';
-import ModManager from './components/ModManager';
 import SettingsView from './components/SettingsView';
 import HandoffBanner from './components/HandoffBanner';
 import LoginView, { LoggedInAccount } from './components/LoginView';
 import { StoredAccount, saveAccount, restoreLastUsedAccount } from './accountStorage';
 import { InstalledVersion, HandoffPayload } from './types';
 import { t } from './i18n';
-import { darkTheme, tokens } from './theme';
+import { buildTheme, chromeColors, tokens } from './theme';
 import {
   GetPendingHandoff,
   DismissHandoff,
@@ -24,18 +23,21 @@ import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
 
 const drawerWidth = 240;
 
+export type ThemeMode = 'dark' | 'light';
+
+const THEME_STORAGE_KEY = 'theme_mode';
+
 interface NavItem {
   id: string;
-  label: string;
+  labelKey: 'nav.play' | 'nav.versions' | 'nav.accounts' | 'nav.settings';
   icon: typeof Home;
 }
 
 const navItems: NavItem[] = [
-  { id: 'home', label: 'Play', icon: Home },
-  { id: 'versions', label: 'Versions', icon: Gamepad },
-  { id: 'accounts', label: 'Accounts', icon: Group },
-  { id: 'mods', label: 'Mods', icon: Layers },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'home', labelKey: 'nav.play', icon: Home },
+  { id: 'versions', labelKey: 'nav.versions', icon: Gamepad },
+  { id: 'accounts', labelKey: 'nav.accounts', icon: Group },
+  { id: 'settings', labelKey: 'nav.settings', icon: Settings },
 ];
 
 export default function App() {
@@ -44,6 +46,21 @@ export default function App() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [currentAccount, setCurrentAccount] = useState<StoredAccount | null>(null);
   const [showLogin, setShowLogin] = useState(false);
+
+  // Theme mode (dark baseline, light kept) — persisted locally.
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() =>
+    localStorage.getItem(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark',
+  );
+  const theme = useMemo(() => buildTheme(themeMode), [themeMode]);
+  const chrome = chromeColors(themeMode);
+  const handleChangeTheme = (mode: ThemeMode) => {
+    setThemeMode(mode);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, mode);
+    } catch (err) {
+      console.error('Failed to persist theme mode:', err);
+    }
+  };
 
   // Match handoff state (INTEROP-SPEC): pending payload, readable
   // degradation notice, join progress and failure text.
@@ -216,17 +233,6 @@ export default function App() {
     setSelectedView('settings');
   };
 
-  const handleOpenModsFolder = () => {
-    // Open mods folder in file explorer
-    const modsPath = getModsFolderPath();
-    window.open(`file://${modsPath}`, '_blank');
-  };
-
-  const getModsFolderPath = () => {
-    const home = '/home/lnb/.minecraft';
-    return `${home}/mods`;
-  };
-
   const renderView = () => {
     if (showLogin) {
       return (
@@ -259,10 +265,8 @@ export default function App() {
             onAddAccount={handleAddAccount}
           />
         );
-      case 'mods':
-        return <ModManager onOpenModsFolder={handleOpenModsFolder} />;
       case 'settings':
-        return <SettingsView />;
+        return <SettingsView themeMode={themeMode} onChangeTheme={handleChangeTheme} />;
       default:
         return (
           <HomeView
@@ -282,11 +286,11 @@ export default function App() {
   const getCurrentTitle = () => {
     if (showLogin) return 'Login';
     const item = navItems.find(n => n.id === selectedView);
-    return item?.label || 'Play';
+    return item ? t(item.labelKey) : t('nav.play');
   };
 
   return (
-    <ThemeProvider theme={darkTheme}>
+    <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: 'background.default' }}>
         <AppBar
@@ -294,7 +298,8 @@ export default function App() {
           sx={{
             width: { sm: `calc(100% - ${drawerWidth}px)` },
             ml: { sm: `${drawerWidth}px` },
-            backgroundColor: tokens.color.deep,
+            backgroundColor: chrome.appBar,
+            color: themeMode === 'dark' ? 'white' : 'text.primary',
           }}
         >
         <Toolbar>
@@ -332,11 +337,11 @@ export default function App() {
           }}
           sx={{
             display: { xs: 'block', sm: 'none' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
+            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth, backgroundColor: chrome.drawer },
           }}
         >
           <Box onClick={handleDrawerToggle} sx={{ textAlign: 'center' }}>
-            <Typography variant="h6" sx={{ my: 2, color: 'white' }}>Minecraft</Typography>
+            <Typography variant="h6" sx={{ my: 2, color: chrome.drawerText }}>Minecraft</Typography>
             <List>
               {navItems.map((item) => (
                 <ListItem key={item.id}>
@@ -347,10 +352,10 @@ export default function App() {
                       setShowLogin(false);
                     }}
                   >
-                    <ListItemIcon sx={{ color: selectedView === item.id && !showLogin ? 'white' : tokens.color.textMuted }}>
+                    <ListItemIcon sx={{ color: selectedView === item.id && !showLogin ? chrome.drawerText : chrome.drawerMuted }}>
                       <item.icon />
                     </ListItemIcon>
-                    <ListItemText primary={item.label} sx={{ color: selectedView === item.id && !showLogin ? 'white' : tokens.color.text }} />
+                    <ListItemText primary={t(item.labelKey)} sx={{ color: selectedView === item.id && !showLogin ? chrome.drawerText : chrome.drawerMuted }} />
                   </ListItemButton>
                 </ListItem>
               ))}
@@ -362,12 +367,12 @@ export default function App() {
           variant="permanent"
           sx={{
             display: { xs: 'none', sm: 'block' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth, backgroundColor: tokens.color.deep },
+            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth, backgroundColor: chrome.drawer },
           }}
           open
         >
           <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography variant="h6" sx={{ color: 'white' }}>Samuel Client</Typography>
+            <Typography variant="h6" sx={{ color: chrome.drawerText }}>Samuel Client</Typography>
           </Box>
           <List>
             {navItems.map((item) => (
@@ -385,10 +390,10 @@ export default function App() {
                     '&.Mui-selected': { backgroundColor: tokens.color.accent, '&:hover': { backgroundColor: tokens.color.accentDark } },
                   }}
                 >
-                  <ListItemIcon sx={{ color: selectedView === item.id && !showLogin ? 'white' : tokens.color.textMuted }}>
+                  <ListItemIcon sx={{ color: selectedView === item.id && !showLogin ? 'white' : chrome.drawerMuted }}>
                     <item.icon />
                   </ListItemIcon>
-                  <ListItemText primary={item.label} sx={{ color: selectedView === item.id && !showLogin ? 'white' : tokens.color.text }} />
+                  <ListItemText primary={t(item.labelKey)} sx={{ color: selectedView === item.id && !showLogin ? 'white' : chrome.drawerText }} />
                 </ListItemButton>
               </ListItem>
             ))}

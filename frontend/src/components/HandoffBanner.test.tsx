@@ -90,4 +90,39 @@ describe('HandoffBanner', () => {
     expect(screen.getByText('Joining match…')).toBeTruthy();
     expect((screen.getByText('Joining match…').closest('button') as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it('shows the player list and a live expiry countdown', () => {
+    const future = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    render(
+      <HandoffBanner
+        {...defaultProps({
+          handoff: {
+            ...handoff,
+            expires_at: future,
+            match: {
+              ...handoff.match,
+              players: [
+                { username: 'alice', uuid: 'u1' },
+                { username: 'bob', uuid: 'u2' },
+              ],
+            },
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText('Players:')).toBeTruthy();
+    expect(screen.getByText('alice')).toBeTruthy();
+    expect(screen.getByText('bob')).toBeTruthy();
+    expect(screen.getByText(/Expires in \d+:\d\d/)).toBeTruthy();
+  });
+
+  it('hides join and explains when the handoff has expired', () => {
+    render(
+      <HandoffBanner
+        {...defaultProps({ handoff: { ...handoff, expires_at: '2020-01-01T00:00:00Z' } })}
+      />,
+    );
+    expect(screen.getByText(/has expired/)).toBeTruthy();
+    expect(screen.queryByText('Join now')).toBeNull();
+  });
 });

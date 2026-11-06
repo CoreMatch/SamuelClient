@@ -76,3 +76,25 @@ export function buildTheme(mode: 'dark' | 'light' = 'dark'): Theme {
 
 export const darkTheme = buildTheme('dark');
 export const lightTheme = buildTheme('light');
+
+// chromeColors returns mode-aware colors for the app chrome (AppBar,
+// drawer, log panel) that sits outside MUI paper surfaces. The log panel
+// stays dark in both modes on purpose (terminal aesthetics).
+export function chromeColors(mode: 'dark' | 'light') {
+  if (mode === 'dark') {
+    return {
+      appBar: tokens.color.deep,
+      drawer: tokens.color.deep,
+      drawerText: tokens.color.text,
+      drawerMuted: tokens.color.textMuted,
+      logPanel: tokens.color.deep,
+    };
+  }
+  return {
+    appBar: '#ffffff',
+    drawer: '#ffffff',
+    drawerText: 'rgba(0, 0, 0, 0.87)',
+    drawerMuted: 'rgba(0, 0, 0, 0.6)',
+    logPanel: tokens.color.base,
+  };
+}
