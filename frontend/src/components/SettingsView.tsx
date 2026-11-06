@@ -10,6 +10,8 @@ import {
   DeleteJavaInstallation,
   SetDefaultJavaInstallation,
 } from '../../wailsjs/go/main/App';
+import { LoadingSkeleton } from './states';
+import { tokens } from '../theme';
 
 interface JavaInstallation {
   id: number;
@@ -278,7 +280,7 @@ export default function SettingsView() {
   if (loading) {
     return (
       <Box>
-        <Typography sx={{ color: '#9ca3af' }}>Loading...</Typography>
+        <LoadingSkeleton rows={4} />
       </Box>
     );
   }
@@ -286,13 +288,13 @@ export default function SettingsView() {
   return (
     <Box>
       {error && (
-        <Typography sx={{ color: '#ef4444', marginBottom: 2 }}>{error}</Typography>
+        <Typography sx={{ color: tokens.color.danger, marginBottom: 2 }}>{error}</Typography>
       )}
 
-      <Card sx={{ backgroundColor: '#1f2937', marginBottom: 2 }}>
+      <Card sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg, marginBottom: 2 }}>
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-            <Typography variant="h6" sx={{ color: 'white' }}>
+            <Typography variant="h6" sx={{ color: 'text.primary' }}>
               Java Installations
             </Typography>
             <Button
@@ -306,14 +308,14 @@ export default function SettingsView() {
           </Box>
 
           {javaInstallations.length === 0 ? (
-            <Typography sx={{ color: '#9ca3af' }}>No Java installations found. Click "Add Java" to add one.</Typography>
+            <Typography sx={{ color: 'text.secondary' }}>No Java installations found. Click "Add Java" to add one.</Typography>
           ) : (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {javaInstallations.map((java) => (
                 <Box
                   key={java.id}
                   sx={{
-                    backgroundColor: '#374151',
+                    backgroundColor: 'rgba(255, 255, 255, 0.12)',
                     padding: 2,
                     borderRadius: 1,
                     display: 'flex',
@@ -325,27 +327,27 @@ export default function SettingsView() {
                     <Tooltip title={java.is_default ? 'Default Java' : 'Set as default'}>
                       <IconButton
                         onClick={() => handleSetDefault(java.id)}
-                        sx={{ color: java.is_default ? '#fbbf24' : '#9ca3af' }}
+                        sx={{ color: java.is_default ? tokens.color.warning : 'text.secondary' }}
                       >
                         <Star />
                       </IconButton>
                     </Tooltip>
                     <div style={{ flex: 1 }}>
-                      <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
+                      <Typography sx={{ color: 'text.primary', fontWeight: 'bold' }}>
                         {java.friendly_name || `Java ${java.version}`}
                       </Typography>
-                      <Typography sx={{ color: '#9ca3af', fontSize: '0.875rem' }}>
+                      <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
                         {java.version}
                       </Typography>
                     </div>
                     <Box sx={{ display: 'flex', gap: 1 }}>
                       <Tooltip title="Edit">
-                        <IconButton onClick={() => openEditDialog(java)} sx={{ color: '#9ca3af' }}>
+                        <IconButton onClick={() => openEditDialog(java)} sx={{ color: 'text.secondary' }}>
                           <Edit />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Delete">
-                        <IconButton onClick={() => handleDeleteJava(java.id)} sx={{ color: '#ef4444' }}>
+                        <IconButton onClick={() => handleDeleteJava(java.id)} sx={{ color: tokens.color.danger }}>
                           <Delete />
                         </IconButton>
                       </Tooltip>
@@ -354,8 +356,8 @@ export default function SettingsView() {
                   <Chip
                     label={java.path}
                     sx={{
-                      backgroundColor: '#1f2937',
-                      color: '#d1d5db',
+                      backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                      color: 'text.primary',
                       fontSize: '0.75rem',
                       maxWidth: '100%',
                       wordBreak: 'break-all'
@@ -368,30 +370,30 @@ export default function SettingsView() {
         </CardContent>
       </Card>
 
-      <Card sx={{ backgroundColor: '#1f2937', marginBottom: 2 }}>
+      <Card sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg, marginBottom: 2 }}>
         <CardContent>
-          <Typography variant="h6" sx={{ color: 'white', marginBottom: 2 }}>
+          <Typography variant="h6" sx={{ color: 'text.primary', marginBottom: 2 }}>
             Path Configuration
           </Typography>
 
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <div>
-              <Typography sx={{ color: '#9ca3af', fontSize: '0.875rem' }}>Java Path</Typography>
+              <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>Java Path</Typography>
               {(() => {
                 const defaultJava = javaInstallations.find(j => j.is_default);
                 return defaultJava ? (
                   <Box sx={{ marginTop: 1 }}>
-                    <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
+                    <Typography sx={{ color: 'text.primary', fontWeight: 'bold' }}>
                       {defaultJava.friendly_name || `Java ${defaultJava.version}`}
                     </Typography>
-                    <Typography sx={{ color: '#9ca3af', fontSize: '0.875rem' }}>
+                    <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
                       Version: {defaultJava.version}
                     </Typography>
                     <Chip
                       label={defaultJava.path}
                       sx={{
-                        backgroundColor: '#1f2937',
-                        color: '#d1d5db',
+                        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                        color: 'text.primary',
                         marginTop: 1,
                         maxWidth: '100%',
                         wordBreak: 'break-all',
@@ -403,8 +405,8 @@ export default function SettingsView() {
                   <Chip
                     label={config?.java_path || 'Not configured'}
                     sx={{
-                      backgroundColor: '#374151',
-                      color: 'white',
+                      backgroundColor: 'rgba(255, 255, 255, 0.12)',
+                      color: 'text.primary',
                       marginTop: 1,
                       maxWidth: '100%',
                       wordBreak: 'break-all'
@@ -415,12 +417,12 @@ export default function SettingsView() {
             </div>
 
             <div>
-              <Typography sx={{ color: '#9ca3af', fontSize: '0.875rem' }}>Game Directory</Typography>
+              <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>Game Directory</Typography>
               <Chip
                 label={config?.game_dir || 'Not configured'}
                 sx={{
-                  backgroundColor: '#374151',
-                  color: 'white',
+                  backgroundColor: 'rgba(255, 255, 255, 0.12)',
+                  color: 'text.primary',
                   marginTop: 1,
                   maxWidth: '100%',
                   wordBreak: 'break-all'
@@ -431,12 +433,12 @@ export default function SettingsView() {
         </CardContent>
       </Card>
 
-      <Card sx={{ backgroundColor: '#1f2937' }}>
+      <Card sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg }}>
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Memory sx={{ color: '#60a5fa' }} />
-              <Typography variant="h6" sx={{ color: 'white' }}>
+              <Memory sx={{ color: tokens.color.info }} />
+              <Typography variant="h6" sx={{ color: 'text.primary' }}>
                 Memory &amp; JVM Settings
               </Typography>
             </Box>
@@ -444,7 +446,7 @@ export default function SettingsView() {
               <Button
                 onClick={handleResetConfig}
                 disabled={!dirty || savingConfig}
-                sx={{ color: '#9ca3af' }}
+                sx={{ color: 'text.secondary' }}
                 startIcon={<X />}
               >
                 Reset
@@ -467,9 +469,9 @@ export default function SettingsView() {
             </Alert>
           )}
 
-          <Typography sx={{ color: '#9ca3af', fontSize: '0.875rem', marginBottom: 1 }}>
-            Maximum Memory: <Box component="span" sx={{ color: 'white', fontWeight: 'bold' }}>{maxMemory} MB</Box>
-            <Box component="span" sx={{ color: '#9ca3af', marginLeft: 1 }}>(-Xmx{maxMemory}m)</Box>
+          <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem', marginBottom: 1 }}>
+            Maximum Memory: <Box component="span" sx={{ color: 'text.primary', fontWeight: 'bold' }}>{maxMemory} MB</Box>
+            <Box component="span" sx={{ color: 'text.secondary', marginLeft: 1 }}>(-Xmx{maxMemory}m)</Box>
           </Typography>
           <Slider
             value={maxMemory}
@@ -490,9 +492,9 @@ export default function SettingsView() {
               setDirty(true);
             }}
             sx={{
-              color: '#3b82f6',
+              color: tokens.color.info,
               marginBottom: 2,
-              '& .MuiSlider-markLabel': { color: '#9ca3af', fontSize: '0.75rem' }
+              '& .MuiSlider-markLabel': { color: 'text.secondary', fontSize: '0.75rem' }
             }}
           />
           <TextField
@@ -512,19 +514,19 @@ export default function SettingsView() {
             sx={{
               marginBottom: 3,
               width: 240,
-              input: { color: 'white' },
-              label: { color: '#9ca3af' },
+              input: { color: 'text.primary' },
+              label: { color: 'text.secondary' },
               '& .MuiOutlinedInput-root': {
-                '& fieldset': { borderColor: '#4b5563' },
-                '&:hover fieldset': { borderColor: '#60a5fa' },
-                '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
+                '& fieldset': { borderColor: tokens.color.divider },
+                '&:hover fieldset': { borderColor: tokens.color.info },
+                '&.Mui-focused fieldset': { borderColor: tokens.color.info }
               }
             }}
           />
 
-          <Typography sx={{ color: '#9ca3af', fontSize: '0.875rem', marginBottom: 1 }}>
-            Minimum Memory: <Box component="span" sx={{ color: 'white', fontWeight: 'bold' }}>{minMemory} MB</Box>
-            <Box component="span" sx={{ color: '#9ca3af', marginLeft: 1 }}>(-Xms{minMemory}m)</Box>
+          <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem', marginBottom: 1 }}>
+            Minimum Memory: <Box component="span" sx={{ color: 'text.primary', fontWeight: 'bold' }}>{minMemory} MB</Box>
+            <Box component="span" sx={{ color: 'text.secondary', marginLeft: 1 }}>(-Xms{minMemory}m)</Box>
           </Typography>
           <Slider
             value={Math.min(minMemory, maxMemory)}
@@ -543,9 +545,9 @@ export default function SettingsView() {
               setDirty(true);
             }}
             sx={{
-              color: '#10b981',
+              color: tokens.color.success,
               marginBottom: 2,
-              '& .MuiSlider-markLabel': { color: '#9ca3af', fontSize: '0.75rem' }
+              '& .MuiSlider-markLabel': { color: 'text.secondary', fontSize: '0.75rem' }
             }}
           />
           <TextField
@@ -565,17 +567,17 @@ export default function SettingsView() {
             sx={{
               marginBottom: 3,
               width: 240,
-              input: { color: 'white' },
-              label: { color: '#9ca3af' },
+              input: { color: 'text.primary' },
+              label: { color: 'text.secondary' },
               '& .MuiOutlinedInput-root': {
-                '& fieldset': { borderColor: '#4b5563' },
-                '&:hover fieldset': { borderColor: '#60a5fa' },
-                '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
+                '& fieldset': { borderColor: tokens.color.divider },
+                '&:hover fieldset': { borderColor: tokens.color.info },
+                '&.Mui-focused fieldset': { borderColor: tokens.color.info }
               }
             }}
           />
 
-          <Typography sx={{ color: '#9ca3af', fontSize: '0.875rem', marginBottom: 1 }}>
+          <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem', marginBottom: 1 }}>
             Additional JVM Arguments
           </Typography>
           <TextField
@@ -593,18 +595,18 @@ export default function SettingsView() {
             placeholder="e.g., -XX:+UseG1GC -XX:MaxGCPauseMillis=50"
             sx={{
               marginBottom: 3,
-              input: { color: 'white' },
-              textarea: { color: 'white', fontFamily: 'monospace', fontSize: '0.875rem' },
-              label: { color: '#9ca3af' },
+              input: { color: 'text.primary' },
+              textarea: { color: 'text.primary', fontFamily: 'monospace', fontSize: '0.875rem' },
+              label: { color: 'text.secondary' },
               '& .MuiOutlinedInput-root': {
-                '& fieldset': { borderColor: '#4b5563' },
-                '&:hover fieldset': { borderColor: '#60a5fa' },
-                '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
+                '& fieldset': { borderColor: tokens.color.divider },
+                '&:hover fieldset': { borderColor: tokens.color.info },
+                '&.Mui-focused fieldset': { borderColor: tokens.color.info }
               }
             }}
           />
 
-          <Typography sx={{ color: '#9ca3af', fontSize: '0.875rem', marginBottom: 1 }}>
+          <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem', marginBottom: 1 }}>
             Game Window Size
           </Typography>
           <Box sx={{ display: 'flex', gap: 2, marginBottom: 2 }}>
@@ -624,12 +626,12 @@ export default function SettingsView() {
               slotProps={{ htmlInput: { min: MIN_GAME_DIMENSION, max: MAX_GAME_DIMENSION, step: 1 } }}
               sx={{
                 width: 140,
-                input: { color: 'white' },
-                label: { color: '#9ca3af' },
+                input: { color: 'text.primary' },
+                label: { color: 'text.secondary' },
                 '& .MuiOutlinedInput-root': {
-                  '& fieldset': { borderColor: '#4b5563' },
-                  '&:hover fieldset': { borderColor: '#60a5fa' },
-                  '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
+                  '& fieldset': { borderColor: tokens.color.divider },
+                  '&:hover fieldset': { borderColor: tokens.color.info },
+                  '&.Mui-focused fieldset': { borderColor: tokens.color.info }
                 }
               }}
             />
@@ -649,18 +651,18 @@ export default function SettingsView() {
               slotProps={{ htmlInput: { min: MIN_GAME_DIMENSION, max: MAX_GAME_DIMENSION, step: 1 } }}
               sx={{
                 width: 140,
-                input: { color: 'white' },
-                label: { color: '#9ca3af' },
+                input: { color: 'text.primary' },
+                label: { color: 'text.secondary' },
                 '& .MuiOutlinedInput-root': {
-                  '& fieldset': { borderColor: '#4b5563' },
-                  '&:hover fieldset': { borderColor: '#60a5fa' },
-                  '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
+                  '& fieldset': { borderColor: tokens.color.divider },
+                  '&:hover fieldset': { borderColor: tokens.color.info },
+                  '&.Mui-focused fieldset': { borderColor: tokens.color.info }
                 }
               }}
             />
           </Box>
 
-          <Typography sx={{ color: '#9ca3af', fontSize: '0.875rem', marginBottom: 1 }}>
+          <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem', marginBottom: 1 }}>
             JVM Args Preview
           </Typography>
           <Chip
@@ -670,8 +672,8 @@ export default function SettingsView() {
               `--width ${gameWidth} --height ${gameHeight}`
             }
             sx={{
-              backgroundColor: '#1f2937',
-              color: '#d1d5db',
+              backgroundColor: 'rgba(255, 255, 255, 0.08)',
+              color: 'text.primary',
               fontFamily: 'monospace',
               fontSize: '0.75rem',
               maxWidth: '100%',
@@ -685,10 +687,10 @@ export default function SettingsView() {
       </Card>
 
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md">
-        <DialogTitle sx={{ backgroundColor: '#1f2937', color: 'white' }}>
+        <DialogTitle sx={{ backgroundColor: 'background.paper', color: 'text.primary' }}>
           {editingJava ? 'Edit Java Installation' : 'Add Java Installation'}
         </DialogTitle>
-        <DialogContent sx={{ backgroundColor: '#1f2937', color: 'white' }}>
+        <DialogContent sx={{ backgroundColor: 'background.paper', color: 'text.primary' }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
             <TextField
               label="Java Path"
@@ -698,12 +700,12 @@ export default function SettingsView() {
               onChange={(e) => setNewJavaPath(e.target.value)}
               placeholder="e.g., /usr/bin/java or C:\Program Files\Java\jdk17\bin\java.exe"
               sx={{
-                input: { color: 'white' },
-                label: { color: '#9ca3af' },
+                input: { color: 'text.primary' },
+                label: { color: 'text.secondary' },
                 '& .MuiOutlinedInput-root': {
-                  '& fieldset': { borderColor: '#4b5563' },
-                  '&:hover fieldset': { borderColor: '#60a5fa' },
-                  '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
+                  '& fieldset': { borderColor: tokens.color.divider },
+                  '&:hover fieldset': { borderColor: tokens.color.info },
+                  '&.Mui-focused fieldset': { borderColor: tokens.color.info }
                 }
               }}
             />
@@ -715,21 +717,21 @@ export default function SettingsView() {
               onChange={(e) => setNewJavaName(e.target.value)}
               placeholder="e.g., Java 17 (Forge)"
               sx={{
-                input: { color: 'white' },
-                label: { color: '#9ca3af' },
+                input: { color: 'text.primary' },
+                label: { color: 'text.secondary' },
                 '& .MuiOutlinedInput-root': {
-                  '& fieldset': { borderColor: '#4b5563' },
-                  '&:hover fieldset': { borderColor: '#60a5fa' },
-                  '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
+                  '& fieldset': { borderColor: tokens.color.divider },
+                  '&:hover fieldset': { borderColor: tokens.color.info },
+                  '&.Mui-focused fieldset': { borderColor: tokens.color.info }
                 }
               }}
             />
             {dialogError && (
-              <Typography sx={{ color: '#ef4444', fontSize: '0.875rem' }}>{dialogError}</Typography>
+              <Typography sx={{ color: tokens.color.danger, fontSize: '0.875rem' }}>{dialogError}</Typography>
             )}
           </Box>
         </DialogContent>
-        <DialogActions sx={{ backgroundColor: '#1f2937' }}>
+        <DialogActions sx={{ backgroundColor: 'background.paper' }}>
           <Button
             onClick={() => {
               setOpenDialog(false);
@@ -738,7 +740,7 @@ export default function SettingsView() {
               setNewJavaName('');
               setDialogError('');
             }}
-            sx={{ color: '#9ca3af' }}
+            sx={{ color: 'text.secondary' }}
             startIcon={<X />}
           >
             Cancel

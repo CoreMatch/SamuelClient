@@ -23,6 +23,7 @@ import {
   Refresh,
 } from '@mui/icons-material';
 import { GetAuthlibMeta, AuthlibLogin } from '../../wailsjs/go/main/App';
+import { tokens } from '../theme';
 
 interface AuthServer {
   id: string;
@@ -194,7 +195,7 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #1a1d21 0%, #2d3339 100%)',
+        background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
         p: 2,
       }}
     >
@@ -204,8 +205,8 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
           p: 4,
           maxWidth: 420,
           width: '100%',
-          backgroundColor: '#282c34',
-          borderRadius: 2,
+          backgroundColor: 'background.paper',
+          borderRadius: tokens.radius.lg,
         }}
       >
         <Box sx={{ textAlign: 'center', mb: 3 }}>
@@ -213,16 +214,16 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
 
         <Box sx={{ mb: 3 }}>
           <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel sx={{ color: '#9ca3af' }}>Authentication Type</InputLabel>
+            <InputLabel sx={{ color: 'text.secondary' }}>Authentication Type</InputLabel>
             <Select
               value={authType}
               label="Authentication Type"
               onChange={(e) => handleAuthTypeChange(e.target.value as 'offline' | 'authlib-injector')}
               sx={{
                 color: 'white',
-                '.MuiOutlinedInput-notchedOutline': { borderColor: '#4a5568' },
-                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#4CAF50' },
-                '.MuiSvgIcon-root': { color: '#9ca3af' },
+                '.MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
+                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.accent },
+                '.MuiSvgIcon-root': { color: 'text.secondary' },
               }}
             >
               <MenuItem value="authlib-injector">Yggdrasil API</MenuItem>
@@ -233,16 +234,16 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
           {authType === 'authlib-injector' && (
             <>
               <FormControl fullWidth sx={{ mb: 2 }}>
-                <InputLabel sx={{ color: '#9ca3af' }}>Auth Server</InputLabel>
+                <InputLabel sx={{ color: 'text.secondary' }}>Auth Server</InputLabel>
                 <Select
                   value={authServer}
                   label="Auth Server"
                   onChange={(e) => handleAuthServerChange(e.target.value)}
                   sx={{
                     color: 'white',
-                    '.MuiOutlinedInput-notchedOutline': { borderColor: '#4a5568' },
-                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#4CAF50' },
-                    '.MuiSvgIcon-root': { color: '#9ca3af' },
+                    '.MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
+                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.accent },
+                    '.MuiSvgIcon-root': { color: 'text.secondary' },
                   }}
                 >
                   {authServers.map((server) => (
@@ -266,22 +267,22 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
                       input: {
                         startAdornment: (
                           <InputAdornment position="start">
-                            <Http sx={{ color: '#9ca3af' }} />
+                            <Http sx={{ color: 'text.secondary' }} />
                           </InputAdornment>
                         ),
                       },
                     }}
                     sx={{
                       '& .MuiInputBase-input': { color: 'white' },
-                      '& .MuiInputLabel-root': { color: '#9ca3af' },
-                      '& .MuiOutlinedInput-notchedOutline': { borderColor: '#4a5568' },
+                      '& .MuiInputLabel-root': { color: 'text.secondary' },
+                      '& .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
                     }}
                   />
                   <Button
                     variant="contained"
                     onClick={handleAddCustomServer}
                     disabled={loadingServers || !customAuthServer.trim()}
-                    sx={{ minWidth: 'auto', backgroundColor: '#4CAF50' }}
+                    sx={{ minWidth: 'auto' }}
                   >
                     {loadingServers ? <CircularProgress size={20} color="inherit" /> : <Refresh />}
                   </Button>
@@ -307,16 +308,16 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
             input: {
               startAdornment: (
                 <InputAdornment position="start">
-                  <Person sx={{ color: '#9ca3af' }} />
+                  <Person sx={{ color: 'text.secondary' }} />
                 </InputAdornment>
               ),
             },
           }}
           sx={{
             '& .MuiInputBase-input': { color: 'white' },
-            '& .MuiInputLabel-root': { color: '#9ca3af' },
-            '& .MuiOutlinedInput-notchedOutline': { borderColor: '#4a5568' },
-            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#4CAF50' },
+            '& .MuiInputLabel-root': { color: 'text.secondary' },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
+            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.accent },
           }}
         />
 
@@ -332,13 +333,13 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
             input: {
               startAdornment: (
                 <InputAdornment position="start">
-                  <Lock sx={{ color: '#9ca3af' }} />
+                  <Lock sx={{ color: 'text.secondary' }} />
                 </InputAdornment>
               ),
               endAdornment: (
                 <InputAdornment position="end">
                   <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
-                    {showPassword ? <VisibilityOff sx={{ color: '#9ca3af' }} /> : <Visibility sx={{ color: '#9ca3af' }} />}
+                    {showPassword ? <VisibilityOff sx={{ color: 'text.secondary' }} /> : <Visibility sx={{ color: 'text.secondary' }} />}
                   </IconButton>
                 </InputAdornment>
               ),
@@ -346,9 +347,9 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
           }}
             sx={{
               '& .MuiInputBase-input': { color: 'white' },
-              '& .MuiInputLabel-root': { color: '#9ca3af' },
-              '& .MuiOutlinedInput-notchedOutline': { borderColor: '#4a5568' },
-              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#4CAF50' },
+              '& .MuiInputLabel-root': { color: 'text.secondary' },
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
+              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.accent },
             }}
           />
         )}
@@ -362,9 +363,7 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
             mt: 3,
             mb: 2,
             py: 1.5,
-            backgroundColor: '#4CAF50',
             fontSize: '1.1rem',
-            '&:hover': { backgroundColor: '#45a049' },
           }}
         >
           {loading ? <CircularProgress size={24} color="inherit" /> : 'Login'}
@@ -374,7 +373,7 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
           <Button
             variant="text"
             onClick={onSwitchToAccounts}
-            sx={{ color: '#9ca3af', textTransform: 'none' }}
+            sx={{ color: 'text.secondary', textTransform: 'none' }}
           >
             Manage Accounts
           </Button>

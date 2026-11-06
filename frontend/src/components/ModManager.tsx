@@ -8,7 +8,6 @@ import {
   ListItemSecondaryAction,
   IconButton,
   Button,
-  Paper,
   Switch,
   Chip,
 } from '@mui/material';
@@ -16,7 +15,11 @@ import {
   Add,
   Delete,
   FolderOpen,
+  Extension,
 } from '@mui/icons-material';
+import { EmptyState } from './states';
+import { t } from '../i18n';
+import { tokens } from '../theme';
 
 interface Mod {
   id: string;
@@ -86,14 +89,15 @@ export default function ModManager({ onOpenModsFolder }: ModManagerProps) {
     saveMods([...mods, newMod]);
   };
 
+  // Loader chip colors come from the shared semantic palette.
   const getLoaderColor = (loader: string) => {
     switch (loader) {
       case 'fabric':
-        return '#FF6B35';
+        return tokens.color.warning;
       case 'forge':
-        return '#8B5CF6';
+        return tokens.color.info;
       default:
-        return '#9CA3AF';
+        return 'rgba(255, 255, 255, 0.24)';
     }
   };
 
@@ -105,62 +109,47 @@ export default function ModManager({ onOpenModsFolder }: ModManagerProps) {
             variant="outlined"
             startIcon={<FolderOpen />}
             onClick={onOpenModsFolder}
-            sx={{ borderColor: '#4a5568', color: '#9ca3af' }}
+            sx={{ borderColor: tokens.color.divider, color: 'text.secondary' }}
           >
             Open Mods Folder
           </Button>
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={handleAddMod}
-            sx={{ backgroundColor: '#4CAF50' }}
-          >
+          <Button variant="contained" startIcon={<Add />} onClick={handleAddMod}>
             Add Mod
           </Button>
         </Box>
       </Box>
 
-      <Typography variant="body2" sx={{ color: '#9ca3af', mb: 2 }}>
+      <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
         Enable or disable mods. Mods must be placed in the mods folder to work.
       </Typography>
 
       {mods.length === 0 ? (
-        <Paper
-          sx={{
-            p: 4,
-            textAlign: 'center',
-            backgroundColor: '#2d3339',
-            color: '#9ca3af',
-          }}
-        >
-          <Typography variant="h6" sx={{ mb: 1 }}>
-            No Mods
-          </Typography>
-          <Typography variant="body2" sx={{ mb: 2 }}>
-            Click "Add Mod" to add mods or place .jar files in the mods folder
-          </Typography>
-        </Paper>
+        <EmptyState
+          icon={<Extension sx={{ fontSize: 64, mb: 2, opacity: 0.5, color: 'text.secondary' }} />}
+          title={t('mods.emptyTitle')}
+          hint={t('mods.emptyHint')}
+        />
       ) : (
-        <List sx={{ backgroundColor: '#282c34', borderRadius: 1 }}>
+        <List sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg }}>
           {mods.map((mod) => (
             <ListItem
               key={mod.id}
               sx={{
-                '&:hover': { backgroundColor: '#323842' },
+                '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.06)' },
               }}
             >
               <ListItemText
                 primary={
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography sx={{ color: 'white' }}>{mod.name}</Typography>
+                    <Typography sx={{ color: 'text.primary' }}>{mod.name}</Typography>
                     <Chip
                       size="small"
                       label={mod.version}
                       sx={{
                         height: 20,
                         fontSize: '0.7rem',
-                        backgroundColor: '#374151',
-                        color: '#9ca3af',
+                        backgroundColor: 'rgba(255, 255, 255, 0.12)',
+                        color: 'text.secondary',
                       }}
                     />
                   </Box>
@@ -173,8 +162,8 @@ export default function ModManager({ onOpenModsFolder }: ModManagerProps) {
                       sx={{
                         height: 20,
                         fontSize: '0.7rem',
-                        backgroundColor: '#374151',
-                        color: '#9ca3af',
+                        backgroundColor: 'rgba(255, 255, 255, 0.12)',
+                        color: 'text.secondary',
                       }}
                     />
                     <Chip
@@ -184,7 +173,7 @@ export default function ModManager({ onOpenModsFolder }: ModManagerProps) {
                         height: 20,
                         fontSize: '0.7rem',
                         backgroundColor: getLoaderColor(mod.loaderType),
-                        color: 'white',
+                        color: tokens.color.deep,
                       }}
                     />
                   </Box>
@@ -195,19 +184,12 @@ export default function ModManager({ onOpenModsFolder }: ModManagerProps) {
                   edge="end"
                   checked={mod.enabled}
                   onChange={() => handleToggleMod(mod.id)}
-                  sx={{
-                    '& .MuiSwitch-switchBase.Mui-checked': {
-                      color: '#4CAF50',
-                    },
-                    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                      backgroundColor: '#4CAF50',
-                    },
-                  }}
+                  color="primary"
                 />
                 <IconButton
                   edge="end"
                   onClick={() => handleDeleteMod(mod.id)}
-                  sx={{ color: '#ef4444', ml: 1 }}
+                  sx={{ color: tokens.color.danger, ml: 1 }}
                 >
                   <Delete />
                 </IconButton>

@@ -1,6 +1,7 @@
 import { Alert, Box, Button, CircularProgress, Paper, Typography } from '@mui/material';
 import { HandoffPayload } from '../types';
 import { t } from '../i18n';
+import { tokens } from '../theme';
 
 interface HandoffBannerProps {
   handoff: HandoffPayload | null;
@@ -52,17 +53,17 @@ export default function HandoffBanner({
   const { match } = handoff;
 
   return (
-    <Paper sx={{ p: 2, mb: 2, backgroundColor: '#282c34', border: '1px solid #4CAF50' }}>
+    <Paper sx={{ p: 2, mb: 2, backgroundColor: 'background.paper', border: `1px solid ${tokens.color.success}`, borderRadius: tokens.radius.lg }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
         <Box>
-          <Typography variant="h6" sx={{ color: 'white' }}>
+          <Typography variant="h6" sx={{ color: 'text.primary' }}>
             {t('handoff.title')}
           </Typography>
-          <Typography variant="body2" sx={{ color: '#9ca3af' }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             {t('handoff.mode', { mode: match.mode })}
             {match.map_name ? ` · ${t('handoff.map', { map: match.map_name })}` : ''}
           </Typography>
-          <Typography variant="body2" sx={{ color: '#9ca3af' }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             {t('handoff.server', { host: match.join_target.host, port: match.join_target.port })}
           </Typography>
         </Box>
@@ -74,23 +75,22 @@ export default function HandoffBanner({
               onClick={onJoin}
               disabled={joining}
               startIcon={joining ? <CircularProgress size={16} color="inherit" /> : undefined}
-              sx={{ backgroundColor: '#4CAF50', '&:hover': { backgroundColor: '#45a049' } }}
             >
               {joining ? t('handoff.joining') : t('handoff.joinNow')}
             </Button>
           ) : (
-            <Button variant="contained" onClick={onLogin} sx={{ backgroundColor: '#4CAF50', '&:hover': { backgroundColor: '#45a049' } }}>
+            <Button variant="contained" onClick={onLogin}>
               {t('handoff.login')}
             </Button>
           )}
-          <Button variant="outlined" onClick={onDismiss} disabled={joining} sx={{ borderColor: '#4a5568', color: '#9ca3af' }}>
+          <Button variant="outlined" onClick={onDismiss} disabled={joining} sx={{ borderColor: tokens.color.divider, color: 'text.secondary' }}>
             {t('handoff.dismiss')}
           </Button>
         </Box>
       </Box>
 
       {!hasAccount && (
-        <Typography variant="body2" sx={{ color: '#f59e0b', mt: 1 }}>
+        <Typography variant="body2" sx={{ color: tokens.color.warning, mt: 1 }}>
           {t('handoff.loginRequired')}
         </Typography>
       )}

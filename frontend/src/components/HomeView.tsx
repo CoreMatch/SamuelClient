@@ -23,6 +23,7 @@ import {
 } from '@mui/icons-material';
 import { StoredAccount } from '../accountStorage';
 import { InstalledVersion } from '../types';
+import { tokens } from '../theme';
 import {
   GetJavaInstallations,
   GetInstalledVersions,
@@ -377,22 +378,22 @@ export default function HomeView({
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
         {/* Left Panel - Version Selection */}
-        <Paper sx={{ p: 3, backgroundColor: '#282c34' }}>
+        <Paper sx={{ p: 3, backgroundColor: 'background.paper', borderRadius: tokens.radius.lg }}>
           <Typography variant="h6" sx={{ color: 'white', mb: 2 }}>
             Select Version
           </Typography>
 
           <FormControl fullWidth sx={{ mb: 3 }}>
-            <InputLabel sx={{ color: '#9ca3af' }}>Minecraft Version</InputLabel>
+            <InputLabel sx={{ color: 'text.secondary' }}>Minecraft Version</InputLabel>
             <Select
               value={currentVersion?.id || ''}
               onChange={(e) => handleVersionChange(e.target.value)}
               label="Minecraft Version"
               sx={{
                 color: 'white',
-                '.MuiOutlinedInput-notchedOutline': { borderColor: '#4a5568' },
-                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#4CAF50' },
-                '.MuiSvgIcon-root': { color: '#9ca3af' },
+                '.MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
+                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.accent },
+                '.MuiSvgIcon-root': { color: 'text.secondary' },
               }}
             >
               {versions.length === 0 ? (
@@ -410,7 +411,7 @@ export default function HomeView({
           </FormControl>
 
           <FormControl fullWidth sx={{ mb: 3 }}>
-            <InputLabel sx={{ color: '#9ca3af' }}>Mod Loader</InputLabel>
+            <InputLabel sx={{ color: 'text.secondary' }}>Mod Loader</InputLabel>
             <Select
               value={settings.selectedLoader}
               onChange={(e) => handleLoaderChange(e.target.value)}
@@ -418,9 +419,9 @@ export default function HomeView({
               disabled={installingLoader !== null}
               sx={{
                 color: 'white',
-                '.MuiOutlinedInput-notchedOutline': { borderColor: '#4a5568' },
-                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#4CAF50' },
-                '.MuiSvgIcon-root': { color: '#9ca3af' },
+                '.MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
+                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.accent },
+                '.MuiSvgIcon-root': { color: 'text.secondary' },
               }}
             >
               {loaders.map((l) => (
@@ -432,7 +433,7 @@ export default function HomeView({
           </FormControl>
 
           <FormControl fullWidth sx={{ mb: 3 }}>
-            <InputLabel sx={{ color: '#9ca3af' }}>Java</InputLabel>
+            <InputLabel sx={{ color: 'text.secondary' }}>Java</InputLabel>
             <Select
               value={selectedJava?.id || ''}
               onChange={(e) => {
@@ -442,9 +443,9 @@ export default function HomeView({
               label="Java"
               sx={{
                 color: 'white',
-                '.MuiOutlinedInput-notchedOutline': { borderColor: '#4a5568' },
-                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#4CAF50' },
-                '.MuiSvgIcon-root': { color: '#9ca3af' },
+                '.MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
+                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.accent },
+                '.MuiSvgIcon-root': { color: 'text.secondary' },
               }}
             >
               {javaInstallations.length === 0 ? (
@@ -461,50 +462,50 @@ export default function HomeView({
             </Select>
           </FormControl>
 
-          <Divider sx={{ borderColor: '#374151', my: 2 }} />
+          <Divider sx={{ borderColor: tokens.color.divider, my: 2 }} />
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="subtitle2" sx={{ color: '#9ca3af' }}>
+            <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
               Account
             </Typography>
           </Box>
 
           {currentAccount ? (
-            <Box sx={{ backgroundColor: '#2d3339', p: 2, borderRadius: 1 }}>
+            <Box sx={{ backgroundColor: 'rgba(255, 255, 255, 0.06)', p: 2, borderRadius: 1 }}>
               <Typography sx={{ color: 'white' }}>{currentAccount.username}</Typography>
-              <Typography variant="caption" sx={{ color: '#6b7280' }}>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                 {currentAccount.authType === 'authlib-injector' ? 'Online' : 'Offline'}
               </Typography>
             </Box>
           ) : (
-            <Typography sx={{ color: '#ef4444' }}>No account selected</Typography>
+            <Typography sx={{ color: tokens.color.danger }}>No account selected</Typography>
           )}
         </Paper>
 
         {/* Right Panel - Settings */}
-        <Paper sx={{ p: 3, backgroundColor: '#282c34' }}>
+        <Paper sx={{ p: 3, backgroundColor: 'background.paper', borderRadius: tokens.radius.lg }}>
           <Box
             sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, cursor: 'pointer' }}
             onClick={() => setShowSettings(!showSettings)}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Settings sx={{ color: '#9ca3af' }} />
+              <Settings sx={{ color: 'text.secondary' }} />
               <Typography variant="h6" sx={{ color: 'white' }}>
                 Launch Settings
               </Typography>
             </Box>
-            {showSettings ? <ExpandLess sx={{ color: '#9ca3af' }} /> : <ExpandMore sx={{ color: '#9ca3af' }} />}
+            {showSettings ? <ExpandLess sx={{ color: 'text.secondary' }} /> : <ExpandMore sx={{ color: 'text.secondary' }} />}
           </Box>
 
           <Collapse in={!showSettings}>
-            <Typography variant="body2" sx={{ color: '#6b7280', mb: 2 }}>
+            <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
               Memory: {settings.maxMemory}MB | Resolution: {settings.gameWidth}x{settings.gameHeight}
             </Typography>
           </Collapse>
 
           <Collapse in={showSettings}>
             <Box sx={{ pt: 1 }}>
-              <Typography gutterBottom sx={{ color: '#9ca3af', fontSize: '0.875rem' }}>
+              <Typography gutterBottom sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
                 Maximum Memory: {settings.maxMemory}MB
               </Typography>
               <Slider
@@ -515,8 +516,8 @@ export default function HomeView({
                 step={256}
                 marks={memoryMarks}
                 sx={{
-                  color: '#4CAF50',
-                  '& .MuiSlider-markLabel': { color: '#6b7280', fontSize: '0.7rem' },
+                  color: tokens.color.accent,
+                  '& .MuiSlider-markLabel': { color: 'text.secondary', fontSize: '0.7rem' },
                 }}
               />
 
@@ -530,8 +531,8 @@ export default function HomeView({
                 sx={{
                   mt: 2,
                   '& .MuiInputBase-input': { color: 'white' },
-                  '& .MuiInputLabel-root': { color: '#9ca3af' },
-                  '& .MuiOutlinedInput-notchedOutline': { borderColor: '#4a5568' },
+                  '& .MuiInputLabel-root': { color: 'text.secondary' },
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
                 }}
               />
 
@@ -545,8 +546,8 @@ export default function HomeView({
                   sx={{
                     flex: 1,
                     '& .MuiInputBase-input': { color: 'white' },
-                    '& .MuiInputLabel-root': { color: '#9ca3af' },
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: '#4a5568' },
+                    '& .MuiInputLabel-root': { color: 'text.secondary' },
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
                   }}
                 />
                 <TextField
@@ -558,8 +559,8 @@ export default function HomeView({
                   sx={{
                     flex: 1,
                     '& .MuiInputBase-input': { color: 'white' },
-                    '& .MuiInputLabel-root': { color: '#9ca3af' },
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: '#4a5568' },
+                    '& .MuiInputLabel-root': { color: 'text.secondary' },
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.divider },
                   }}
                 />
               </Box>
@@ -570,29 +571,29 @@ export default function HomeView({
 
       {/* Logs Panel */}
       <Collapse in={showLogs}>
-        <Paper sx={{ p: 3, backgroundColor: '#282c34', mt: 3 }}>
+        <Paper sx={{ p: 3, backgroundColor: 'background.paper', borderRadius: tokens.radius.lg, mt: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h6" sx={{ color: 'white' }}>
               Logs
             </Typography>
           </Box>
 
-          <Box sx={{ height: 200, backgroundColor: '#1f2937', borderRadius: 1, overflowY: 'auto', p: 2 }}>
+          <Box sx={{ height: 200, backgroundColor: tokens.color.deep, borderRadius: 1, overflowY: 'auto', p: 2 }}>
               {liveLogs.length > 0 ? (
                 // ADR-0004: live game output streamed over "launcher:log".
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   {liveLogs.map((l, i) => (
                     <Box key={i} sx={{ display: 'flex', gap: 2, fontSize: '0.875rem' }}>
-                      <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>{l.ts}</span>
-                      <span style={{ color: l.source === 'stderr' ? '#f59e0b' : '#3b82f6', fontWeight: 'bold' }}>
+                      <span style={{ color: tokens.color.textMuted, fontSize: '0.75rem' }}>{l.ts}</span>
+                      <span style={{ color: l.source === 'stderr' ? tokens.color.warning : tokens.color.info, fontWeight: 'bold' }}>
                         [{l.source.toUpperCase()}]
                       </span>
-                      <span style={{ color: '#e5e7eb', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{l.line}</span>
+                      <span style={{ color: tokens.color.text, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{l.line}</span>
                     </Box>
                   ))}
                 </Box>
               ) : (
-                <Typography sx={{ color: '#6b7280', textAlign: 'center', py: 4 }}>
+                <Typography sx={{ color: 'text.secondary', textAlign: 'center', py: 4 }}>
                   No logs available
                 </Typography>
               )}
@@ -606,7 +607,7 @@ export default function HomeView({
           variant="outlined"
           startIcon={<Settings />}
           onClick={onOpenSettings}
-          sx={{ borderColor: '#4a5568', color: '#9ca3af' }}
+          sx={{ borderColor: tokens.color.divider, color: 'text.secondary' }}
         >
           Settings
         </Button>
@@ -618,10 +619,10 @@ export default function HomeView({
           sx={{
             px: 4,
             py: 1.5,
-            backgroundColor: '#4CAF50',
+            backgroundColor: tokens.color.accent,
             fontSize: '1.1rem',
-            '&:hover': { backgroundColor: '#45a049' },
-            '&:disabled': { backgroundColor: '#374151', color: '#6b7280' },
+            '&:hover': { backgroundColor: tokens.color.accentDark },
+            '&:disabled': { backgroundColor: 'rgba(255, 255, 255, 0.12)', color: 'text.secondary' },
           }}
         >
           {launching ? 'Launching...' : 'Play'}

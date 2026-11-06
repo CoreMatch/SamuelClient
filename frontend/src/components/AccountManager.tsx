@@ -15,7 +15,6 @@ import {
   DialogContent,
   DialogActions,
   Chip,
-  Paper,
   Divider,
 } from '@mui/material';
 import {
@@ -28,6 +27,9 @@ import {
 } from '@mui/icons-material';
 
 import { StoredAccount, ACCOUNTS_STORAGE_KEY } from '../accountStorage';
+import { EmptyState } from './states';
+import { t } from '../i18n';
+import { tokens } from '../theme';
 
 interface AccountManagerProps {
   onSelectAccount: (account: StoredAccount) => void;
@@ -94,9 +96,9 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
 
   const getAuthTypeIcon = (authType: string) => {
     return authType === 'authlib-injector' ? (
-      <Wifi sx={{ color: '#4CAF50' }} />
+      <Wifi sx={{ color: tokens.color.success }} />
     ) : (
-      <WifiOff sx={{ color: '#9ca3af' }} />
+      <WifiOff sx={{ color: 'text.secondary' }} />
     );
   };
 
@@ -107,68 +109,46 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          onClick={handleAddAccount}
-          sx={{ backgroundColor: '#4CAF50' }}
-        >
+        <Button variant="contained" startIcon={<Add />} onClick={handleAddAccount}>
           Add Account
         </Button>
       </Box>
 
-      <Typography variant="body2" sx={{ color: '#9ca3af', mb: 2 }}>
+      <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
         Select an account to login. Click the delete button to remove an account.
       </Typography>
 
       {accounts.length === 0 ? (
-        <Paper
-          sx={{
-            p: 4,
-            textAlign: 'center',
-            backgroundColor: '#2d3339',
-            color: '#9ca3af',
-          }}
-        >
-          <Person sx={{ fontSize: 64, mb: 2, opacity: 0.5 }} />
-          <Typography variant="h6" sx={{ mb: 1 }}>
-            No Accounts
-          </Typography>
-          <Typography variant="body2" sx={{ mb: 2 }}>
-            Add an account to get started
-          </Typography>
-          <Button
-            variant="outlined"
-            startIcon={<Add />}
-            onClick={handleAddAccount}
-            sx={{ borderColor: '#4CAF50', color: '#4CAF50' }}
-          >
-            Add Account
-          </Button>
-        </Paper>
+        <EmptyState
+          icon={<Person sx={{ fontSize: 64, mb: 2, opacity: 0.5, color: 'text.secondary' }} />}
+          title={t('accounts.emptyTitle')}
+          hint={t('accounts.emptyHint')}
+          actionLabel="Add Account"
+          onAction={handleAddAccount}
+        />
       ) : (
-        <List sx={{ backgroundColor: '#282c34', borderRadius: 1 }}>
+        <List sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg }}>
           {accounts.map((account, index) => (
             <Box key={account.id}>
               <ListItem
                 sx={{
                   cursor: 'pointer',
-                  '&:hover': { backgroundColor: '#323842' },
-                  backgroundColor: account.lastUsed ? '#323842' : 'transparent',
+                  '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.06)' },
+                  backgroundColor: account.lastUsed ? 'rgba(255, 255, 255, 0.06)' : 'transparent',
                 }}
                 onClick={() => handleSelectAccount(account)}
               >
                 <ListItemAvatar>
-                  <Avatar sx={{ backgroundColor: '#4CAF50' }}>
+                  <Avatar sx={{ backgroundColor: tokens.color.accent }}>
                     <Person />
                   </Avatar>
                 </ListItemAvatar>
                 <ListItemText
                   primary={
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography sx={{ color: 'white' }}>{account.username}</Typography>
+                      <Typography sx={{ color: 'text.primary' }}>{account.username}</Typography>
                       {account.lastUsed && (
-                        <CheckCircle sx={{ fontSize: 16, color: '#4CAF50' }} />
+                        <CheckCircle sx={{ fontSize: 16, color: tokens.color.success }} />
                       )}
                     </Box>
                   }
@@ -180,12 +160,12 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
                         label={getAuthTypeLabel(account.authType)}
                         sx={{
                           height: 24,
-                          backgroundColor: account.authType === 'authlib-injector' ? '#2d3339' : '#374151',
-                          color: account.authType === 'authlib-injector' ? '#4CAF50' : '#9ca3af',
+                          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                          color: account.authType === 'authlib-injector' ? tokens.color.success : 'text.secondary',
                         }}
                       />
                       {account.authServer && (
-                        <Typography variant="caption" sx={{ color: '#6b7280' }}>
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                           {new URL(account.authServer).hostname}
                         </Typography>
                       )}
@@ -199,13 +179,13 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
                       e.stopPropagation();
                       handleDeleteClick(account);
                     }}
-                    sx={{ color: '#ef4444' }}
+                    sx={{ color: tokens.color.danger }}
                   >
                     <Delete />
                   </IconButton>
                 </ListItemSecondaryAction>
               </ListItem>
-              {index < accounts.length - 1 && <Divider sx={{ borderColor: '#374151' }} />}
+              {index < accounts.length - 1 && <Divider sx={{ borderColor: tokens.color.divider }} />}
             </Box>
           ))}
         </List>
@@ -214,22 +194,22 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
       <Dialog
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
-        slotProps={{ paper: { sx: { backgroundColor: '#282c34' } } }}
+        slotProps={{ paper: { sx: { backgroundColor: 'background.paper', backgroundImage: 'none' } } }}
       >
-        <DialogTitle sx={{ color: 'white' }}>Delete Account</DialogTitle>
+        <DialogTitle sx={{ color: 'text.primary' }}>Delete Account</DialogTitle>
         <DialogContent>
-          <Typography sx={{ color: '#9ca3af' }}>
+          <Typography sx={{ color: 'text.secondary' }}>
             Are you sure you want to delete the account "{accountToDelete?.username}"?
             This action cannot be undone.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setDeleteDialogOpen(false)} sx={{ color: '#9ca3af' }}>
+          <Button onClick={() => setDeleteDialogOpen(false)} sx={{ color: 'text.secondary' }}>
             Cancel
           </Button>
           <Button
             onClick={handleConfirmDelete}
-            sx={{ backgroundColor: '#ef4444', color: 'white', '&:hover': { backgroundColor: '#dc2626' } }}
+            sx={{ backgroundColor: tokens.color.danger, color: tokens.color.deep, '&:hover': { backgroundColor: '#ef5350' } }}
           >
             Delete
           </Button>
