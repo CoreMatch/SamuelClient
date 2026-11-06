@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Box, Typography, Card, CardContent, Chip, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Tooltip, Slider, Alert, Snackbar } from '@mui/material';
-import { Add, Delete, Star, Edit, Check, X, Save, Memory } from '@mui/icons-material';
+import { Box, Typography, Card, CardContent, Chip, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Tooltip, Slider, Alert, Snackbar, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { Add, Delete, Star, Edit, Check, X, Save, Memory, FolderOpen } from '@mui/icons-material';
 import {
   GetLauncherConfig,
   GetJavaInstallations,
@@ -12,6 +12,7 @@ import {
 } from '../../wailsjs/go/main/App';
 import { LoadingSkeleton } from './states';
 import { tokens } from '../theme';
+import { t } from '../i18n';
 
 interface JavaInstallation {
   id: number;
@@ -41,7 +42,12 @@ const MIN_MEMORY_MB = 256;
 const MAX_GAME_DIMENSION = 3840;
 const MIN_GAME_DIMENSION = 320;
 
-export default function SettingsView() {
+interface SettingsViewProps {
+  themeMode: 'dark' | 'light';
+  onChangeTheme: (mode: 'dark' | 'light') => void;
+}
+
+export default function SettingsView({ themeMode, onChangeTheme }: SettingsViewProps) {
   const [config, setConfig] = useState<LauncherConfig | null>(null);
   const [javaInstallations, setJavaInstallations] = useState<JavaInstallation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -293,6 +299,28 @@ export default function SettingsView() {
 
       <Card sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg, marginBottom: 2 }}>
         <CardContent>
+          <Typography variant="h6" sx={{ color: 'text.primary', marginBottom: 2 }}>
+            {t('settings.appearance')}
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Typography sx={{ color: 'text.secondary' }}>{t('settings.theme')}</Typography>
+            <ToggleButtonGroup
+              value={themeMode}
+              exclusive
+              size="small"
+              onChange={(_, value) => {
+                if (value) onChangeTheme(value);
+              }}
+            >
+              <ToggleButton value="dark">{t('settings.themeDark')}</ToggleButton>
+              <ToggleButton value="light">{t('settings.themeLight')}</ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+        </CardContent>
+      </Card>
+
+      <Card sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg, marginBottom: 2 }}>
+        <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
             <Typography variant="h6" sx={{ color: 'text.primary' }}>
               Java Installations
@@ -430,6 +458,21 @@ export default function SettingsView() {
               />
             </div>
           </Box>
+        </CardContent>
+      </Card>
+
+      <Card sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg, marginBottom: 2 }}>
+        <CardContent>
+          <Typography variant="h6" sx={{ color: 'text.primary', marginBottom: 2 }}>
+            {t('settings.folders')}
+          </Typography>
+          <Button
+            variant="outlined"
+            startIcon={<FolderOpen />}
+            onClick={() => window.open('file:///home/lnb/.minecraft/mods', '_blank')}
+          >
+            {t('settings.modsFolder')}
+          </Button>
         </CardContent>
       </Card>
 
