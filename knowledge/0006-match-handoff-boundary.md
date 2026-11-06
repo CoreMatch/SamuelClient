@@ -83,3 +83,57 @@ Add a **separate, inter-process-only** loopback boundary, defined by
   -race` green, `npm run lint` 0/0, `npm test` green, `npm run build`
   green. Real cross-process runs with the actual matchmaking client: not
   verified (sender side is not built yet).
+
+## Cross-process verification (INTEROP-SPEC v1)
+
+Real end-to-end run against the actual sender implementation
+(MatchCoreArena-Client `836b720`, its `internal/interop`), executed on the
+Fedora 44 / KDE / Wayland host. The sender ran from a throwaway `/tmp`
+clone so the MCA repository was never modified; the driver source is kept
+in this repo at `tools/e2e-handoff-sender/main.go` (Go's internal-package
+rule requires compiling it inside the MCA module).
+
+Commands:
+
+```sh
+# receiver — real production binary
+wails build -tags webkit2_41
+setsid env DISPLAY=:0 ./build/bin/SamuelClient > /tmp/e2e-receiver.log 2>&1 < /dev/null &
+
+# sender — inside the /tmp clone of MatchCoreArena-Client @ 836b720
+go run ./tools/e2e-handoff-sender   # join_target 127.0.0.1:9 (deliberately unreachable)
+```
+
+Observed:
+
+- **Flow A (receiver running):** the sender read `samuel-client.json`,
+  passed the pid check, and `POST /v1/join` succeeded — sender states
+  `delivering → delivered`; receiver log
+  `[interop] handoff accepted: cf4bba01-… match=m-90001 target=127.0.0.1:9`
+  (pending slot filled, `interop:handoff` event emitted).
+- **Flow B (receiver not running):** sender states
+  `delivering → waiting_receiver → delivered`. The deep link
+  `matchcore://join?handoff_id=ea9c240d-…&v=1` went through `xdg-open`,
+  KDE started SamuelClient via the registered `.desktop` entry (new pid,
+  new listener port), and the receiver's pull loop fetched the payload
+  from the sender's `GET /v1/handoff/{id}` — receiver log
+  `[interop] handoff pulled from sender: ea9c240d-… match=m-90001
+  target=127.0.0.1:9` (handoff id identical to the sender's).
+- **Busy slot:** a second push while the receiver held the pending handoff
+  returned HTTP 503 — sender state `busy`, detail "SamuelClient is busy
+  with another handoff — try again".
+- **Cleanup:** the receiver removed `samuel-client.json` on shutdown; the
+  sender's stale `mca-client.json` is neutralized by the pid check.
+- The sender reported `game_reachable: false` for the unreachable join
+  target, as designed.
+
+Not verified in this run (recorded honestly):
+
+- **UI rendering** of the HandoffBanner — the GUI window opened on
+  `DISPLAY=:0`, but its content was not inspected (no GUI automation).
+- The receiver-side **"server unreachable" degradation on join** — the
+  `LaunchGame` preflight is covered by the binding test
+  `TestLaunchGameJoinTargetPreflight`; nobody clicked Join during the e2e
+  run, so the click path stayed unexercised.
+- Deep-link wake from a **never-started** receiver: self-registration
+  happens on first startup, and the receiver had run once before Flow B.
