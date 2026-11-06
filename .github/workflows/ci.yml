@@ -27,13 +27,11 @@ jobs:
 
       # The frontend consumes the shared @ha/ui design system through a
       # `file:` dependency (frontend/package.json -> ../../ha-ui, i.e. a
-      # sibling of this repository), so the package must be checked out
-      # next to the workspace before `npm ci` runs.
+      # sibling of this repository), so the package must exist next to the
+      # workspace before `npm ci` runs. actions/checkout refuses paths
+      # outside $GITHUB_WORKSPACE, hence the plain clone (public repo).
       - name: Checkout @ha/ui design system
-        uses: actions/checkout@v7
-        with:
-          repository: CoreMatch/ha-ui
-          path: ../ha-ui
+        run: git clone --depth 1 https://github.com/CoreMatch/ha-ui.git ../ha-ui
 
       - name: Set up Go
         uses: actions/setup-go@v7
