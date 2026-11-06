@@ -9,15 +9,14 @@ import {
   IconButton,
   Button,
   Chip,
-  Paper,
-  Tabs,
-  Tab,
-  CircularProgress,
+  LinearProgress,
   Alert,
   Select,
   MenuItem,
   FormControl,
   InputLabel,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import {
   Download,
@@ -29,6 +28,9 @@ import {
 import { GetVersions, DownloadVersion } from '../../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 import { InstalledVersion } from '../types';
+import { LoadingSkeleton, ErrorState, EmptyState } from './states';
+import { t } from '../i18n';
+import { tokens } from '../theme';
 
 interface MCVersion {
   id: string;
@@ -46,13 +48,22 @@ const STORAGE_KEY = 'installed_versions';
 
 const REVOLUTION_VERSIONS = ['1.12.2', '1.21.1'];
 
+// InstallProgress is the readable form of one "download:progress" event
+// (stage hierarchy per INTEROP/binding contract: jar → library → native →
+// asset, plus loader installs).
+interface InstallProgress {
+  stage: string;
+  pct: number | null;
+}
+
 export default function VersionManager({ onSelectVersion }: VersionManagerProps) {
   const [versions, setVersions] = useState<MCVersion[]>([]);
   const [installedVersions, setInstalledVersions] = useState<InstalledVersion[]>([]);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState<Record<string, string>>({});
-  const [error, setError] = useState('');
+  const [downloadProgress, setDownloadProgress] = useState<Record<string, InstallProgress>>({});
+  const [fetchError, setFetchError] = useState('');
+  const [downloadError, setDownloadError] = useState('');
   const [tabValue, setTabValue] = useState(0);
   const [typeFilter, setTypeFilter] = useState<string>('all');
 
@@ -67,12 +78,11 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
   useEffect(() => {
     EventsOn('download:progress', (p: { version_id?: string; stage?: string; downloaded?: number; total?: number }) => {
       if (!p || !p.version_id) return;
-      let label = p.stage || '';
+      let pct: number | null = null;
       if (p.total && p.total > 0 && typeof p.downloaded === 'number') {
-        const pct = Math.min(100, Math.floor((p.downloaded / p.total) * 100));
-        label = `${p.stage || ''} ${pct}%`;
+        pct = Math.min(100, Math.floor((p.downloaded / p.total) * 100));
       }
-      setDownloadProgress(prev => ({ ...prev, [p.version_id as string]: label }));
+      setDownloadProgress(prev => ({ ...prev, [p.version_id as string]: { stage: p.stage || '', pct } }));
     });
     return () => {
       EventsOff('download:progress');
@@ -101,7 +111,7 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
 
   const fetchVersions = async () => {
     setLoading(true);
-    setError('');
+    setFetchError('');
     try {
       const result = await GetVersions();
       if (result.success) {
@@ -113,13 +123,13 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
           // Fallback for old format
           setVersions(result.data);
         } else {
-          setError('Invalid version data format');
+          setFetchError('Invalid version data format');
         }
       } else {
-        setError(result.error || 'Failed to fetch versions');
+        setFetchError(result.error || 'Failed to fetch versions');
       }
     } catch {
-      setError('Failed to fetch versions. Please try again.');
+      setFetchError('Failed to fetch versions. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -127,7 +137,7 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
 
   const handleDownload = async (version: MCVersion) => {
     setDownloading(version.id);
-    setError('');
+    setDownloadError('');
     try {
       // ADR-0004: install runs through the in-process Wails binding; progress
       // arrives over "download:progress" events (see subscription above).
@@ -143,10 +153,10 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
         updated.unshift(newInstalled);
         saveInstalledVersions(updated);
       } else {
-        setError(result.error || 'Download failed');
+        setDownloadError(result.error || 'Download failed');
       }
     } catch {
-      setError('Download failed. Please try again.');
+      setDownloadError('Download failed. Please try again.');
     } finally {
       setDownloading(null);
       setDownloadProgress(prev => {
@@ -166,18 +176,17 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
     return installedVersions.some(v => v.id === versionId && v.installed);
   };
 
+  // Version-type chip colors come from the shared semantic palette.
   const getVersionTypeColor = (type: string) => {
     switch (type) {
       case 'release':
-        return '#4CAF50';
+        return tokens.color.success;
       case 'snapshot':
-        return '#FF9800';
+        return tokens.color.warning;
       case 'old_beta':
-        return '#9C27B0';
-      case 'old_alpha':
-        return '#795548';
+        return tokens.color.info;
       default:
-        return '#9CA3af';
+        return 'rgba(255, 255, 255, 0.24)';
     }
   };
 
@@ -187,17 +196,61 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
     return date.toLocaleDateString();
   };
 
+  // Install progress row: readable step name + determinate bar (launcher
+  // research 03 §2.3: current step + percentage, not a bare spinner).
+  const renderProgress = (versionId: string) => {
+    const progress = downloadProgress[versionId];
+    const stepLabel = t(installStepKey(progress?.stage || ''));
+    const pct = progress?.pct ?? null;
+    return (
+      <Box sx={{ width: 180 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            {stepLabel}
+          </Typography>
+          {pct !== null && (
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              {pct}%
+            </Typography>
+          )}
+        </Box>
+        <LinearProgress
+          variant={pct === null ? 'indeterminate' : 'determinate'}
+          value={pct ?? 0}
+          sx={{
+            height: 6,
+            borderRadius: 3,
+            backgroundColor: 'rgba(255, 255, 255, 0.12)',
+            '& .MuiLinearProgress-bar': { backgroundColor: tokens.color.accent, borderRadius: 3 },
+          }}
+        />
+      </Box>
+    );
+  };
+
+  const versionRowActions = (version: MCVersion) => (
+    <ListItemSecondaryAction>
+      {downloading === version.id ? (
+        renderProgress(version.id)
+      ) : isInstalled(version.id) ? (
+        <Chip
+          size="small"
+          label={t('versions.installedChip')}
+          sx={{ height: 24, backgroundColor: tokens.color.success, color: tokens.color.deep }}
+        />
+      ) : (
+        <IconButton edge="end" onClick={() => handleDownload(version)} sx={{ color: tokens.color.accent }}>
+          <Download />
+        </IconButton>
+      )}
+    </ListItemSecondaryAction>
+  );
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Button
-          variant="outlined"
-          startIcon={<Refresh />}
-          onClick={fetchVersions}
-          disabled={loading}
-          sx={{ borderColor: '#4CAF50', color: '#4CAF50' }}
-        >
-          Refresh
+        <Button variant="outlined" startIcon={<Refresh />} onClick={fetchVersions} disabled={loading}>
+          {t('versions.refresh')}
         </Button>
       </Box>
 
@@ -206,30 +259,31 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
         onChange={(_, newValue) => setTabValue(newValue)}
         sx={{
           mb: 2,
-          '& .MuiTab-root': { color: '#9ca3af' },
-          '& .Mui-selected': { color: '#4CAF50' },
-          '& .MuiTabs-indicator': { backgroundColor: '#4CAF50' },
+          '& .MuiTab-root': { color: 'text.secondary' },
+          '& .Mui-selected': { color: tokens.color.accent },
+          '& .MuiTabs-indicator': { backgroundColor: tokens.color.accent },
         }}
       >
-        <Tab label="Installed" />
-        <Tab label="All Versions" />
-        <Tab label="Revolution" />
+        <Tab label={t('versions.tab.installed')} />
+        <Tab label={t('versions.tab.all')} />
+        <Tab label={t('versions.tab.revolution')} />
       </Tabs>
 
       {tabValue === 1 && (
         <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
           <FormControl sx={{ minWidth: 180 }}>
-            <InputLabel sx={{ color: '#9ca3af' }}>Filter by Type</InputLabel>
+            <InputLabel sx={{ color: 'text.secondary' }}>{t('versions.filterType')}</InputLabel>
             <Select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
               sx={{
-                color: 'white',
-                backgroundColor: '#2d3339',
-                '&:before': { borderColor: '#4CAF50' },
-                '&:after': { borderColor: '#4CAF50' },
+                color: 'text.primary',
+                backgroundColor: 'background.paper',
+                borderRadius: tokens.radius.md,
+                '&:before': { borderColor: tokens.color.divider },
+                '&:after': { borderColor: tokens.color.accent },
               }}
-              label="Filter by Type"
+              label={t('versions.filterType')}
             >
               <MenuItem value="all">All</MenuItem>
               <MenuItem value="release">Release</MenuItem>
@@ -241,51 +295,42 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
         </Box>
       )}
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-          {error}
+      {downloadError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setDownloadError('')}>
+          {downloadError}
         </Alert>
       )}
 
       {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <CircularProgress sx={{ color: '#4CAF50' }} />
-        </Box>
+        <LoadingSkeleton rows={6} />
+      ) : fetchError ? (
+        <ErrorState data={t('versions.listData')} onRetry={fetchVersions} />
       ) : tabValue === 0 ? (
         // Installed versions
         installedVersions.length === 0 ? (
-          <Paper
-            sx={{
-              p: 4,
-              textAlign: 'center',
-              backgroundColor: '#2d3339',
-              color: '#9ca3af',
-            }}
-          >
-            <CloudDownload sx={{ fontSize: 64, mb: 2, opacity: 0.5 }} />
-            <Typography variant="h6" sx={{ mb: 1 }}>
-              No Versions Installed
-            </Typography>
-            <Typography variant="body2" sx={{ mb: 2 }}>
-              Go to "All Versions" tab to download Minecraft versions
-            </Typography>
-          </Paper>
+          <EmptyState
+            icon={<CloudDownload sx={{ fontSize: 64, mb: 2, opacity: 0.5, color: 'text.secondary' }} />}
+            title={t('versions.emptyTitle')}
+            hint={t('versions.emptyHint')}
+            actionLabel={t('versions.browse')}
+            onAction={() => setTabValue(1)}
+          />
         ) : (
-          <List sx={{ backgroundColor: '#282c34', borderRadius: 1 }}>
+          <List sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg }}>
             {installedVersions.map((version) => (
               <ListItem
                 key={version.id}
                 sx={{
                   cursor: 'pointer',
-                  '&:hover': { backgroundColor: '#323842' },
+                  '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.06)' },
                 }}
                 onClick={() => onSelectVersion(version)}
               >
                 <ListItemText
                   primary={
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography sx={{ color: 'white' }}>{version.id}</Typography>
-                      <CheckCircle sx={{ fontSize: 16, color: '#4CAF50' }} />
+                      <Typography sx={{ color: 'text.primary' }}>{version.id}</Typography>
+                      <CheckCircle sx={{ fontSize: 16, color: tokens.color.success }} />
                     </Box>
                   }
                   secondary={
@@ -297,7 +342,7 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
                           height: 20,
                           fontSize: '0.7rem',
                           backgroundColor: getVersionTypeColor(version.type),
-                          color: 'white',
+                          color: tokens.color.deep,
                         }}
                       />
                       {version.loaderType && (
@@ -307,8 +352,8 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
                           sx={{
                             height: 20,
                             fontSize: '0.7rem',
-                            backgroundColor: '#374151',
-                            color: '#9ca3af',
+                            backgroundColor: 'rgba(255, 255, 255, 0.12)',
+                            color: 'text.secondary',
                           }}
                         />
                       )}
@@ -322,7 +367,7 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
                       e.stopPropagation();
                       handleDelete(version.id);
                     }}
-                    sx={{ color: '#ef4444' }}
+                    sx={{ color: tokens.color.danger }}
                   >
                     <Delete />
                   </IconButton>
@@ -333,22 +378,20 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
         )
       ) : tabValue === 1 ? (
         // All versions
-        <List sx={{ backgroundColor: '#282c34', borderRadius: 1 }}>
+        <List sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg }}>
           {versions
             .filter((version) => typeFilter === 'all' || version.type === typeFilter)
             .map((version) => (
             <ListItem
               key={version.id}
-              sx={{
-                '&:hover': { backgroundColor: '#323842' },
-              }}
+              sx={{ '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.06)' } }}
             >
               <ListItemText
                 primary={
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography sx={{ color: 'white' }}>{version.id}</Typography>
+                    <Typography sx={{ color: 'text.primary' }}>{version.id}</Typography>
                     {isInstalled(version.id) && (
-                      <CheckCircle sx={{ fontSize: 16, color: '#4CAF50' }} />
+                      <CheckCircle sx={{ fontSize: 16, color: tokens.color.success }} />
                     )}
                   </Box>
                 }
@@ -361,72 +404,41 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
                         height: 20,
                         fontSize: '0.7rem',
                         backgroundColor: getVersionTypeColor(version.type),
-                        color: 'white',
+                        color: tokens.color.deep,
                       }}
                     />
                     {version.releaseTime && (
-                      <Typography variant="caption" sx={{ color: '#6b7280' }}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                         {formatDate(version.releaseTime)}
                       </Typography>
                     )}
                   </Box>
                 }
               />
-              <ListItemSecondaryAction>
-                {downloading === version.id ? (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    {downloadProgress[version.id] && (
-                      <Typography variant="caption" sx={{ color: '#9ca3af', fontSize: '0.7rem' }}>
-                        {downloadProgress[version.id]}
-                      </Typography>
-                    )}
-                    <CircularProgress size={24} sx={{ color: '#4CAF50' }} />
-                  </Box>
-                ) : isInstalled(version.id) ? (
-                  <Chip
-                    size="small"
-                    label="Installed"
-                    sx={{
-                      height: 24,
-                      backgroundColor: '#4CAF50',
-                      color: 'white',
-                    }}
-                  />
-                ) : (
-                  <IconButton
-                    edge="end"
-                    onClick={() => handleDownload(version)}
-                    sx={{ color: '#4CAF50' }}
-                  >
-                    <Download />
-                  </IconButton>
-                )}
-              </ListItemSecondaryAction>
+              {versionRowActions(version)}
             </ListItem>
           ))}
         </List>
       ) : (
         // Revolution versions
         <Box>
-          <Typography variant="body2" sx={{ color: '#9ca3af', mb: 2 }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
             There are some versions that are highly recommended if you are a Revolution player.
           </Typography>
-          <List sx={{ backgroundColor: '#282c34', borderRadius: 1 }}>
+          <List sx={{ backgroundColor: 'background.paper', borderRadius: tokens.radius.lg }}>
             {REVOLUTION_VERSIONS.map((id) => {
               const version = versions.find((v) => v.id === id) || { id, type: 'release' };
               return (
                 <ListItem
                   key={id}
-                  sx={{
-                    '&:hover': { backgroundColor: '#323842' },
-                  }}
+                  sx={{ '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.06)' } }}
                 >
                   <ListItemText
                     primary={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography sx={{ color: 'white' }}>{id}</Typography>
+                        <Typography sx={{ color: 'text.primary' }}>{id}</Typography>
                         {isInstalled(id) && (
-                          <CheckCircle sx={{ fontSize: 16, color: '#4CAF50' }} />
+                          <CheckCircle sx={{ fontSize: 16, color: tokens.color.success }} />
                         )}
                       </Box>
                     }
@@ -439,47 +451,18 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
                             height: 20,
                             fontSize: '0.7rem',
                             backgroundColor: getVersionTypeColor(version.type),
-                            color: 'white',
+                            color: tokens.color.deep,
                           }}
                         />
                         {version.releaseTime && (
-                          <Typography variant="caption" sx={{ color: '#6b7280' }}>
+                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                             {formatDate(version.releaseTime)}
                           </Typography>
                         )}
                       </Box>
                     }
                   />
-                  <ListItemSecondaryAction>
-                    {downloading === id ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        {downloadProgress[id] && (
-                          <Typography variant="caption" sx={{ color: '#9ca3af', fontSize: '0.7rem' }}>
-                            {downloadProgress[id]}
-                          </Typography>
-                        )}
-                        <CircularProgress size={24} sx={{ color: '#4CAF50' }} />
-                      </Box>
-                    ) : isInstalled(id) ? (
-                      <Chip
-                        size="small"
-                        label="Installed"
-                        sx={{
-                          height: 24,
-                          backgroundColor: '#4CAF50',
-                          color: 'white',
-                        }}
-                      />
-                    ) : (
-                      <IconButton
-                        edge="end"
-                        onClick={() => handleDownload(version)}
-                        sx={{ color: '#4CAF50' }}
-                      >
-                        <Download />
-                      </IconButton>
-                    )}
-                  </ListItemSecondaryAction>
+                  {versionRowActions(version)}
                 </ListItem>
               );
             })}
@@ -488,4 +471,21 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
       )}
     </Box>
   );
+}
+
+// Maps a "download:progress" stage to its i18n key; unknown stages fall
+// back to the generic game-file label instead of rendering a raw key.
+function installStepKey(stage: string): 'install.step.jar' | 'install.step.library' | 'install.step.native' | 'install.step.asset' | 'install.step.loader' {
+  switch (stage) {
+    case 'library':
+      return 'install.step.library';
+    case 'native':
+      return 'install.step.native';
+    case 'asset':
+      return 'install.step.asset';
+    case 'loader':
+      return 'install.step.loader';
+    default:
+      return 'install.step.jar';
+  }
 }

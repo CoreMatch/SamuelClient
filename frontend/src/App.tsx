@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { ThemeProvider } from '@mui/material/styles';
+import CssBaseline from '@mui/material/CssBaseline';
 import { Box, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, AppBar, Toolbar, Typography, IconButton } from '@mui/material';
 import { Gamepad, Home, Settings, Group, Layers, Menu, ArrowBack } from '@mui/icons-material';
 import HomeView from './components/HomeView';
@@ -11,6 +13,7 @@ import LoginView, { LoggedInAccount } from './components/LoginView';
 import { StoredAccount, saveAccount, restoreLastUsedAccount } from './accountStorage';
 import { InstalledVersion, HandoffPayload } from './types';
 import { t } from './i18n';
+import { darkTheme, tokens } from './theme';
 import {
   GetPendingHandoff,
   DismissHandoff,
@@ -283,15 +286,17 @@ export default function App() {
   };
 
   return (
-    <Box sx={{ display: 'flex' }}>
-      <AppBar
-        position="fixed"
-        sx={{
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
-          ml: { sm: `${drawerWidth}px` },
-          backgroundColor: '#282c34',
-        }}
-      >
+    <ThemeProvider theme={darkTheme}>
+      <CssBaseline />
+      <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: 'background.default' }}>
+        <AppBar
+          position="fixed"
+          sx={{
+            width: { sm: `calc(100% - ${drawerWidth}px)` },
+            ml: { sm: `${drawerWidth}px` },
+            backgroundColor: tokens.color.deep,
+          }}
+        >
         <Toolbar>
           <IconButton
             color="inherit"
@@ -342,10 +347,10 @@ export default function App() {
                       setShowLogin(false);
                     }}
                   >
-                    <ListItemIcon sx={{ color: selectedView === item.id && !showLogin ? 'white' : '#9ca3af' }}>
+                    <ListItemIcon sx={{ color: selectedView === item.id && !showLogin ? 'white' : tokens.color.textMuted }}>
                       <item.icon />
                     </ListItemIcon>
-                    <ListItemText primary={item.label} sx={{ color: selectedView === item.id && !showLogin ? 'white' : '#d1d5db' }} />
+                    <ListItemText primary={item.label} sx={{ color: selectedView === item.id && !showLogin ? 'white' : tokens.color.text }} />
                   </ListItemButton>
                 </ListItem>
               ))}
@@ -357,7 +362,7 @@ export default function App() {
           variant="permanent"
           sx={{
             display: { xs: 'none', sm: 'block' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth, backgroundColor: '#212529' },
+            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth, backgroundColor: tokens.color.deep },
           }}
           open
         >
@@ -373,12 +378,17 @@ export default function App() {
                     setSelectedView(item.id);
                     setShowLogin(false);
                   }}
-                  sx={{ '&.Mui-selected': { backgroundColor: '#4CAF50' } }}
+                  sx={{
+                    borderRadius: tokens.radius.md,
+                    mx: 1,
+                    mb: 0.5,
+                    '&.Mui-selected': { backgroundColor: tokens.color.accent, '&:hover': { backgroundColor: tokens.color.accentDark } },
+                  }}
                 >
-                  <ListItemIcon sx={{ color: selectedView === item.id && !showLogin ? 'white' : '#9ca3af' }}>
+                  <ListItemIcon sx={{ color: selectedView === item.id && !showLogin ? 'white' : tokens.color.textMuted }}>
                     <item.icon />
                   </ListItemIcon>
-                  <ListItemText primary={item.label} sx={{ color: selectedView === item.id && !showLogin ? 'white' : '#d1d5db' }} />
+                  <ListItemText primary={item.label} sx={{ color: selectedView === item.id && !showLogin ? 'white' : tokens.color.text }} />
                 </ListItemButton>
               </ListItem>
             ))}
@@ -392,7 +402,7 @@ export default function App() {
           flexGrow: 1,
           p: 3,
           width: { sm: `calc(100% - ${drawerWidth}px)` },
-          backgroundColor: '#1a1d21',
+          backgroundColor: 'background.default',
           minHeight: '100vh',
         }}
       >
@@ -409,6 +419,7 @@ export default function App() {
         />
         {renderView()}
       </Box>
-    </Box>
+      </Box>
+    </ThemeProvider>
   );
 }
