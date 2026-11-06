@@ -31,7 +31,12 @@ jobs:
       # workspace before `npm ci` runs. actions/checkout refuses paths
       # outside $GITHUB_WORKSPACE, hence the plain clone (public repo).
       - name: Checkout @ha/ui design system
-        run: git clone --depth 1 https://github.com/CoreMatch/ha-ui.git ../ha-ui
+        run: |
+          git clone --depth 1 https://github.com/CoreMatch/ha-ui.git ../ha-ui
+          # TEMP: CoreMatch/ha-ui@2d09791 ships a CSS comment whose `*/`
+          # terminates early and breaks Tailwind's @theme parsing. Patch the
+          # clone (not the upstream repo) until the fix is pushed there.
+          sed -i '/bg-\*\/panel\/raised\/base/c\  /* Color utilities */' ../ha-ui/src/styles/tokens.css
 
       - name: Set up Go
         uses: actions/setup-go@v7
