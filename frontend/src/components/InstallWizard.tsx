@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Check } from 'lucide-react';
+import { Box, Boxes, Check, Cpu, Feather, Flame, Images, Package, Puzzle } from 'lucide-react';
 import {
   GetVersions,
   GetFabricVersions,
@@ -226,13 +226,13 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
   return (
     <div>
       {/* Step indicator */}
-      <ol className="mb-6 flex items-center gap-3">
+      <ol className="mb-8 flex items-center gap-4">
         {stepLabels.map((label, i) => (
-          <li key={label} className={`flex items-center gap-3 ${i < stepLabels.length - 1 ? 'flex-1' : ''}`}>
-            <span className="flex items-center gap-2">
+          <li key={label} className={`flex items-center gap-4 ${i < stepLabels.length - 1 ? 'flex-1' : ''}`}>
+            <span className="flex items-center gap-2.5">
               <span
                 aria-current={step === i ? 'step' : undefined}
-                className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                className={`flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
                   step > i
                     ? 'bg-accent text-on-accent'
                     : step === i
@@ -240,22 +240,19 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
                       : 'border border-edge text-ink-faint'
                 }`}
               >
-                {step > i ? <Check className="size-3.5" aria-hidden /> : i + 1}
+                {step > i ? <Check className="size-4" aria-hidden /> : i + 1}
               </span>
-              <span className={`text-xs font-medium ${step >= i ? 'text-ink' : 'text-ink-faint'}`}>{label}</span>
+              <span className={`text-sm font-medium ${step >= i ? 'text-ink' : 'text-ink-faint'}`}>{label}</span>
             </span>
-            {i < stepLabels.length - 1 && <span className="h-px flex-1 bg-border" aria-hidden />}
+            {i < stepLabels.length - 1 && <span className="h-px flex-1 bg-edge" aria-hidden />}
           </li>
         ))}
       </ol>
 
       {step === 0 && (
         <div>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-ink-faint">
-              {t('versions.recommended', { versions: REVOLUTION_VERSIONS.join(', ') })}
-            </p>
-            <div className="w-44">
+          <div className="mb-4 flex justify-end">
+            <div className="w-52">
               <Select
                 ariaLabel={t('versions.filterType')}
                 value={typeFilter}
@@ -276,19 +273,19 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
           ) : fetchError ? (
             <ErrorState data={t('versions.listData')} onRetry={fetchVersions} />
           ) : (
-            <div className="max-h-[420px] overflow-y-auto rounded-lg border border-edge bg-panel">
+            <div className="max-h-[480px] overflow-y-auto rounded-lg bg-panel">
               {filteredVersions.map((version, index) => (
                 <button
                   key={version.id}
                   type="button"
                   onClick={() => setSelectedVersion(version)}
                   aria-pressed={selectedVersion?.id === version.id}
-                  className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-white/4 ${
+                  className={`flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition-colors duration-150 hover:bg-white/4 ${
                     index > 0 ? 'border-t border-edge' : ''
                   } ${selectedVersion?.id === version.id ? 'bg-white/6' : ''}`}
                 >
-                  <span className="text-sm font-medium text-ink">{version.id}</span>
-                  <span className="flex items-center gap-1.5">
+                  <span className="text-base font-medium text-ink">{version.id}</span>
+                  <span className="flex items-center gap-2">
                     <Badge
                       tone={
                         version.type === 'release'
@@ -307,7 +304,7 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
             </div>
           )}
 
-          <div className="mt-4 flex justify-end">
+          <div className="mt-6 flex justify-end">
             <Button onClick={goNext} disabled={!selectedVersion}>
               {t('wizard.next')}
             </Button>
@@ -318,12 +315,12 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
       {step === 1 && selectedVersion && (
         <div>
           {loadersLoading && (
-            <div className="mb-4">
+            <div className="mb-5">
               <Progress value={null} />
             </div>
           )}
           {loadersError && (
-            <div className="mb-4">
+            <div className="mb-5">
               <Callout tone="warning">{loadersError}</Callout>
             </div>
           )}
@@ -339,24 +336,14 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
               );
             }}
             options={[
-              { value: 'vanilla', title: t('wizard.vanilla'), description: t('wizard.vanillaHint') },
-              {
-                value: 'fabric',
-                title: 'Fabric',
-                description: t('wizard.fabricHint'),
-                meta: !loadersLoading ? t('wizard.loaderCount', { count: fabricVersions.length }) : undefined,
-              },
-              {
-                value: 'forge',
-                title: 'Forge',
-                description: t('wizard.forgeHint'),
-                meta: !loadersLoading ? t('wizard.loaderCount', { count: forgeVersions.length }) : undefined,
-              },
+              { value: 'vanilla', title: t('wizard.vanilla'), icon: <Box className="size-5" aria-hidden /> },
+              { value: 'fabric', title: 'Fabric', icon: <Feather className="size-5" aria-hidden /> },
+              { value: 'forge', title: 'Forge', icon: <Flame className="size-5" aria-hidden /> },
             ]}
           />
 
           {loaderType !== 'vanilla' && (
-            <div className="mt-4">
+            <div className="mt-5">
               <Field label={t('wizard.loaderVersion')} htmlFor="wizard-loader-version">
                 <Select
                   ariaLabel={t('wizard.loaderVersion')}
@@ -371,7 +358,7 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
             </div>
           )}
 
-          <div className="mt-6 flex justify-between">
+          <div className="mt-8 flex justify-between">
             <Button variant="secondary" onClick={goBack}>
               {t('wizard.back')}
             </Button>
@@ -384,8 +371,8 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
 
       {step === 2 && selectedVersion && (
         <div>
-          <div className="rounded-lg border border-edge bg-panel px-4 py-3">
-            <p className="text-sm text-ink">
+          <div className="rounded-lg bg-panel px-6 py-5">
+            <p className="text-base text-ink">
               {loaderType === 'vanilla'
                 ? t('wizard.summaryVanilla', { version: selectedVersion.id })
                 : t('wizard.summary', {
@@ -396,11 +383,14 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
           </div>
 
           {phase === 'installing' && (
-            <div className="mt-4">
-              <div className="mb-1.5 flex items-center justify-between">
-                <span className="text-xs text-ink-muted">{t(installStepKey(activeProgress?.stage || ''))}</span>
+            <div className="mt-5">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="inline-flex items-center gap-2 text-sm text-ink-muted">
+                  {stageIcon(activeProgress?.stage || '')}
+                  {t(installStepKey(activeProgress?.stage || ''))}
+                </span>
                 {activeProgress?.pct != null && (
-                  <span className="font-mono text-xs text-ink-muted">{activeProgress.pct}%</span>
+                  <span className="font-mono text-sm text-ink-muted">{activeProgress.pct}%</span>
                 )}
               </div>
               <Progress value={activeProgress?.pct ?? null} />
@@ -408,18 +398,18 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
           )}
 
           {phase === 'success' && (
-            <div className="mt-4">
+            <div className="mt-5">
               <Callout tone="success">{t('wizard.installSuccess', { version: installedLabel })}</Callout>
             </div>
           )}
 
           {phase === 'error' && (
-            <div className="mt-4">
+            <div className="mt-5">
               <Callout tone="danger">{t('wizard.installFailed', { error: installError })}</Callout>
             </div>
           )}
 
-          <div className="mt-6 flex justify-between">
+          <div className="mt-8 flex justify-between">
             {phase === 'success' ? (
               <Button variant="secondary" onClick={resetWizard}>
                 {t('wizard.installAnother')}
@@ -457,5 +447,22 @@ function installStepKey(stage: string): 'install.step.jar' | 'install.step.libra
       return 'install.step.loader';
     default:
       return 'install.step.jar';
+  }
+}
+
+// Graphical stage markers for the install progress row (text assists only).
+function stageIcon(stage: string) {
+  const cls = 'size-4 shrink-0';
+  switch (stage) {
+    case 'library':
+      return <Boxes className={cls} aria-hidden />;
+    case 'native':
+      return <Cpu className={cls} aria-hidden />;
+    case 'asset':
+      return <Images className={cls} aria-hidden />;
+    case 'loader':
+      return <Puzzle className={cls} aria-hidden />;
+    default:
+      return <Package className={cls} aria-hidden />;
   }
 }

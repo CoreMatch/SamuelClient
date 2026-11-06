@@ -81,25 +81,22 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
 
   return (
     <div>
-      <div className="mb-2 flex justify-end">
+      <div className="mb-3 flex justify-end">
         <Button onClick={handleAddAccount}>
-          <Plus className="size-4" aria-hidden />
+          <Plus className="size-5" aria-hidden />
           {t('accounts.add')}
         </Button>
       </div>
 
-      <p className="mb-4 text-sm text-ink-muted">{t('accounts.hint')}</p>
-
       {accounts.length === 0 ? (
         <EmptyState
-          icon={<Users className="size-12 opacity-60" aria-hidden />}
+          icon={<Users className="size-14 opacity-60" aria-hidden />}
           title={t('accounts.emptyTitle')}
-          hint={t('accounts.emptyHint')}
           actionLabel={t('accounts.add')}
           onAction={handleAddAccount}
         />
       ) : (
-        <div className="rounded-lg border border-edge bg-panel">
+        <div className="rounded-lg bg-panel">
           {accounts.map((account, index) => (
             <div
               key={account.id}
@@ -113,26 +110,26 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
                 }
               }}
               aria-label={t('accounts.select', { username: account.username })}
-              className={`flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-white/4 ${
+              className={`flex w-full cursor-pointer items-center gap-4 px-5 py-5 text-left transition-colors duration-150 hover:bg-white/4 ${
                 index > 0 ? 'border-t border-edge' : ''
               } ${account.lastUsed ? 'bg-white/4' : ''}`}
             >
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-edge-strong bg-white/6 text-sm font-semibold text-ink">
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-full border border-edge-strong bg-white/6 text-base font-semibold text-ink">
                 {account.username.charAt(0).toUpperCase()}
               </span>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="truncate text-sm font-medium text-ink">{account.username}</span>
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-base font-medium text-ink">{account.username}</span>
                   {account.lastUsed && (
-                    <BadgeCheck className="size-4 shrink-0 text-ok" aria-label={t('accounts.lastUsed')} />
+                    <BadgeCheck className="size-5 shrink-0 text-ok" aria-label={t('accounts.lastUsed')} />
                   )}
                 </div>
-                <div className="mt-1 flex items-center gap-1.5">
+                <div className="mt-1.5 flex items-center gap-2">
                   <Badge tone={account.authType === 'authlib-injector' ? 'success' : 'neutral'}>
                     {account.authType === 'authlib-injector' ? t('accounts.online') : t('accounts.offline')}
                   </Badge>
                   {account.authServer && (
-                    <span className="truncate text-xs text-ink-faint">{authServerHost(account)}</span>
+                    <span className="truncate text-sm text-ink-faint">{authServerHost(account)}</span>
                   )}
                 </div>
               </div>
@@ -144,7 +141,7 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
                   handleDeleteClick(account);
                 }}
               >
-                <Trash2 className="size-4" />
+                <Trash2 className="size-5" />
               </IconButton>
             </div>
           ))}

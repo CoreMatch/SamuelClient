@@ -8,25 +8,22 @@ describe('unified states', () => {
     expect(container.querySelectorAll('.skeleton-row').length).toBe(4);
   });
 
-  it('shows a readable error with a retry action', () => {
+  it('shows a short error line with a retry action', () => {
     const onRetry = vi.fn();
     render(<ErrorState data="the version list" onRetry={onRetry} />);
 
-    expect(
-      screen.getByText("Couldn't load the version list. Check your connection and try again."),
-    ).toBeTruthy();
+    expect(screen.getByText("Couldn't load the version list.")).toBeTruthy();
     fireEvent.click(screen.getByText('Retry'));
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
-  it('shows an empty state with a next-step action', () => {
+  it('shows an empty state as glyph + one line + action', () => {
     const onAction = vi.fn();
     render(
-      <EmptyState title="No versions installed" hint="Download one." actionLabel="Browse versions" onAction={onAction} />,
+      <EmptyState title="No versions installed" actionLabel="Browse versions" onAction={onAction} />,
     );
 
     expect(screen.getByText('No versions installed')).toBeTruthy();
-    expect(screen.getByText('Download one.')).toBeTruthy();
     fireEvent.click(screen.getByText('Browse versions'));
     expect(onAction).toHaveBeenCalledTimes(1);
   });

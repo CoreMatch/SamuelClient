@@ -10,7 +10,7 @@ import { IconButton } from './button';
 
 const overlayClasses = 'fixed inset-0 z-(--ha-z-overlay) bg-black/60 backdrop-blur-[2px]';
 const panelClasses =
-  'w-full max-w-md rounded-lg border border-edge bg-panel p-6 shadow-[0_24px_64px_rgba(0,0,0,0.5)]';
+  'w-full max-w-md rounded-lg border border-edge bg-panel p-8 shadow-[0_24px_64px_rgba(0,0,0,0.5)]';
 
 export function Dialog({
   open,
@@ -31,8 +31,8 @@ export function Dialog({
         <DialogPrimitive.Overlay className={overlayClasses} />
         <DialogPrimitive.Content className="fixed inset-0 z-(--ha-z-overlay) grid place-items-center p-4">
           <div className={panelClasses}>
-            <div className="mb-4 flex items-center justify-between">
-              <DialogPrimitive.Title className="text-base font-semibold text-ink">
+            <div className="mb-5 flex items-center justify-between">
+              <DialogPrimitive.Title className="text-xl font-semibold text-ink">
                 {title}
               </DialogPrimitive.Title>
               <DialogPrimitive.Close asChild>
@@ -72,17 +72,17 @@ export function AlertDialog({
         <AlertDialogPrimitive.Overlay className={overlayClasses} />
         <AlertDialogPrimitive.Content className="fixed inset-0 z-(--ha-z-overlay) grid place-items-center p-4">
           <div className={panelClasses}>
-            <AlertDialogPrimitive.Title className="text-base font-semibold text-ink">
+            <AlertDialogPrimitive.Title className="text-xl font-semibold text-ink">
               {title}
             </AlertDialogPrimitive.Title>
-            <AlertDialogPrimitive.Description className="mt-2 text-sm leading-relaxed text-ink-muted">
+            <AlertDialogPrimitive.Description className="mt-3 text-sm leading-relaxed text-ink-muted">
               {description}
             </AlertDialogPrimitive.Description>
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="mt-7 flex justify-end gap-3">
               <AlertDialogPrimitive.Cancel asChild>
                 <button
                   type="button"
-                  className="inline-flex h-9 items-center justify-center rounded-md border border-edge-strong px-4 text-sm font-medium text-ink transition-colors duration-150 hover:bg-white/6"
+                  className="inline-flex h-11 items-center justify-center rounded-md border border-edge-strong px-5 text-base font-medium text-ink transition-colors duration-150 hover:bg-white/6"
                 >
                   {cancelLabel}
                 </button>
@@ -91,7 +91,7 @@ export function AlertDialog({
                 <button
                   type="button"
                   onClick={onConfirm}
-                  className="inline-flex h-9 items-center justify-center rounded-md bg-danger px-4 text-sm font-medium text-white transition-colors duration-150 hover:bg-danger/85"
+                  className="inline-flex h-11 items-center justify-center rounded-md bg-danger px-5 text-base font-medium text-white transition-colors duration-150 hover:bg-danger/85"
                 >
                   {confirmLabel}
                 </button>

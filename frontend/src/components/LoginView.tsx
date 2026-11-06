@@ -172,11 +172,9 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
   };
 
   return (
-    <div className="mx-auto mt-14 w-full max-w-[400px]">
-      <div className="rounded-lg border border-edge bg-panel p-8">
-        <h1 className="text-xl font-semibold text-ink">{t('login.title')}</h1>
-
-        <div className="mt-6 flex flex-col gap-4">
+    <div className="mx-auto mt-10 w-full max-w-[460px]">
+      <div className="rounded-lg bg-panel p-10">
+        <div className="flex flex-col gap-6">
           <Field label={t('login.authType')} htmlFor="login-auth-type">
             <Select
               ariaLabel={t('login.authType')}
@@ -204,7 +202,7 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
               </Field>
 
               {authServer === 'custom' && (
-                <div className="flex items-end gap-2">
+                <div className="flex items-end gap-3">
                   <TextField
                     className="flex-1"
                     label={t('login.customUrl')}
@@ -220,7 +218,7 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
                     aria-label={t('login.addServer')}
                     className="shrink-0"
                   >
-                    {!loadingServers && <RefreshCw className="size-4" aria-hidden />}
+                    {!loadingServers && <RefreshCw className="size-5" aria-hidden />}
                   </Button>
                 </div>
               )}
@@ -249,25 +247,25 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   autoComplete="current-password"
-                  className="h-9 w-full rounded-md border border-edge bg-raised px-3 pr-10 text-sm text-ink placeholder:text-ink-faint transition-colors duration-150 ease-standard hover:border-edge-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong"
+                  className="h-11 w-full rounded-md border border-edge bg-raised px-4 pr-12 text-base text-ink placeholder:text-ink-faint transition-colors duration-150 ease-standard hover:border-edge-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong"
                 />
                 <IconButton
                   label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-1 top-1/2 -translate-y-1/2"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2"
                 >
-                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  {showPassword ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
                 </IconButton>
               </div>
             </Field>
           )}
 
-          <Button size="lg" className="mt-2 w-full" onClick={handleLogin} loading={loading}>
+          <Button size="lg" className="mt-4 w-full" onClick={handleLogin} loading={loading}>
             {t('login.submit')}
           </Button>
 
           <div className="text-center">
-            <Button variant="ghost" size="sm" onClick={onSwitchToAccounts}>
+            <Button variant="ghost" onClick={onSwitchToAccounts}>
               {t('login.manageAccounts')}
             </Button>
           </div>

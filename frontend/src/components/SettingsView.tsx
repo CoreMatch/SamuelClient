@@ -46,7 +46,7 @@ const MIN_MEMORY_MB = 256;
 const MAX_GAME_DIMENSION = 3840;
 const MIN_GAME_DIMENSION = 320;
 
-const sectionClasses = 'rounded-lg border border-edge bg-panel p-6';
+const sectionClasses = 'rounded-lg bg-panel p-8';
 
 export default function SettingsView() {
   const [config, setConfig] = useState<LauncherConfig | null>(null);
@@ -291,7 +291,7 @@ export default function SettingsView() {
   const defaultJava = javaInstallations.find(j => j.is_default);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       {error && (
         <Callout tone="danger" onDismiss={() => setError('')}>
           {error}
@@ -300,10 +300,10 @@ export default function SettingsView() {
 
       {/* Java installations */}
       <section className={sectionClasses}>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-ink">{t('settings.java')}</h2>
-          <Button size="sm" onClick={openAddDialog}>
-            <Plus className="size-3.5" aria-hidden />
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-ink">{t('settings.java')}</h2>
+          <Button onClick={openAddDialog}>
+            <Plus className="size-4" aria-hidden />
             {t('settings.addJava')}
           </Button>
         </div>
@@ -311,9 +311,9 @@ export default function SettingsView() {
         {javaInstallations.length === 0 ? (
           <p className="text-sm text-ink-muted">{t('settings.noJava')}</p>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4">
             {javaInstallations.map(java => (
-              <div key={java.id} className="rounded-md border border-edge bg-raised p-4">
+              <div key={java.id} className="rounded-md bg-raised p-5">
                 <div className="flex items-center gap-3">
                   <Tooltip label={java.is_default ? t('settings.defaultJava') : t('settings.setDefault')}>
                     <IconButton
@@ -321,29 +321,29 @@ export default function SettingsView() {
                       onClick={() => handleSetDefault(java.id)}
                     >
                       <Star
-                        className={`size-4 ${java.is_default ? 'fill-warn text-warn' : ''}`}
+                        className={`size-5 ${java.is_default ? 'fill-warn text-warn' : ''}`}
                         aria-hidden
                       />
                     </IconButton>
                   </Tooltip>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-ink">
+                    <p className="truncate text-base font-medium text-ink">
                       {java.friendly_name || `Java ${java.version}`}
                     </p>
-                    <p className="font-mono text-xs text-ink-faint">{java.version}</p>
+                    <p className="font-mono text-sm text-ink-faint">{java.version}</p>
                   </div>
                   <Tooltip label={t('settings.edit')}>
                     <IconButton label={t('settings.edit')} onClick={() => openEditDialog(java)}>
-                      <Pencil className="size-4" />
+                      <Pencil className="size-5" />
                     </IconButton>
                   </Tooltip>
                   <Tooltip label={t('common.delete')}>
                     <IconButton label={t('common.delete')} tone="danger" onClick={() => setDeleteJavaId(java.id)}>
-                      <Trash2 className="size-4" />
+                      <Trash2 className="size-5" />
                     </IconButton>
                   </Tooltip>
                 </div>
-                <p className="mt-2 break-all rounded bg-white/4 px-2 py-1 font-mono text-xs text-ink-muted">
+                <p className="mt-3 break-all rounded bg-white/4 px-3 py-1.5 font-mono text-sm text-ink-muted">
                   {java.path}
                 </p>
               </div>
@@ -354,31 +354,28 @@ export default function SettingsView() {
 
       {/* Paths */}
       <section className={sectionClasses}>
-        <h2 className="mb-4 text-base font-semibold text-ink">{t('settings.paths')}</h2>
-        <div className="flex flex-col gap-4">
+        <h2 className="mb-5 text-xl font-semibold text-ink">{t('settings.paths')}</h2>
+        <div className="flex flex-col gap-6">
           <div>
-            <p className="text-xs font-medium text-ink-muted">{t('settings.javaPath')}</p>
+            <p className="text-sm font-medium text-ink-muted">{t('settings.javaPath')}</p>
             {defaultJava ? (
-              <div className="mt-1.5">
-                <p className="text-sm font-medium text-ink">
+              <div className="mt-2">
+                <p className="text-base font-medium text-ink">
                   {defaultJava.friendly_name || `Java ${defaultJava.version}`}
                 </p>
-                <p className="mt-0.5 text-xs text-ink-muted">
-                  {t('settings.versionLabel', { version: defaultJava.version })}
-                </p>
-                <p className="mt-1.5 break-all rounded bg-white/4 px-2 py-1 font-mono text-xs text-ink-muted">
+                <p className="mt-1.5 break-all rounded bg-white/4 px-3 py-1.5 font-mono text-sm text-ink-muted">
                   {defaultJava.path}
                 </p>
               </div>
             ) : (
-              <p className="mt-1.5 break-all rounded bg-white/4 px-2 py-1 font-mono text-xs text-ink-muted">
+              <p className="mt-2 break-all rounded bg-white/4 px-3 py-1.5 font-mono text-sm text-ink-muted">
                 {config?.java_path || t('settings.notConfigured')}
               </p>
             )}
           </div>
           <div>
-            <p className="text-xs font-medium text-ink-muted">{t('settings.gameDir')}</p>
-            <p className="mt-1.5 break-all rounded bg-white/4 px-2 py-1 font-mono text-xs text-ink-muted">
+            <p className="text-sm font-medium text-ink-muted">{t('settings.gameDir')}</p>
+            <p className="mt-2 break-all rounded bg-white/4 px-3 py-1.5 font-mono text-sm text-ink-muted">
               {config?.game_dir || t('settings.notConfigured')}
             </p>
           </div>
@@ -387,46 +384,43 @@ export default function SettingsView() {
 
       {/* Folders */}
       <section className={sectionClasses}>
-        <h2 className="mb-4 text-base font-semibold text-ink">{t('settings.folders')}</h2>
+        <h2 className="mb-5 text-xl font-semibold text-ink">{t('settings.folders')}</h2>
         <Button variant="secondary" onClick={() => window.open('file:///home/lnb/.minecraft/mods', '_blank')}>
-          <FolderOpen className="size-4" aria-hidden />
+          <FolderOpen className="size-5" aria-hidden />
           {t('settings.modsFolder')}
         </Button>
       </section>
 
       {/* Memory & JVM */}
       <section className={sectionClasses}>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-base font-semibold text-ink">{t('settings.memory')}</h2>
-          <div className="flex items-center gap-2">
-            {saveSuccess && <span className="text-xs text-ok">{t('settings.saved')}</span>}
-            <Button variant="secondary" size="sm" onClick={handleResetConfig} disabled={!dirty || savingConfig}>
-              <X className="size-3.5" aria-hidden />
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+          <h2 className="text-xl font-semibold text-ink">{t('settings.memory')}</h2>
+          <div className="flex items-center gap-3">
+            {saveSuccess && <span className="text-sm text-ok">{t('settings.saved')}</span>}
+            <Button variant="secondary" onClick={handleResetConfig} disabled={!dirty || savingConfig}>
+              <X className="size-4" aria-hidden />
               {t('settings.reset')}
             </Button>
-            <Button size="sm" onClick={handleSaveConfig} disabled={!dirty || savingConfig} loading={savingConfig}>
-              {!savingConfig && <Save className="size-3.5" aria-hidden />}
+            <Button onClick={handleSaveConfig} disabled={!dirty || savingConfig} loading={savingConfig}>
+              {!savingConfig && <Save className="size-4" aria-hidden />}
               {savingConfig ? t('settings.saving') : t('settings.save')}
             </Button>
           </div>
         </div>
 
         {saveError && (
-          <div className="mb-4">
+          <div className="mb-5">
             <Callout tone="danger" onDismiss={() => setSaveError('')}>
               {saveError}
             </Callout>
           </div>
         )}
 
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-7">
           <div>
-            <div className="mb-2 flex items-baseline justify-between">
-              <span className="text-sm text-ink-muted">
-                {t('settings.maxMemory')}{' '}
-                <span className="font-mono text-xs text-ink-faint">(-Xmx{maxMemory}m)</span>
-              </span>
-              <span className="font-mono text-sm text-ink">{maxMemory} MB</span>
+            <div className="mb-3 flex items-baseline justify-between">
+              <span className="text-sm text-ink-muted">{t('settings.maxMemory')}</span>
+              <span className="font-mono text-base text-ink">{maxMemory} MB</span>
             </div>
             <Slider
               ariaLabel={t('settings.maxMemory')}
@@ -453,17 +447,14 @@ export default function SettingsView() {
                   setDirty(true);
                 }
               }}
-              className="mt-3 h-9 w-56 rounded-md border border-edge bg-raised px-3 font-mono text-sm text-ink transition-colors duration-150 hover:border-edge-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong"
+              className="mt-4 h-11 w-64 rounded-md border border-edge bg-raised px-4 font-mono text-sm text-ink transition-colors duration-150 hover:border-edge-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong"
             />
           </div>
 
           <div>
-            <div className="mb-2 flex items-baseline justify-between">
-              <span className="text-sm text-ink-muted">
-                {t('settings.minMemory')}{' '}
-                <span className="font-mono text-xs text-ink-faint">(-Xms{minMemory}m)</span>
-              </span>
-              <span className="font-mono text-sm text-ink">{minMemory} MB</span>
+            <div className="mb-3 flex items-baseline justify-between">
+              <span className="text-sm text-ink-muted">{t('settings.minMemory')}</span>
+              <span className="font-mono text-base text-ink">{minMemory} MB</span>
             </div>
             <Slider
               ariaLabel={t('settings.minMemory')}
@@ -490,7 +481,7 @@ export default function SettingsView() {
                   setDirty(true);
                 }
               }}
-              className="mt-3 h-9 w-56 rounded-md border border-edge bg-raised px-3 font-mono text-sm text-ink transition-colors duration-150 hover:border-edge-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong"
+              className="mt-4 h-11 w-64 rounded-md border border-edge bg-raised px-4 font-mono text-sm text-ink transition-colors duration-150 hover:border-edge-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong"
             />
           </div>
 
@@ -501,12 +492,12 @@ export default function SettingsView() {
               setJavaArgs(e.target.value);
               setDirty(true);
             }}
-            placeholder="e.g., -XX:+UseG1GC -XX:MaxGCPauseMillis=50"
+            placeholder="-XX:+UseG1GC"
           />
 
           <div>
-            <p className="mb-1.5 text-xs font-medium text-ink-muted">{t('settings.windowSize')}</p>
-            <div className="flex gap-3">
+            <p className="mb-2 text-sm font-medium text-ink-muted">{t('settings.windowSize')}</p>
+            <div className="flex gap-4">
               <input
                 type="number"
                 aria-label={t('play.width')}
@@ -520,7 +511,7 @@ export default function SettingsView() {
                     setDirty(true);
                   }
                 }}
-                className="h-9 w-36 rounded-md border border-edge bg-raised px-3 font-mono text-sm text-ink transition-colors duration-150 hover:border-edge-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong"
+                className="h-11 w-44 rounded-md border border-edge bg-raised px-4 font-mono text-sm text-ink transition-colors duration-150 hover:border-edge-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong"
               />
               <input
                 type="number"
@@ -535,14 +526,14 @@ export default function SettingsView() {
                     setDirty(true);
                   }
                 }}
-                className="h-9 w-36 rounded-md border border-edge bg-raised px-3 font-mono text-sm text-ink transition-colors duration-150 hover:border-edge-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong"
+                className="h-11 w-44 rounded-md border border-edge bg-raised px-4 font-mono text-sm text-ink transition-colors duration-150 hover:border-edge-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong"
               />
             </div>
           </div>
 
           <div>
-            <p className="mb-1.5 text-xs font-medium text-ink-muted">{t('settings.jvmPreview')}</p>
-            <p className="break-all rounded bg-white/4 px-3 py-2 font-mono text-xs text-ink-muted">
+            <p className="mb-2 text-sm font-medium text-ink-muted">{t('settings.jvmPreview')}</p>
+            <p className="break-all rounded bg-white/4 px-4 py-2.5 font-mono text-sm text-ink-muted">
               {`-Xms${minMemory}m -Xmx${maxMemory}m ` +
                 (javaArgs.trim() ? `${javaArgs.trim()} ` : '') +
                 `--width ${gameWidth} --height ${gameHeight}`}
@@ -566,7 +557,7 @@ export default function SettingsView() {
         title={editingJava ? t('settings.editJavaTitle') : t('settings.addJavaTitle')}
         closeLabel={t('common.close')}
       >
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-5">
           <TextField
             label={t('settings.javaPath')}
             value={newJavaPath}
@@ -577,10 +568,10 @@ export default function SettingsView() {
             label={t('settings.friendlyName')}
             value={newJavaName}
             onChange={e => setNewJavaName(e.target.value)}
-            placeholder="e.g., Java 17 (Forge)"
+            placeholder="Java 17"
           />
           {dialogError && <Callout tone="danger">{dialogError}</Callout>}
-          <div className="mt-2 flex justify-end gap-2">
+          <div className="mt-3 flex justify-end gap-3">
             <Button variant="secondary" onClick={() => setOpenDialog(false)}>
               {t('common.cancel')}
             </Button>

@@ -112,7 +112,7 @@ describe('InstallWizard', () => {
     mockGetVersions.mockResolvedValue({ success: false, data: null, error: 'down' });
     render(<InstallWizard onInstalled={vi.fn()} />);
     await waitFor(() =>
-      expect(screen.getByText("Couldn't load the version list. Check your connection and try again.")).toBeTruthy(),
+      expect(screen.getByText("Couldn't load the version list.")).toBeTruthy(),
     );
     fireEvent.click(screen.getByText('Retry'));
     expect(mockGetVersions).toHaveBeenCalledTimes(2);
