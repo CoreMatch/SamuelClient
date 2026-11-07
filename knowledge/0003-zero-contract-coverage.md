@@ -36,7 +36,7 @@ by any contract in that repository.
   WinnerProxy, HASkinProxy, Cascade, HRPAuth-WebUI).
 - Search of HA-Contract for this project returns no launcher contract:
   `grep -i "samuelclient|samuel client|samuel"` matches only
-  `/home/lnb/Desktop/HA/HA-Contract/docs/dev/Cascade/README.md:L24-L24 ~ - Backend side: `CoreMatch/Avalon`, `internal/ne`
+  `/home/lnb/Desktop/HA/HA-Contract/docs/dev/Cascade/README.md:L24-L24 fp=e789244f ~ - Backend side: `CoreMatch/Avalon`, `internal/ne`
   (`SamuelCheston/RW-HPS`, an
   author/other-project reference, unrelated); `grep -i launcher` returns zero
   matches; "client" hits are unrelated contexts (Minecraft client, CSL client,
