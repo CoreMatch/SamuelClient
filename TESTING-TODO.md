@@ -235,3 +235,17 @@ x/sys v0.48.0, x/crypto v0.57.0 followed), govulncheck reports 0
 vulnerabilities affecting SamuelClient code. Remaining module-level note:
 wails v2.12.0 GO-2026-6862 is not called by this code (fixed in v2.13.0,
 upgrade pending decision).
+**Resolved (2026-11-08, branch `fix/wails-upgrade`)**: author approved the
+leftover cleanup; wails upgraded v2.12.0→v2.15.0 (aligned with
+MatchCoreArena-Client / MatchCoreArena-MaintenanceView; GO-2026-6862 is
+fixed in v2.13.0) and the CI/release workflows' wails CLI pin follows to
+v2.15.0. Verification: `go build/vet/test -race` green, govulncheck
+`No vulnerabilities found` (module-level note cleared), frontend
+`npm run build` + `npm test` 8 files / 40 tests green, and a real-machine
+GUI regression on the `wails build` artifact: the app launches and stays
+stable, the Play/Versions/Accounts/Settings/Sign-in screens all render,
+the Versions view fetches the live version list over the network through
+the Go bindings, keyboard input reaches the webview (view switching and
+focus rings observed), and stderr stays clean throughout. Also refreshes
+the stale `frontend/package.json.md5` checksum (out of sync with
+package.json on main since 655431e).
