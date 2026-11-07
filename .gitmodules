@@ -1,0 +1,3 @@
+[submodule "ha-ui"]
+	path = ha-ui
+	url = https://github.com/CoreMatch/ha-ui.git

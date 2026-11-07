@@ -10,8 +10,9 @@ export default defineConfig({
   server: {
     fs: {
       // @ha/ui is consumed as source through a file: link whose real path
-      // lives outside this workspace; allow serving its raw SVG assets.
-      allow: ['../..', '../../ha-ui'],
+      // (the ha-ui submodule at the repo root) lives outside this vite
+      // workspace; allow serving its raw SVG assets.
+      allow: ['..'],
     },
   },
   // The app bundles to a single chunk (Radix + React). As a Wails desktop

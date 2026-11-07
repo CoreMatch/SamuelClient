@@ -22,16 +22,14 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
+      # The frontend consumes the shared @ha/ui design system through a
+      # `file:` dependency (frontend/package.json -> ../ha-ui), pinned as a
+      # git submodule at the repo root, so a recursive checkout is all the
+      # setup the dependency needs — no sibling clones, no host paths.
       - name: Checkout
         uses: actions/checkout@v7
-
-      # The frontend consumes the shared @ha/ui design system through a
-      # `file:` dependency (frontend/package.json -> ../../ha-ui, i.e. a
-      # sibling of this repository), so the package must exist next to the
-      # workspace before `npm ci` runs. actions/checkout refuses paths
-      # outside $GITHUB_WORKSPACE, hence the plain clone (public repo).
-      - name: Checkout @ha/ui design system
-        run: git clone --depth 1 https://github.com/CoreMatch/ha-ui.git ../ha-ui
+        with:
+          submodules: true
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -60,7 +58,7 @@ jobs:
       # the design system's own dependencies (react types, radix, lucide)
       # must be installed as well.
       - name: Install @ha/ui dependencies
-        run: cd ../ha-ui && npm ci
+        run: cd ha-ui && npm ci
 
       - name: Install frontend dependencies
         working-directory: frontend

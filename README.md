@@ -58,16 +58,18 @@ SamuelClient/
 Verify your environment with `wails doctor`.
 
 The frontend consumes the shared `@ha/ui` design system through a `file:`
-dependency (`frontend/package.json` → `../../ha-ui`), so a checkout of
-[CoreMatch/ha-ui](https://github.com/CoreMatch/ha-ui) must sit next to this
-repository (`../ha-ui`) before `npm ci` / `wails dev` / `wails build`.
+dependency (`frontend/package.json` → `../ha-ui`), pinned as a git submodule
+at the repository root ([CoreMatch/ha-ui](https://github.com/CoreMatch/ha-ui)).
+Clone with `--recurse-submodules` (or run `git submodule update --init`)
+before `npm ci` / `wails dev` / `wails build`. To pick up new ha-ui work,
+push it inside `ha-ui/` and then commit the updated submodule pointer here.
 
 ## Getting started
 
 Clone the repository and run the app in live development mode (with hot reload for the frontend):
 
 ```bash
-git clone https://github.com/CoreMatch/SamuelClient.git
+git clone --recurse-submodules https://github.com/CoreMatch/SamuelClient.git
 cd SamuelClient
 wails dev
 ```
