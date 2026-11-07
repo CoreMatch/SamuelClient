@@ -36,11 +36,11 @@ SamuelClient is a **cross-platform Minecraft launcher built with Wails**:
 ## Evidence
 
 - Tech stack: `go.mod (field: module)` (module `HRPMLW`, Wails v2.12.0, sqlite);
-  `wails.json:L3-L4 ~ "name": "Samuel Client",` ("Samuel Client");
+  `wails.json:L3-L4 fp=2d956351 ~ "name": "Samuel Client",` ("Samuel Client");
   `frontend/package.json (field: "dependencies")` (React 19 + @ha/ui) and
   `frontend/package.json (field: "vite")` (Vite), package name `hrpml-ml` at
   `:2`.
-- Window title and startup: `main.go::main`; `app.go:L38-L45 ~ pendingHandoff *interop.HandoffPayload` (startup init
+- Window title and startup: `main.go::main`; `app.go:L38-L45 fp=71373eb7 ~ pendingHandoff *interop.HandoffPayload` (startup init
   SQLite).
 - Launch flow: `frontend/src/components/HomeView.tsx::handleLaunch`,
   `bindings.go::LaunchGame` (launch binding),
@@ -56,7 +56,7 @@ SamuelClient is a **cross-platform Minecraft launcher built with Wails**:
   `bindings.go::AddJavaInstallation`, `bindings.go::UpdateJavaInstallation`,
   `bindings.go::DeleteJavaInstallation`, `bindings.go::SetDefaultJavaInstallation`;
   auto-detect `internal/services/java.go::detectSystemJava`.
-- README positioning: `README.md:L3-L3 ~ A cross-platform Minecraft launcher built with [` ("cross-platform Minecraft launcher built
+- README positioning: `README.md:L3-L3 fp=e13f489d ~ A cross-platform Minecraft launcher built with [` ("cross-platform Minecraft launcher built
   with Wails").
 - Commits: `4284748` (full launcher functionality), `23bf03a` (Java management),
   `da69467` (auto-detected system Java), `f87dea6` (launcher config
