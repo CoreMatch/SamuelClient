@@ -54,10 +54,10 @@ runner. No `package.json` change was made for this evaluation.
 - `frontend/package.json` — devDependencies: `vitest ^5.1.0`,
   `@testing-library/react ^16.3.3`, `@testing-library/dom ^10.4.2`,
   `jsdom ^30.1.3`; scripts: `"test": "vitest run"`.
-- `frontend/vite.config.ts:9-16` — the `test` block (jsdom, globals, setup
+- `frontend/vite.config.ts:L9-L16 ~ plugins: [tailwindcss(), react()],` — the `test` block (jsdom, globals, setup
   file, include pattern).
 - `frontend/src/vitest.setup.ts` — matchMedia stub for MUI under jsdom.
 - Patrol run on branch `chore/nightly-patrol`: `npm test` → 2 test files,
   10 tests passed; `npm run lint` → 0 errors / 0 warnings.
-- Mock seam: `frontend/src/components/LoginView.test.tsx:8-11` and
+- Mock seam: `frontend/src/components/LoginView.test.tsx:L8-L11 ~ vi.mock('../../wailsjs/go/main/App', () => ({` and
   `HomeView.test.tsx:18` (`vi.mock('../../wailsjs/go/main/App')`).

@@ -203,16 +203,16 @@ After the migration landed, the owner decided a second round of reductions:
 ## Evidence
 
 - No HTTP listener: `go.mod` (direct dependencies are Wails and SQLite only);
-  `app.go:13-16` (boundary note); `main.go:19-31` (`wails.Run` with the asset
+  `app.go:L13-L16 ~ )` (boundary note); `main.go::main` (`wails.Run` with the asset
   server and bindings only).
 - Binding surface: `bindings.go` (every bound method; the event-contract
-  comment at `bindings.go:11-24`); `main.go:28-30` (Bind); generated bindings
+  comment at `bindings.go:L11-L24 ~ Streaming (live launch logs, download progress) `); `main.go::main` (Bind); generated bindings
   are not committed (`.gitignore`, `frontend/wailsjs/`).
 - Event contract consumers: `bindings.go::emit` (`EventsEmit` wrapper),
-  `frontend/src/components/HomeView.tsx:132` (`launcher:log`),
-  `frontend/src/components/VersionManager.tsx:68` (`download:progress`); the
-  same contract text lives in `README.md:99-106`.
-- Logs retirement: `internal/database/database.go:100-104` (fresh databases
+  `frontend/src/components/HomeView.tsx:L132-L132 ~ EventsOff('launcher:log');` (`launcher:log`),
+  `frontend/src/components/VersionManager.tsx:L68-L68 ~ <TabsTrigger value="installed">{t('versions.tab.` (`download:progress`); the
+  same contract text lives in `README.md:L99-L106 ~ | Java (read) | `GetJavaInstallations` |`.
+- Logs retirement: `internal/database/database.go::runMigrations` (fresh databases
   create no `logs` table; existing ones keep it inert), asserted by
-  `internal/database/database_test.go:73-84`.
+  `internal/database/database_test.go::TestMigrationsDoNotCreateLogsTable`.
 - Not verified: none material.
