@@ -15,7 +15,7 @@ A cross-platform Minecraft launcher built with [Wails](https://wails.io/) (Go + 
 
 | Layer    | Technology |
 |----------|------------|
-| Backend  | Go 1.25, [Wails v2](https://wails.io/), [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) |
+| Backend  | Go 1.26, [Wails v2](https://wails.io/), [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) |
 | Frontend | React 19, TypeScript 5, [Vite 6](https://vitejs.dev/), Tailwind CSS v4 + Radix UI primitives (shared `@ha/ui` design system) |
 | Build    | Wails CLI (WebKitGTK 2.41+ on Linux) |
 
@@ -29,12 +29,13 @@ SamuelClient/
 ├── go.mod / go.sum         # Go module definition
 ├── internal/
 │   ├── database/           # SQLite initialization and access
+│   ├── interop/            # Match handoff receiver (INTEROP-SPEC v1)
 │   ├── models/             # Domain & API models
 │   ├── repository/         # Data access layer
 │   └── services/           # Auth, download, and launcher services
 ├── frontend/
 │   ├── src/
-│   │   ├── components/     # React views (Play, Versions, Accounts, Settings, Login)
+│   │   ├── components/     # React views (HomeView, InstallWizard, AccountManager, LoginView, SettingsView, HandoffBanner, GetStartedChecklist)
 │   │   ├── App.tsx         # Main app shell with the persistent sidebar
 │   │   └── main.tsx        # React entry point
 │   ├── index.html
@@ -47,7 +48,7 @@ SamuelClient/
 
 ## Prerequisites
 
-- **Go** 1.25 or newer
+- **Go** 1.26 or newer
 - **Node.js** 18+ and **npm**
 - **Wails CLI** v2: `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
 - Platform build dependencies — see the [Wails installation guide](https://wails.io/docs/gettingstarted/installation):
