@@ -249,3 +249,10 @@ the Go bindings, keyboard input reaches the webview (view switching and
 focus rings observed), and stderr stays clean throughout. Also refreshes
 the stale `frontend/package.json.md5` checksum (out of sync with
 package.json on main since 655431e).
+
+**Known automated-verification limitation (2026-11-08, NOT a bug)**: under
+synthetic input events (XTest keystrokes delivered through Xwayland), native
+button activation and view switching work, but Radix Select popovers do not
+open. This is a limitation of the synthetic-event verification channel, not
+an application defect — after each upgrade a human should click one dropdown
+manually to confirm the popover renders. Do not file this as a regression.
