@@ -40,7 +40,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
 
       - name: Install build dependencies
         run: |
