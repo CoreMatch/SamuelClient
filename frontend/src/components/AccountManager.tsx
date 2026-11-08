@@ -1,7 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Asset } from '@ha/ui';
-import { StoredAccount, ACCOUNTS_STORAGE_KEY, migrateAccountsIfNeeded } from '../accountStorage';
+import {
+  StoredAccount,
+  ACCOUNTS_STORAGE_KEY,
+  migrateAccountsIfNeeded,
+  persistAccountsMetadata,
+  loadAccountTokens,
+  deleteAccountTokens,
+} from '../accountStorage';
 import { EmptyState } from './states';
 import { t } from '../i18n';
 import { Button, IconButton } from '../ui/button';
@@ -19,14 +26,20 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [accountToDelete, setAccountToDelete] = useState<StoredAccount | null>(null);
   const [legacyNotice, setLegacyNotice] = useState('');
+  const [storageWarning, setStorageWarning] = useState('');
 
   useEffect(() => {
     loadAccounts();
   }, []);
 
-  const loadAccounts = () => {
+  const loadAccounts = async () => {
     try {
-      migrateAccountsIfNeeded();
+      const migration = await migrateAccountsIfNeeded();
+      if (!migration.done) {
+        // Tokens could not move to the keychain; the old records are intact
+        // and nothing is lost — surface the reason instead of failing quiet.
+        setStorageWarning(migration.keychainError);
+      }
       const stored = localStorage.getItem(ACCOUNTS_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
@@ -39,14 +52,14 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
 
   const saveAccounts = (newAccounts: StoredAccount[]) => {
     try {
-      localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(newAccounts));
+      persistAccountsMetadata(newAccounts);
       setAccounts(newAccounts);
     } catch (err) {
       console.error('Failed to save accounts:', err);
     }
   };
 
-  const handleSelectAccount = (account: StoredAccount) => {
+  const handleSelectAccount = async (account: StoredAccount) => {
     // Legacy (non-HRPAuth Yggdrasil) accounts cannot be used anymore; give
     // a short readable notice instead of selecting or silently dropping them.
     if (account.legacy) {
@@ -54,13 +67,21 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
       return;
     }
     setLegacyNotice('');
+    // Tokens live in the OS keychain (ADR-0008); hydrate them before handing
+    // the account to the launch flow. A miss means the session is gone — ask
+    // for a fresh sign-in instead of selecting a dead account.
+    const tokens = await loadAccountTokens(account.id);
+    if (!tokens) {
+      setLegacyNotice(t('accounts.reLoginNeeded'));
+      return;
+    }
     // Update last used
     const updatedAccounts = accounts.map(acc => ({
       ...acc,
       lastUsed: acc.id === account.id,
     }));
     saveAccounts(updatedAccounts);
-    onSelectAccount(account);
+    onSelectAccount({ ...account, ...tokens });
   };
 
   const handleDeleteClick = (account: StoredAccount) => {
@@ -68,8 +89,11 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
     setDeleteDialogOpen(true);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (accountToDelete) {
+      // Drop the keychain entry as well as the metadata; best-effort by
+      // design (deleteAccountTokens never throws).
+      await deleteAccountTokens(accountToDelete.id);
       const newAccounts = accounts.filter(acc => acc.id !== accountToDelete.id);
       saveAccounts(newAccounts);
     }
@@ -89,6 +113,14 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
           {t('accounts.add')}
         </Button>
       </div>
+
+      {storageWarning && (
+        <div className="mb-4">
+          <Callout tone="danger" onDismiss={() => setStorageWarning('')}>
+            {t('app.keychainUnavailable', { error: storageWarning })}
+          </Callout>
+        </div>
+      )}
 
       {legacyNotice && (
         <div className="mb-4">
@@ -136,9 +168,7 @@ export default function AccountManager({ onSelectAccount, onAddAccount }: Accoun
                   {account.legacy ? (
                     <Badge tone="warning">{t('accounts.legacy')}</Badge>
                   ) : (
-                    <Badge tone={account.authType === 'hrpauth' ? 'success' : 'neutral'}>
-                      {account.authType === 'hrpauth' ? t('accounts.hrpauth') : t('accounts.offline')}
-                    </Badge>
+                    <Badge tone="success">{t('accounts.hrpauth')}</Badge>
                   )}
                 </div>
               </div>

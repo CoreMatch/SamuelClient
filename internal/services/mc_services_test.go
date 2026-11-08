@@ -1475,7 +1475,7 @@ func TestBuildLaunchCommandOffline(t *testing.T) {
 			UUID:        "11111111-2222-3333-4444-555555555555",
 			AccessToken: "at",
 			ClientToken: "ct",
-			AuthType:    "offline",
+			AuthType:    "hrpauth",
 		},
 	)
 	if err != nil {
@@ -1533,7 +1533,7 @@ func TestBuildLaunchCommandOffline(t *testing.T) {
 	contains("11111111222233334444555555555555") // dashes stripped
 	contains("--accessToken")
 	contains("--userType")
-	contains("legacy") // offline maps to legacy
+	contains("mojang") // hrpauth accounts launch as the Yggdrasil user type
 	contains("--versionType")
 	contains("release") // default for empty version type
 	contains("--assetsDir")
@@ -1571,7 +1571,7 @@ func TestBuildLaunchCommandInheritsFromParent(t *testing.T) {
 	args, err := svc.BuildLaunchCommand(
 		models.LauncherConfig{JavaPath: "/opt/java/bin/java", GameDir: gameDir},
 		&models.MinecraftVersion{VersionID: "fabric-loader-0.15.0-1.99"},
-		&models.MinecraftAccount{Username: "Steve", UUID: "u", AccessToken: "at", ClientToken: "ct", AuthType: "offline"},
+		&models.MinecraftAccount{Username: "Steve", UUID: "u", AccessToken: "at", ClientToken: "ct", AuthType: "hrpauth"},
 	)
 	if err != nil {
 		t.Fatalf("BuildLaunchCommand: %v", err)
@@ -1624,7 +1624,7 @@ func TestBuildLaunchCommandInheritsFromMissingParent(t *testing.T) {
 	_, err := svc.BuildLaunchCommand(
 		models.LauncherConfig{JavaPath: "/opt/java/bin/java", GameDir: gameDir},
 		&models.MinecraftVersion{VersionID: "fabric-loader-x"},
-		&models.MinecraftAccount{Username: "Steve", UUID: "u", AccessToken: "at", ClientToken: "ct", AuthType: "offline"},
+		&models.MinecraftAccount{Username: "Steve", UUID: "u", AccessToken: "at", ClientToken: "ct", AuthType: "hrpauth"},
 	)
 	if err == nil || !strings.Contains(err.Error(), "no-such-version") {
 		t.Errorf("err = %v, want a missing-parent error naming no-such-version", err)
@@ -1665,7 +1665,7 @@ func TestBuildLaunchCommandLoaderArguments(t *testing.T) {
 	args, err := svc.BuildLaunchCommand(
 		models.LauncherConfig{JavaPath: "/opt/java/bin/java", GameDir: gameDir},
 		&models.MinecraftVersion{VersionID: "1.99-forge47.2.0"},
-		&models.MinecraftAccount{Username: "Steve", UUID: "u", AccessToken: "at", ClientToken: "ct", AuthType: "offline"},
+		&models.MinecraftAccount{Username: "Steve", UUID: "u", AccessToken: "at", ClientToken: "ct", AuthType: "hrpauth"},
 	)
 	if err != nil {
 		t.Fatalf("BuildLaunchCommand: %v", err)
@@ -1723,7 +1723,7 @@ func TestBuildLaunchCommandFabricArguments(t *testing.T) {
 	args, err := svc.BuildLaunchCommand(
 		models.LauncherConfig{JavaPath: "/opt/java/bin/java", GameDir: gameDir},
 		&models.MinecraftVersion{VersionID: "fabric-loader-0.20.1-1.99"},
-		&models.MinecraftAccount{Username: "Steve", UUID: "u", AccessToken: "at", ClientToken: "ct", AuthType: "offline"},
+		&models.MinecraftAccount{Username: "Steve", UUID: "u", AccessToken: "at", ClientToken: "ct", AuthType: "hrpauth"},
 	)
 	if err != nil {
 		t.Fatalf("BuildLaunchCommand: %v", err)
@@ -1789,7 +1789,7 @@ func TestBuildLaunchCommandForgeTweakClass(t *testing.T) {
 	args, err := svc.BuildLaunchCommand(
 		models.LauncherConfig{JavaPath: "java", GameDir: gameDir},
 		&models.MinecraftVersion{VersionID: "1.12.2"},
-		&models.MinecraftAccount{Username: "Steve", UUID: "u", AccessToken: "at", ClientToken: "ct", AuthType: "offline"},
+		&models.MinecraftAccount{Username: "Steve", UUID: "u", AccessToken: "at", ClientToken: "ct", AuthType: "hrpauth"},
 	)
 	if err != nil {
 		t.Fatalf("BuildLaunchCommand: %v", err)
@@ -1827,12 +1827,14 @@ func TestBuildLaunchCommandErrors(t *testing.T) {
 
 func TestResolveUserType(t *testing.T) {
 	cases := map[string]string{
-		"offline":          "legacy",
 		"microsoft":        "msa",
 		"msa":              "msa",
 		"authlib-injector": "mojang",
 		"mojang":           "mojang",
 		"":                 "mojang",
+		// Offline login was removed (ADR-0008); a residual value must not
+		// produce the legacy user type and falls back to the Yggdrasil value.
+		"offline": "mojang",
 	}
 	for in, want := range cases {
 		if got := resolveUserType(in); got != want {
@@ -1909,7 +1911,7 @@ func TestBuildLaunchCommandJoinTarget(t *testing.T) {
 		&models.MinecraftVersion{VersionID: "1.99"},
 		&models.MinecraftAccount{
 			Username: "Steve", UUID: "11111111-2222-3333-4444-555555555555",
-			AccessToken: "at", ClientToken: "ct", AuthType: "offline",
+			AccessToken: "at", ClientToken: "ct", AuthType: "hrpauth",
 		},
 	)
 	if err != nil {
@@ -1944,7 +1946,7 @@ func TestBuildLaunchCommandWithoutJoinTarget(t *testing.T) {
 		&models.MinecraftVersion{VersionID: "1.99"},
 		&models.MinecraftAccount{
 			Username: "Steve", UUID: "11111111-2222-3333-4444-555555555555",
-			AccessToken: "at", ClientToken: "ct", AuthType: "offline",
+			AccessToken: "at", ClientToken: "ct", AuthType: "hrpauth",
 		},
 	)
 	if err != nil {

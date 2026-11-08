@@ -6,18 +6,25 @@ import AccountManager from './components/AccountManager';
 import SettingsView from './components/SettingsView';
 import HandoffBanner from './components/HandoffBanner';
 import LoginView, { LoggedInAccount } from './components/LoginView';
-import { StoredAccount, saveAccount, restoreLastUsedAccount } from './accountStorage';
+import {
+  StoredAccount,
+  saveAccount,
+  restoreLastUsedAccount,
+  consumeOfflineRemovedNotice,
+} from './accountStorage';
 import { InstalledVersion, HandoffPayload } from './types';
 import { t } from './i18n';
 import type { I18nKey } from './i18n';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
+import { Callout } from './ui/callout';
 import { TooltipProvider } from './ui/tooltip';
 import {
   GetPendingHandoff,
   DismissHandoff,
   GetInstalledVersions,
   LaunchGame,
+  KeychainStatus,
 } from '../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
 
@@ -47,16 +54,37 @@ export default function App() {
   const [joiningMatch, setJoiningMatch] = useState(false);
   const [joinError, setJoinError] = useState('');
 
+  // One-shot notices (ADR-0008): offline accounts removed by the storage
+  // migration, keychain availability, and token-storage warnings.
+  const [offlineRemoved, setOfflineRemoved] = useState<string[] | null>(null);
+  const [keychainError, setKeychainError] = useState('');
+  const [tokenStorageWarning, setTokenStorageWarning] = useState('');
+
   useEffect(() => {
     // Restore the last-used account. HRPAuth tokens are validated
     // silently and refreshed when stale; if both fail the login view opens so
     // the user is prompted to sign in again (PENDING-DECISIONS #11).
-    restoreLastUsedAccount().then(({ account, needsReLogin }) => {
+    restoreLastUsedAccount().then(({ account, needsReLogin, keychainError: migrationError }) => {
       setCurrentAccount(account);
       if (needsReLogin) {
         setShowLogin(true);
       }
+      if (migrationError) {
+        setKeychainError(migrationError);
+      }
     });
+
+    // Surface the one-shot offline-removal notice left by the migration and
+    // probe the OS credential store once; both degrade readably instead of
+    // failing silently (ADR-0008).
+    setOfflineRemoved(consumeOfflineRemovedNotice());
+    KeychainStatus()
+      .then(result => {
+        if (result.success && result.data && result.data.available === false) {
+          setKeychainError(String(result.data.error || 'unknown error'));
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Re-hydrate a pending handoff (survives reload) and follow backend
@@ -104,6 +132,12 @@ export default function App() {
   // the handoff pending so the result is not lost.
   const joinHandoff = async (account: StoredAccount) => {
     if (!handoff) return;
+    // Tokens are hydrated from the keychain; a session without them cannot
+    // join — send the user to sign in instead of launching a doomed game.
+    if (!account.accessToken || !account.clientToken) {
+      setShowLogin(true);
+      return;
+    }
     setJoiningMatch(true);
     setJoinError('');
     try {
@@ -186,8 +220,13 @@ export default function App() {
     setJoinError('');
   };
 
-  const handleLoginSuccess = (account: LoggedInAccount) => {
-    const savedAccount = saveAccount(account);
+  const handleLoginSuccess = async (account: LoggedInAccount) => {
+    const { account: savedAccount, tokenStorageError } = await saveAccount(account);
+    if (tokenStorageError) {
+      setTokenStorageWarning(tokenStorageError);
+    } else {
+      setTokenStorageWarning('');
+    }
     setCurrentAccount(savedAccount);
     setShowLogin(false);
     setSelectedView('home');
@@ -312,11 +351,8 @@ export default function App() {
                   <span className="block truncate text-base font-medium text-ink">
                     {currentAccount.username}
                   </span>
-                  <Badge
-                    tone={currentAccount.authType === 'hrpauth' ? 'success' : 'neutral'}
-                    className="mt-1"
-                  >
-                    {currentAccount.authType === 'hrpauth' ? t('play.hrpauth') : t('play.offline')}
+                  <Badge tone="success" className="mt-1">
+                    {t('play.hrpauth')}
                   </Badge>
                 </span>
               </button>
@@ -325,6 +361,9 @@ export default function App() {
                 {t('nav.signIn')}
               </Button>
             )}
+            {/* Usage-guidelines disclaimer: this product must not appear
+                official or approved (ADR-0008). */}
+            <p className="mt-3 text-[10px] leading-snug text-ink-faint">{t('app.disclaimer')}</p>
           </div>
         </aside>
 
@@ -334,6 +373,25 @@ export default function App() {
             <header className="mb-10">
               <h1 className="text-display font-semibold tracking-tight text-ink">{t(getCurrentTitle())}</h1>
             </header>
+            {offlineRemoved && offlineRemoved.length > 0 && (
+              <div className="mb-4">
+                <Callout tone="warning" onDismiss={() => setOfflineRemoved(null)}>
+                  {t('app.offlineRemoved', { usernames: offlineRemoved.join(', ') })}
+                </Callout>
+              </div>
+            )}
+            {keychainError && (
+              <div className="mb-4">
+                <Callout tone="danger">{t('app.keychainUnavailable', { error: keychainError })}</Callout>
+              </div>
+            )}
+            {tokenStorageWarning && (
+              <div className="mb-4">
+                <Callout tone="warning" onDismiss={() => setTokenStorageWarning('')}>
+                  {t('app.tokenStorageWarning', { error: tokenStorageWarning })}
+                </Callout>
+              </div>
+            )}
             <HandoffBanner
               handoff={handoff}
               notice={handoffNotice}

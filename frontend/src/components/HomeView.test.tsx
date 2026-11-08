@@ -43,7 +43,7 @@ const account: StoredAccount = {
   uuid: 'uuid-1',
   accessToken: 'access-1',
   clientToken: 'client-1',
-  authType: 'offline',
+  authType: 'hrpauth',
 };
 
 const version: InstalledVersion = { id: '1.99', type: 'release', installed: true };

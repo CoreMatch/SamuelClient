@@ -30,6 +30,7 @@ type App struct {
 	bmclService     *services.BMCLAPIService
 	launcherService *services.LauncherService
 	javaRepo        *repository.JavaRepository
+	tokenStore      services.TokenStore
 
 	// Match handoff state (INTEROP-SPEC §6): single pending slot plus the
 	// loopback server publishing it.
@@ -47,6 +48,7 @@ func NewApp() *App {
 		bmclService:     services.NewBMCLAPIService(),
 		launcherService: services.NewLauncherService(),
 		javaRepo:        repository.NewJavaRepository(),
+		tokenStore:      services.NewKeychainTokenStore(),
 	}
 }
 

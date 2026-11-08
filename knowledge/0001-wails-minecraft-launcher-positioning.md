@@ -40,7 +40,7 @@ SamuelClient is a **cross-platform Minecraft launcher built with Wails**:
   `frontend/package.json (field: "dependencies")` (React 19 + @ha/ui) and
   `frontend/package.json (field: "vite")` (Vite), package name `hrpml-ml` at
   `:2`.
-- Window title and startup: `main.go::main`; `app.go:L38-L45 fp=71373eb7 ~ pendingHandoff *interop.HandoffPayload` (startup init
+- Window title and startup: `main.go::main`; `app.go::NewApp` (startup init
   SQLite).
 - Launch flow: `frontend/src/components/HomeView.tsx::handleLaunch`,
   `bindings.go::LaunchGame` (launch binding),

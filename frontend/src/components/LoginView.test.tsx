@@ -11,20 +11,12 @@ vi.mock('../../wailsjs/go/main/App', () => ({
 
 const mockHRPAuthLogin = vi.mocked(HRPAuthLogin);
 
-// Opens the auth-type select (first combobox) and picks an option by name.
-async function selectAuthType(name: string) {
-  fireEvent.keyDown(screen.getAllByRole('combobox')[0], { key: 'Enter' });
-  const option = await screen.findByRole('option', { name });
-  fireEvent.pointerUp(option);
-  fireEvent.click(option);
-}
-
 describe('LoginView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('rejects HRPAuth login without credentials before calling the backend', async () => {
+  it('rejects login without credentials before calling the backend', async () => {
     const onLoginSuccess = vi.fn();
     render(<LoginView onLoginSuccess={onLoginSuccess} onSwitchToAccounts={vi.fn()} />);
 
@@ -78,33 +70,12 @@ describe('LoginView', () => {
     expect(await screen.findByText('Invalid credentials')).toBeTruthy();
   });
 
-  it('logs in offline with just a username', async () => {
-    const onLoginSuccess = vi.fn();
-    render(<LoginView onLoginSuccess={onLoginSuccess} onSwitchToAccounts={vi.fn()} />);
+  it('offers no offline login path anymore (ADR-0008)', () => {
+    render(<LoginView onLoginSuccess={vi.fn()} onSwitchToAccounts={vi.fn()} />);
 
-    // Switch the auth type select to "Offline (Cracked)".
-    await selectAuthType('Offline (Cracked)');
-
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'offline-steve' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Login' }));
-
-    await waitFor(() => expect(onLoginSuccess).toHaveBeenCalledTimes(1));
-    const account: LoggedInAccount = onLoginSuccess.mock.calls[0][0];
-    expect(account.authType).toBe('offline');
-    expect(account.username).toBe('offline-steve');
-    expect(account.uuid).not.toBe('');
-    expect(mockHRPAuthLogin).not.toHaveBeenCalled();
-  });
-
-  it('requires a username for offline login', async () => {
-    const onLoginSuccess = vi.fn();
-    render(<LoginView onLoginSuccess={onLoginSuccess} onSwitchToAccounts={vi.fn()} />);
-
-    await selectAuthType('Offline (Cracked)');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Login' }));
-
-    expect(await screen.findByText('Username is required')).toBeTruthy();
-    expect(onLoginSuccess).not.toHaveBeenCalled();
+    // No auth-type selector and no offline wording anywhere in the view.
+    expect(screen.queryAllByRole('combobox')).toHaveLength(0);
+    expect(screen.queryByText(/offline/i)).toBeNull();
+    expect(screen.queryByText(/cracked/i)).toBeNull();
   });
 });
