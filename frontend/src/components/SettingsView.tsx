@@ -385,7 +385,19 @@ export default function SettingsView() {
       {/* Folders */}
       <section className={sectionClasses}>
         <h2 className="mb-5 text-xl font-semibold text-ink">{t('settings.folders')}</h2>
-        <Button variant="secondary" onClick={() => window.open('file:///home/lnb/.minecraft/mods', '_blank')}>
+        <Button
+          variant="secondary"
+          disabled={!config?.game_dir}
+          onClick={() => {
+            const base = config?.game_dir;
+            if (!base) return;
+            // mods 目录 = 生效的游戏目录（用户设置优先，否则平台默认，见
+            // Go 侧 GetLauncherConfig/GetMinecraftDir）下的 mods/
+            const modsDir = `${base.replace(/[\\/]+$/, '')}/mods`.replace(/\\/g, '/');
+            const fileUrl = modsDir.startsWith('/') ? `file://${modsDir}` : `file:///${modsDir}`;
+            window.open(encodeURI(fileUrl), '_blank');
+          }}
+        >
           <FolderOpen className="size-5" aria-hidden />
           {t('settings.modsFolder')}
         </Button>
