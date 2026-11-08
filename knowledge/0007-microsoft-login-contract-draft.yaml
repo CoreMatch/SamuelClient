@@ -38,17 +38,21 @@ paths:
         bearer token. Non-200 answers map to the typed errors below; on 200
         the profile id becomes the mojang_uuid binding key.
 
-        Decision tree on the resolved mojang_uuid:
+        Decision tree on the resolved mojang_uuid (play first, bind later is
+        the default; being unbound is NOT an error):
           1. Already linked to an account: issue a session for that account
-             (idempotent by uuid), respond with its profiles. haBound=true.
-          2. Not linked and allowProxyRegister=false: respond 403
-             MicrosoftAccountUnboundException (no state change).
-          3. Not linked and allowProxyRegister=true: apply the
-             POST /internal/proxy-register decision tree (idempotent hit /
-             mbe-window completion / new cbh=0 account / 409 collisions) and
-             issue a session for the resulting account. haBound=false for a
-             freshly created proxy account; true when an mbe-window bind
-             completed onto an existing HA account.
+             (idempotent by uuid).
+          2. Not linked: absorb the identity with the existing
+             POST /internal/proxy-register decision tree — the SAME semantics
+             WinnerProxy's hasJoined stage 3 uses (new cbh=0 pending-claim
+             account / mbe-window completion when the name collides with an
+             opted-in HA account / 409 collisions). The unique
+             accounts.mojang_uuid index is the single source of truth, so
+             absorption here and server-side hasJoined absorption cannot
+             produce two accounts. Issue a session for the resulting account.
+        The client never participates in UUID generation: the in-game UUID is
+        whatever the HA side generated at account registration; the exchange
+        only attaches mojang_uuid.
       requestBody:
         required: true
         content:
@@ -62,22 +66,19 @@ paths:
                   description: >
                     Minecraft Services access token obtained from
                     POST api.minecraftservices.com/authentication/login_with_xbox.
-                    Never stored, never returned, never logged.
+                    Never stored, never returned, never logged. Opaque to the
+                    client as well — the client never parses or validates it.
                 clientToken:
                   type: string
                   description: Optional Yggdrasil client token; echoed or generated.
-                allowProxyRegister:
-                  type: boolean
-                  default: false
-                  description: >
-                    Opt in to path A1 (play first, bind later): when the
-                    genuine identity is unbound, create/complete a proxy
-                    account instead of answering unbound.
       responses:
         '200':
           description: >
             Standard Yggdrasil authenticate response (accessToken, clientToken,
-            availableProfiles, selectedProfile) extended with haBound.
+            availableProfiles, selectedProfile) extended with claimRequired.
+            Returned for bound and freshly absorbed identities alike — an
+            unbound identity is absorbed by default and answered with a
+            playable session, never with an error.
           content:
             application/json:
               schema:
@@ -89,29 +90,28 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/ProfileSummary' }
                   selectedProfile: { $ref: '#/components/schemas/ProfileSummary' }
-                  haBound:
+                  claimRequired:
                     type: boolean
                     description: >
-                      true when the session belongs to an account whose
-                      mojang_uuid is set (pre-existing or just completed via
-                      an mbe window); false for a freshly proxy-registered
-                      account.
+                      true while the session's account is a cbh=0
+                      pending-claim proxy account — clients render claim
+                      guidance (in-game /ha reg); false once the account is
+                      claimed (cbh=1) or was bound to a full HA account all
+                      along.
         '403':
           description: >
-            Yggdrasil error envelope. error=MicrosoftAccountUnboundException
-            when the identity is unbound and allowProxyRegister=false
-            (cause carries "<mojangUuid>:<mojangName>" so the client can
-            render guidance); error=ForbiddenOperationException with
-            errorMessage minecraft_profile_missing /
-            minecraft_license_not_found for the Mojang 404 sub-cases
-            (license checked via entitlements only when the profile 404s);
-            invalid or rejected MC token likewise maps here.
+            Yggdrasil error envelope for verification failures only:
+            error=ForbiddenOperationException with errorMessage
+            minecraft_profile_missing / minecraft_license_not_found for the
+            Mojang 404 sub-cases (license checked via entitlements only when
+            the profile 404s); an invalid or rejected MC token likewise maps
+            here.
         '409':
           description: >
-            Yggdrasil error envelope, only reachable with
-            allowProxyRegister=true: errorMessage username_already_bound
-            (name collides with a non-bindable HA account, or with an account
-            bound to a different mojang_uuid).
+            Yggdrasil error envelope: errorMessage username_already_bound —
+            the genuine name collides with an HA account that has not opened
+            binding (mbe=0), or with an account bound to a different
+            mojang_uuid; automatic absorption is refused.
         '429':
           description: Rate limited (same bucket as /authserver/authenticate).
         '502':
@@ -119,18 +119,22 @@ paths:
 
   /player/microsoft-bind:
     post:
-      summary: Bind the caller's HA account to a verified genuine identity (path A2)
+      summary: Bind the caller's HA account to a verified genuine identity (optional on-the-spot bind)
       description: >
         Auth level: BearerAuth, self-service only — the caller's own account,
         resolved through a Yggdrasil or core OAuth2 token exactly like
         /player/mojang-bind-enable.
 
+        Optional path, never a precondition for playing: the default for an
+        unbound genuine player is absorption via /authserver/microsoft plus
+        in-game claiming. This endpoint serves players who voluntarily bind
+        on the spot and existing HA users linking their genuine identity.
+
         The MC access token is re-verified against
         api.minecraftservices.com/minecraft/profile before anything is
-        written. This endpoint is the client-driven successor of the mbe
-        window: the user simultaneously holds HA credentials and the genuine
-        session, so no opt-in window is needed. The mbe mechanism stays for
-        server-side absorption (WinnerProxy path).
+        written. The user simultaneously holds HA credentials and the genuine
+        session, so no opt-in window is needed here; the mbe mechanism stays
+        for server-side absorption collisions.
       security:
         - BearerAuth: []
       requestBody:
@@ -172,8 +176,10 @@ paths:
         microsoft-bind). Clears accounts.mojang_uuid of the caller's account.
         Idempotent: unbinding an unbound account succeeds. Never deletes the
         account or profile. Documented consequence surfaced by clients: after
-        unbinding, joining with the genuine client lets WinnerProxy absorb the
-        player as a fresh cbh=0 proxy account again.
+        unbinding, the next genuine login (client exchange) or server join
+        (WinnerProxy hasJoined) absorbs the player again as a fresh cbh=0
+        pending-claim account — same idempotent semantics, never two accounts
+        for the same uuid at the same time.
       security:
         - BearerAuth: []
       responses:
