@@ -3,6 +3,7 @@ package services
 import (
 	"archive/zip"
 	"bufio"
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -32,7 +33,13 @@ type AuthService struct {
 // Minecraft-facing Yggdrasil API, HRPAuth-Yggdrasil-API). It is fixed at
 // deployment time; the UI exposes no way to edit or switch auth servers.
 // Declared as a var so tests can point it at an httptest server.
-var HRPAuthBaseURL = "https://backend.auth.samuelcheston.com/"
+//
+// The HA ecosystem's authoritative API host is ha.mcnb.dev; the Yggdrasil
+// routes are relayed by the HRPAuth core under the /yggdrasil-api prefix, so
+// the base URL carries that prefix. Pointing at the core root instead would
+// 404 on /authserver/* (the core serves those routes only under the relay
+// prefix).
+var HRPAuthBaseURL = "https://ha.mcnb.dev/yggdrasil-api"
 
 // IsHRPAuthAccount reports whether an account type is the HRPAuth flavor.
 // The legacy "authlib-injector" value (pre-migration stored accounts) is
@@ -164,11 +171,39 @@ func (a *AuthService) getMetaWithRedirects(metaURL string) (*AuthlibServerMeta, 
 		return nil, nil, "", err
 	}
 
+	// The HA core root and the Yggdrasil-API meta endpoint nest the
+	// authlib-injector metadata under a "yggdrasil" key; unwrap it so the
+	// launcher (and -Dauthlibinjector.yggdrasil.prefetched) sees the flat
+	// metadata document the injector expects. Flat bodies pass through.
+	body = unwrapYggdrasilMeta(body)
+
 	var meta AuthlibServerMeta
 	if err := json.Unmarshal(body, &meta); err != nil {
 		return nil, nil, "", err
 	}
 	return &meta, body, metaURL, nil
+}
+
+// unwrapYggdrasilMeta detects the nested metadata shape served by the HA
+// ecosystem (metadata nested under a top-level "yggdrasil" key) and returns
+// the flat authlib-injector metadata document. Input that is already flat —
+// or that does not parse as a JSON object — is returned unchanged.
+func unwrapYggdrasilMeta(body []byte) []byte {
+	var probe struct {
+		SignaturePublickey string          `json:"signaturePublickey"`
+		Yggdrasil          json.RawMessage `json:"yggdrasil"`
+	}
+	if err := json.Unmarshal(body, &probe); err != nil {
+		return body
+	}
+	if probe.SignaturePublickey != "" {
+		return body // already the flat metadata document
+	}
+	nested := bytes.TrimSpace(probe.Yggdrasil)
+	if len(nested) > 0 && nested[0] == '{' {
+		return nested
+	}
+	return body
 }
 
 // resolveALI converts an X-Authlib-Injector-API-Location header value into an
@@ -197,7 +232,9 @@ func resolveALI(requestURL, ali string) (string, error) {
 // Returns the decoded struct, the raw JSON body (so the launcher can pass it
 // to -Dauthlibinjector.yggdrasil.prefetched) and the resolved API URL.
 func (a *AuthService) GetHRPAuthMeta() *models.ApiResponse {
-	metaURL := strings.TrimSuffix(HRPAuthBaseURL, "/") + "/"
+	// No forced trailing slash: the relayed Yggdrasil meta endpoint answers on
+	// the prefix path itself (…/yggdrasil-api), and a trailing slash would 404.
+	metaURL := strings.TrimSuffix(HRPAuthBaseURL, "/")
 
 	meta, rawBody, resolvedURL, err := a.getMetaWithRedirects(metaURL)
 	if err != nil {

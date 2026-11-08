@@ -16,9 +16,12 @@ import {
   DeleteAccountTokens,
 } from '../wailsjs/go/main/App';
 
-// HRPAuth is the only online auth provider. Its host mirrors the backend's
-// built-in services.HRPAuthBaseURL and is used solely to classify stored
-// legacy accounts during migration — it is never user-editable.
+// HRPAuth is the only online auth provider. This is the HISTORICAL built-in
+// host that pre-migration (schema<=2) accounts stored in `authServer`; it is
+// used solely to classify those legacy accounts during migration — it is
+// never user-editable. It deliberately stays the old host even though the
+// active endpoint (services.HRPAuthBaseURL) moved to ha.mcnb.dev, so existing
+// accounts are recognized as first-party rather than marked legacy.
 const HRPAUTH_HOST = 'backend.auth.samuelcheston.com';
 
 export interface StoredAccount {

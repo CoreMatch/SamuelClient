@@ -114,8 +114,55 @@ func TestGetHRPAuthMeta(t *testing.T) {
 	if !strings.Contains(raw, "TestAuth") {
 		t.Errorf("raw body does not contain serverName: %q", raw)
 	}
-	if data["resolved_url"] != srv.URL+"/" {
-		t.Errorf("resolved_url = %v, want %s", data["resolved_url"], srv.URL+"/")
+	if data["resolved_url"] != srv.URL {
+		t.Errorf("resolved_url = %v, want %s", data["resolved_url"], srv.URL)
+	}
+}
+
+// The HA core root and the Yggdrasil-API meta endpoint nest the metadata
+// under a top-level "yggdrasil" key; the client must unwrap it so the
+// prefetched document is the flat authlib-injector shape.
+func TestGetHRPAuthMetaUnwrapsNestedYggdrasil(t *testing.T) {
+	const nested = `{
+		"success": true,
+		"message": "HRPAuth core service is running.",
+		"site": {"name": "HRPAuth"},
+		"yggdrasil": {
+			"meta": {"serverName": "NestedAuth", "implementationName": "Impl"},
+			"signaturePublickey": "nested-public-key",
+			"skinDomains": ["skin.example.com", ".example.com"]
+		}
+	}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, nested)
+	}))
+	defer srv.Close()
+	pointHRPAuthAt(t, srv.URL)
+
+	result := NewAuthService().GetHRPAuthMeta()
+	if !result.Success {
+		t.Fatalf("GetHRPAuthMeta failed: %s", result.Error)
+	}
+	data := result.Data.(map[string]interface{})
+	meta := data["meta"].(*AuthlibServerMeta)
+	if meta.Meta.ServerName != "NestedAuth" {
+		t.Errorf("ServerName = %q, want NestedAuth", meta.Meta.ServerName)
+	}
+	if meta.SignaturePublickey != "nested-public-key" {
+		t.Errorf("SignaturePublickey = %q, want nested-public-key", meta.SignaturePublickey)
+	}
+	if len(meta.SkinDomains) != 2 || meta.SkinDomains[0] != "skin.example.com" {
+		t.Errorf("SkinDomains = %v, want [skin.example.com .example.com]", meta.SkinDomains)
+	}
+	// The raw document handed to authlib-injector must be the flat metadata,
+	// not the nested envelope.
+	raw, _ := data["raw"].(string)
+	if strings.Contains(raw, `"yggdrasil"`) {
+		t.Errorf("raw still nested under yggdrasil: %q", raw)
+	}
+	if !strings.Contains(raw, "nested-public-key") {
+		t.Errorf("raw does not carry the unwrapped metadata: %q", raw)
 	}
 }
 
