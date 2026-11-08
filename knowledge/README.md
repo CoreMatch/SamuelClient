@@ -40,3 +40,5 @@ Each entry is one page in ADR style:
 | [0004](0004-local-http-boundary.md) | Local HTTP Boundary: Retire Direct Frontend→Gin HTTP in Favor of Wails Bindings | accepted |
 | [0005](0005-frontend-test-framework-evaluation.md) | Frontend Test Framework: Vitest + React Testing Library | accepted |
 | [0006](0006-match-handoff-boundary.md) | Match Handoff Boundary: Loopback Interop Listener Beside the Wails Binding Surface | accepted |
+| [0007](0007-microsoft-login-and-ha-account-binding-design.md) | Microsoft Login Mapped onto HA Accounts — Design (Implementation Gated on Azure Approval) | proposed |
+| [0008](0008-ha-only-auth-prep.md) | HA-only Auth Prep: Offline Entry Removed, Tokens in the OS Keychain, Product Disclaimer | accepted |

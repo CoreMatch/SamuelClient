@@ -27,7 +27,7 @@ type MinecraftAccount struct {
 	Username    string    `json:"username"`
 	AccessToken string    `json:"access_token,omitempty"`
 	ClientToken string    `json:"client_token,omitempty"`
-	AuthType    string    `json:"auth_type"` // "offline" or "hrpauth"
+	AuthType    string    `json:"auth_type"` // "hrpauth" (offline login was removed, ADR-0008)
 	PlayerUUID  string    `json:"player_uuid,omitempty"`
 	PlayerName  string    `json:"player_name,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`

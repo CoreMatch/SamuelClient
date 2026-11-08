@@ -300,6 +300,12 @@ export default function HomeView({
       setError(t('play.selectVersionAccount'));
       return;
     }
+    // Tokens are hydrated from the OS keychain (ADR-0008); a session without
+    // them must re-authenticate instead of launching.
+    if (!currentAccount.accessToken || !currentAccount.clientToken) {
+      setError(t('accounts.reLoginNeeded'));
+      return;
+    }
 
     setLaunching(true);
     setError('');
@@ -408,9 +414,7 @@ export default function HomeView({
           {currentAccount ? (
             <span className="flex items-center gap-3">
               <span className="text-base font-medium text-ink">{currentAccount.username}</span>
-              <Badge tone={currentAccount.authType === 'hrpauth' ? 'success' : 'neutral'}>
-                {currentAccount.authType === 'hrpauth' ? t('play.hrpauth') : t('play.offline')}
-              </Badge>
+              <Badge tone="success">{t('play.hrpauth')}</Badge>
             </span>
           ) : (
             <span className="text-sm text-danger">{t('play.noAccount')}</span>

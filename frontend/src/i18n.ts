@@ -28,7 +28,6 @@ const en = {
   'play.noJava': 'No Java installed',
   'play.none': 'None',
   'play.hrpauth': 'HRPAuth',
-  'play.offline': 'Offline',
   'play.launchSettings': 'Launch Settings',
   'play.maxMemory': 'Maximum Memory',
   'play.jvmArgs': 'JVM Arguments',
@@ -133,9 +132,9 @@ const en = {
   'accounts.add': 'Add Account',
   'accounts.emptyTitle': 'No accounts',
   'accounts.hrpauth': 'HRPAuth',
-  'accounts.offline': 'Offline',
   'accounts.legacy': 'Legacy',
   'accounts.legacyNotice': 'Sign in again with HRPAuth',
+  'accounts.reLoginNeeded': 'This account needs to sign in again',
   'accounts.deleteTitle': 'Delete Account',
   'accounts.deleteConfirm':
     'Are you sure you want to delete the account "{username}"? This action cannot be undone.',
@@ -144,20 +143,27 @@ const en = {
 
   // Login
   'login.title': 'Sign in',
-  'login.authType': 'Authentication Type',
   'login.hrpauth': 'HRPAuth',
-  'login.offline': 'Offline (Cracked)',
   'login.username': 'Username',
   'login.password': 'Password',
   'login.showPassword': 'Show password',
   'login.hidePassword': 'Hide password',
   'login.submit': 'Login',
   'login.manageAccounts': 'Manage Accounts',
-  'login.usernameRequired': 'Username is required',
   'login.credentialsRequired': 'Username and password are required',
   'login.noProfile': 'No profile found',
   'login.failed': 'Login failed',
   'login.failedRetry': 'Login failed. Please try again.',
+
+  // App shell notices (ADR-0008)
+  'app.disclaimer':
+    'NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.',
+  'app.offlineRemoved':
+    'Offline accounts are no longer supported and were removed during this update ({usernames}). Please sign in with your HA account.',
+  'app.keychainUnavailable':
+    'The system credential store is unavailable on this machine. Session tokens cannot be stored securely; sign-in may need to be repeated and tokens may remain in fallback storage. ({error})',
+  'app.tokenStorageWarning':
+    'Signed in, but the session tokens could not be stored in the system credential store ({error}). This session works, but you may need to sign in again next time.',
 
   // Match handoff (INTEROP-SPEC)
   'handoff.title': 'Match found',

@@ -1726,13 +1726,13 @@ func buildLibraryClasspath(versionJSON *BMCLVersionJSON, librariesDir string) st
 
 // resolveUserType maps the stored account auth type to the value Mojang-style
 // game arguments expect (--userType). Per the launcher standard:
-//   - offline accounts use "legacy"
 //   - Microsoft accounts use "msa"
 //   - authlib-injector / Mojang Yggdrasil accounts use "mojang"
+//
+// Offline accounts are no longer a login path of this launcher (ADR-0008);
+// anything unrecognized falls back to the Yggdrasil value.
 func resolveUserType(authType string) string {
 	switch strings.ToLower(authType) {
-	case "offline":
-		return "legacy"
 	case "microsoft", "msa":
 		return "msa"
 	default:

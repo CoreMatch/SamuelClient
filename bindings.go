@@ -291,6 +291,76 @@ func newClientToken() string {
 	return string(buf)
 }
 
+// ==================== Token storage (write / sensitive) ====================
+//
+// Session tokens live in the OS credential store, not in the frontend's
+// localStorage (ADR-0008). The frontend keeps only non-sensitive account
+// metadata and calls these bindings to persist, load, or drop the token pair
+// of one account. Values are never written to logs.
+
+// StoreAccountTokens persists the token pair of one account in the OS
+// keychain, keyed by the stable account id. Callers treat a failure as
+// "keep the previous state and warn" — the frontend migration relies on that
+// to stay loss-free.
+func (a *App) StoreAccountTokens(id, accessToken, clientToken string) *models.ApiResponse {
+	if id == "" {
+		return &models.ApiResponse{Success: false, Error: "account id is required"}
+	}
+	if accessToken == "" {
+		return &models.ApiResponse{Success: false, Error: "access token is required"}
+	}
+	if err := a.tokenStore.Set(id, services.TokenPair{AccessToken: accessToken, ClientToken: clientToken}); err != nil {
+		return &models.ApiResponse{Success: false, Error: err.Error()}
+	}
+	return &models.ApiResponse{Success: true}
+}
+
+// LoadAccountTokens returns the stored token pair of one account. A missing
+// entry is reported as success=false with error "token entry not found" so
+// the frontend can distinguish re-login-needed from a broken backend.
+func (a *App) LoadAccountTokens(id string) *models.ApiResponse {
+	if id == "" {
+		return &models.ApiResponse{Success: false, Error: "account id is required"}
+	}
+	pair, err := a.tokenStore.Get(id)
+	if err != nil {
+		return &models.ApiResponse{Success: false, Error: err.Error()}
+	}
+	return &models.ApiResponse{Success: true, Data: map[string]interface{}{
+		"accessToken": pair.AccessToken,
+		"clientToken": pair.ClientToken,
+	}}
+}
+
+// DeleteAccountTokens removes the stored token pair of one account. Deleting
+// a missing entry succeeds so account removal cannot fail on a keychain that
+// is already clean (or unavailable).
+func (a *App) DeleteAccountTokens(id string) *models.ApiResponse {
+	if id == "" {
+		return &models.ApiResponse{Success: false, Error: "account id is required"}
+	}
+	if err := a.tokenStore.Delete(id); err != nil {
+		return &models.ApiResponse{Success: false, Error: err.Error()}
+	}
+	return &models.ApiResponse{Success: true}
+}
+
+// KeychainStatus reports whether the OS credential store is usable on this
+// machine. Data is {"available": bool, "error": string}; the frontend shows a
+// persistent warning when unavailable instead of silently degrading.
+func (a *App) KeychainStatus() *models.ApiResponse {
+	if err := a.tokenStore.Available(); err != nil {
+		return &models.ApiResponse{Success: true, Data: map[string]interface{}{
+			"available": false,
+			"error":     err.Error(),
+		}}
+	}
+	return &models.ApiResponse{Success: true, Data: map[string]interface{}{
+		"available": true,
+		"error":     "",
+	}}
+}
+
 // ==================== Download (write, streaming) ====================
 
 // DownloadVersion installs a Minecraft version (JSON + JAR + libraries +
