@@ -18,7 +18,10 @@ entry point anywhere in the product:
 
 - The HRPAuth endpoint is built into the backend
   (`internal/services/mc_services.go::HRPAuthBaseURL`,
-  `https://backend.auth.samuelcheston.com/`, fixed at deployment time). No
+  `https://ha.mcnb.dev/yggdrasil-api`, fixed at deployment time). The HA
+  ecosystem's authoritative API host is `ha.mcnb.dev`; the core relays the
+  Yggdrasil routes under the `/yggdrasil-api` prefix, so the base URL carries
+  that prefix (the core root answers `/authserver/*` only under it). No
   binding and no UI control accepts an auth server address.
 - Account types are exactly two: `hrpauth` (username/password against
   HRPAuth) and `offline` (frontend-fabricated UUID).
@@ -70,5 +73,13 @@ entry point anywhere in the product:
 - Endpoint ownership: HRPAuth-Yggdrasil-API
   (`/home/lnb/Desktop/HA/HRPAuth-Yggdrasil-API/main.go`, `/authserver/...`
   and meta routes) matches the launcher's calls.
-- Not verified: that `backend.auth.samuelcheston.com` routes to
-  HRPAuth-Yggdrasil-API in deployment (no in-repo config proves it).
+- Deployment routing verified (2026-11-08, read-only probes of
+  `https://ha.mcnb.dev`): the HRPAuth core answers `/health` and `/` at the
+  root and relays the Yggdrasil surface under `/yggdrasil-api`
+  (`POST /yggdrasil-api/authserver/authenticate` reaches the Yggdrasil-API,
+  while the top-level `POST /authserver/authenticate` answers
+  `route_not_found`). Hence the built-in base URL carries the
+  `/yggdrasil-api` prefix. The core root and the relayed meta endpoint both
+  nest the authlib-injector metadata under a `yggdrasil` key; the launcher
+  unwraps it (`internal/services/mc_services.go::unwrapYggdrasilMeta`) before
+  handing it to `-Dauthlibinjector.yggdrasil.prefetched`.
