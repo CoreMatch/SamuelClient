@@ -1927,6 +1927,46 @@ func TestGetJavaPathHonorsJavaHome(t *testing.T) {
 	}
 }
 
+// swapCommonJavaPaths points the common-path scan at the supplied candidates
+// for the duration of a test and restores the production list afterwards. It
+// exists so the fallback branches of GetJavaPath are deterministic
+// (PENDING-DECISIONS #9, option B).
+func swapCommonJavaPaths(t *testing.T, paths []string) {
+	t.Helper()
+	prev := commonJavaPaths
+	commonJavaPaths = paths
+	t.Cleanup(func() { commonJavaPaths = prev })
+}
+
+func TestGetJavaPathScansCommonPaths(t *testing.T) {
+	// No JAVA_HOME so the scan falls through to the common-path list.
+	t.Setenv("JAVA_HOME", "")
+
+	// A usable java placed second: the scan must skip the missing first entry
+	// and return the first candidate that exists.
+	dir := t.TempDir()
+	realJava := filepath.Join(dir, "java")
+	if err := os.WriteFile(realJava, []byte("#!/bin/sh\n"), 0755); err != nil {
+		t.Fatalf("write fake java: %v", err)
+	}
+	swapCommonJavaPaths(t, []string{filepath.Join(dir, "does-not-exist"), realJava})
+
+	if got := NewLauncherService().GetJavaPath(); got != realJava {
+		t.Errorf("GetJavaPath = %q, want %q", got, realJava)
+	}
+}
+
+func TestGetJavaPathFallsBackToBareJava(t *testing.T) {
+	// No JAVA_HOME and no common candidate exists -> bare "java" (PATH lookup).
+	t.Setenv("JAVA_HOME", "")
+	dir := t.TempDir()
+	swapCommonJavaPaths(t, []string{filepath.Join(dir, "no-1"), filepath.Join(dir, "no-2")})
+
+	if got := NewLauncherService().GetJavaPath(); got != "java" {
+		t.Errorf("GetJavaPath = %q, want %q", got, "java")
+	}
+}
+
 func TestGetMinecraftDirUsesHome(t *testing.T) {
 	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
 		t.Skipf("linux-specific expectation; GOOS=%s", runtime.GOOS)
