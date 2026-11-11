@@ -268,13 +268,13 @@ bump, run drift verification, then implement (standard contract-first rule).
 ## Evidence
 
 - State-machine inputs: `accounts` model and bind chain —
-  `/home/lnb/Desktop/HA/HRPAuth-Yggdrasil-API/models/models.go::Account`,
-  `/home/lnb/Desktop/HA/HRPAuth-Yggdrasil-API/services/auth_service.go::ProxyRegister`,
-  `/home/lnb/Desktop/HA/HRPAuth-Yggdrasil-API/services/admin_service.go::ClaimProxyAccount`,
-  `/home/lnb/Desktop/HA/HRPAuth-Yggdrasil-API/services/admin_service.go::ForceBindTransfer`,
-  `/home/lnb/Desktop/HA/HRPAuth-Yggdrasil-API/services/player_service.go::EnableMojangBind`.
-- Server-side absorption: `/home/lnb/Desktop/HA/WinnerProxy/internal/handler/handler.go::HasJoined`
-  (three-stage flow), `/home/lnb/Desktop/HA/WinnerProxy/internal/hrpauth/endpoints.go::RegisterByProxy`.
+  `/home/lnb/Desktop/HA/hrpauth/HRPAuth-Yggdrasil-API/models/models.go::Account`,
+  `/home/lnb/Desktop/HA/hrpauth/HRPAuth-Yggdrasil-API/services/auth_service.go::ProxyRegister`,
+  `/home/lnb/Desktop/HA/hrpauth/HRPAuth-Yggdrasil-API/services/admin_service.go::ClaimProxyAccount`,
+  `/home/lnb/Desktop/HA/hrpauth/HRPAuth-Yggdrasil-API/services/admin_service.go::ForceBindTransfer`,
+  `/home/lnb/Desktop/HA/hrpauth/HRPAuth-Yggdrasil-API/services/player_service.go::EnableMojangBind`.
+- Server-side absorption: `/home/lnb/Desktop/HA/hrpauth/WinnerProxy/internal/handler/handler.go::HasJoined`
+  (three-stage flow), `/home/lnb/Desktop/HA/hrpauth/WinnerProxy/internal/hrpauth/endpoints.go::RegisterByProxy`.
 - Current client auth surface: `internal/services/mc_services.go::AuthenticateWithHRPAuth`,
   `frontend/src/accountStorage.ts::restoreLastUsedAccount`,
   `knowledge/0002-hrpauth-authentication-flow.md`.

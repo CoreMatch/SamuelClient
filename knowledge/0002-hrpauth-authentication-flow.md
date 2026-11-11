@@ -71,7 +71,7 @@ entry point anywhere in the product:
   only), `frontend/src/accountStorage.ts` (schema-2 migration, token
   validate/refresh restore).
 - Endpoint ownership: HRPAuth-Yggdrasil-API
-  (`/home/lnb/Desktop/HA/HRPAuth-Yggdrasil-API/main.go`, `/authserver/...`
+  (`/home/lnb/Desktop/HA/hrpauth/HRPAuth-Yggdrasil-API/main.go`, `/authserver/...`
   and meta routes) matches the launcher's calls.
 - Deployment routing verified (2026-11-08, read-only probes of
   `https://ha.mcnb.dev`): the HRPAuth core answers `/health` and `/` at the
