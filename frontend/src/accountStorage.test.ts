@@ -3,6 +3,7 @@ import {
   HRPAuthValidate,
   HRPAuthRefresh,
   StoreAccountTokens,
+  StoreMicrosoftAccountTokens,
   LoadAccountTokens,
   DeleteAccountTokens,
 } from '../wailsjs/go/main/App';
@@ -22,6 +23,7 @@ vi.mock('../wailsjs/go/main/App', () => ({
   HRPAuthValidate: vi.fn(),
   HRPAuthRefresh: vi.fn(),
   StoreAccountTokens: vi.fn(),
+  StoreMicrosoftAccountTokens: vi.fn(),
   LoadAccountTokens: vi.fn(),
   DeleteAccountTokens: vi.fn(),
 }));
@@ -29,6 +31,7 @@ vi.mock('../wailsjs/go/main/App', () => ({
 const mockValidate = vi.mocked(HRPAuthValidate);
 const mockRefresh = vi.mocked(HRPAuthRefresh);
 const mockStore = vi.mocked(StoreAccountTokens);
+const mockStoreMicrosoft = vi.mocked(StoreMicrosoftAccountTokens);
 const mockLoad = vi.mocked(LoadAccountTokens);
 const mockDelete = vi.mocked(DeleteAccountTokens);
 
@@ -70,6 +73,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   mockStore.mockResolvedValue({ success: true, data: null, error: '' });
+  mockStoreMicrosoft.mockResolvedValue({ success: true, data: null, error: '' });
   mockDelete.mockResolvedValue({ success: true, data: null, error: '' });
 });
 
@@ -320,6 +324,28 @@ describe('saveAccount (schema 3)', () => {
 
     expect(tokenStorageError).toBe('keychain locked');
     expect(readStored()).toHaveLength(1);
+  });
+
+  it('routes Microsoft accounts through the triple-token keychain binding (ADR-0007)', async () => {
+    const { account, tokenStorageError } = await saveAccount({
+      username: 'SteveMS',
+      uuid: 'uuid-ms',
+      accessToken: 'at-ms',
+      clientToken: 'ct-ms',
+      authType: 'microsoft',
+      msaRefreshToken: 'msa-refresh',
+    });
+
+    expect(tokenStorageError).toBe('');
+    expect(mockStoreMicrosoft).toHaveBeenCalledWith(account.id, 'at-ms', 'ct-ms', 'msa-refresh');
+    expect(mockStore).not.toHaveBeenCalled();
+    const stored = readStored();
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ username: 'SteveMS', authType: 'microsoft' });
+    // Neither session tokens nor the MSA refresh token may reach localStorage.
+    expect(stored[0].accessToken).toBeUndefined();
+    expect(stored[0].clientToken).toBeUndefined();
+    expect((stored[0] as Record<string, unknown>).msaRefreshToken).toBeUndefined();
   });
 });
 

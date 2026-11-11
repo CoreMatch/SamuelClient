@@ -154,6 +154,13 @@ const en = {
   'login.noProfile': 'No profile found',
   'login.failed': 'Login failed',
   'login.failedRetry': 'Login failed. Please try again.',
+  'login.or': 'or',
+  'login.microsoft.submit': 'Sign in with Microsoft',
+  'login.microsoft.codePrompt': 'Open the sign-in page and enter this code when asked:',
+  'login.microsoft.codeLabel': 'Sign-in code',
+  'login.microsoft.openPage': 'Open sign-in page',
+  'login.microsoft.waiting': 'Waiting for you to finish signing in…',
+  'login.microsoft.failed': 'Microsoft sign-in failed. Please try again.',
 
   // App shell notices (ADR-0008)
   'app.disclaimer':

@@ -12,6 +12,7 @@ import {
   HRPAuthValidate,
   HRPAuthRefresh,
   StoreAccountTokens,
+  StoreMicrosoftAccountTokens,
   LoadAccountTokens,
   DeleteAccountTokens,
 } from '../wailsjs/go/main/App';
@@ -28,7 +29,10 @@ export interface StoredAccount {
   id: string;
   username: string;
   uuid: string;
-  authType: 'hrpauth';
+  // 'microsoft' accounts (ADR-0007) carry a Yggdrasil session obtained by
+  // exchanging a licensed Minecraft account; they behave like 'hrpauth'
+  // accounts from here on.
+  authType: 'hrpauth' | 'microsoft';
   lastUsed?: boolean;
   // Set by the migration for stored accounts that pointed at a non-HRPAuth
   // Yggdrasil server: they stay visible but cannot be used.
@@ -222,9 +226,10 @@ export interface SaveAccountResult {
 }
 
 // Save a new account to storage: tokens go to the keychain, metadata to
-// localStorage.
+// localStorage. Microsoft logins pass msaRefreshToken, which is persisted
+// alongside the session pair (ADR-0007) but never touches localStorage.
 export async function saveAccount(
-  account: Omit<StoredAccount, 'id'> & { id?: string },
+  account: Omit<StoredAccount, 'id'> & { id?: string; msaRefreshToken?: string },
 ): Promise<SaveAccountResult> {
   await migrateAccountsIfNeeded();
   const accounts = readStoredMetadata();
@@ -251,7 +256,14 @@ export async function saveAccount(
   let tokenStorageError = '';
   if (newAccount.accessToken) {
     try {
-      const result = await StoreAccountTokens(newAccount.id, newAccount.accessToken, newAccount.clientToken ?? '');
+      const result = account.msaRefreshToken
+        ? await StoreMicrosoftAccountTokens(
+            newAccount.id,
+            newAccount.accessToken,
+            newAccount.clientToken ?? '',
+            account.msaRefreshToken,
+          )
+        : await StoreAccountTokens(newAccount.id, newAccount.accessToken, newAccount.clientToken ?? '');
       if (!result.success) {
         tokenStorageError = result.error || 'keychain store failed';
       }
