@@ -22,10 +22,13 @@ import (
 // (not const) so tests can point live verification at a scratch namespace.
 var keychainService = "SamuelClient"
 
-// TokenPair is the secret payload stored per account.
+// TokenPair is the secret payload stored per account. Microsoft-login
+// accounts additionally carry the MSA refresh token (90-day rolling, equal to
+// account control — ADR-0007 §5); HRPAuth-only accounts leave it empty.
 type TokenPair struct {
-	AccessToken string `json:"accessToken"`
-	ClientToken string `json:"clientToken"`
+	AccessToken     string `json:"accessToken"`
+	ClientToken     string `json:"clientToken"`
+	MSARefreshToken string `json:"msaRefreshToken,omitempty"`
 }
 
 // TokenStore persists per-account token pairs. The keychain implementation is
