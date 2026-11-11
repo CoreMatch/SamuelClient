@@ -4,6 +4,7 @@ package services
 // installer script standing in for `java -jar installer --installClient`).
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -63,7 +64,7 @@ func TestInstallFabricLoaderHappyPath(t *testing.T) {
 	writeVersionJSON(t, gameDir, "1.99", testVersionJSON)
 
 	var stages []string
-	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallFabricLoader("1.99", "0.15.0", gameDir, func(stage, name string, downloaded, total int64) {
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallFabricLoader(context.Background(), "1.99", "0.15.0", gameDir, func(stage, name string, downloaded, total int64) {
 		stages = append(stages, stage)
 	})
 	if !result.Success {
@@ -112,7 +113,7 @@ func TestInstallFabricLoaderHappyPath(t *testing.T) {
 
 func TestInstallFabricLoaderMissingParent(t *testing.T) {
 	srv := fabricMetaFixture(t, http.StatusOK, http.StatusOK)
-	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallFabricLoader("1.99", "0.15.0", t.TempDir(), nil)
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallFabricLoader(context.Background(), "1.99", "0.15.0", t.TempDir(), nil)
 	if result.Success || !strings.Contains(result.Error, "not installed") {
 		t.Errorf("Success=%v Error=%q, want a 'not installed' failure", result.Success, result.Error)
 	}
@@ -123,7 +124,7 @@ func TestInstallFabricLoaderProfileHTTPError(t *testing.T) {
 	gameDir := t.TempDir()
 	writeVersionJSON(t, gameDir, "1.99", testVersionJSON)
 
-	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallFabricLoader("1.99", "0.15.0", gameDir, nil)
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallFabricLoader(context.Background(), "1.99", "0.15.0", gameDir, nil)
 	if result.Success || !strings.Contains(result.Error, "404") {
 		t.Errorf("Success=%v Error=%q, want failure mentioning 404", result.Success, result.Error)
 	}
@@ -137,7 +138,7 @@ func TestInstallFabricLoaderLibraryFailureCleansUp(t *testing.T) {
 	gameDir := t.TempDir()
 	writeVersionJSON(t, gameDir, "1.99", testVersionJSON)
 
-	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallFabricLoader("1.99", "0.15.0", gameDir, nil)
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallFabricLoader(context.Background(), "1.99", "0.15.0", gameDir, nil)
 	if result.Success {
 		t.Fatal("expected failure when a loader library 404s")
 	}
@@ -214,7 +215,7 @@ func TestInstallFabricLoaderWritesLauncherProfile(t *testing.T) {
 	gameDir := t.TempDir()
 	writeVersionJSON(t, gameDir, "1.99", testVersionJSON)
 
-	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallFabricLoader("1.99", "0.15.0", gameDir, nil)
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallFabricLoader(context.Background(), "1.99", "0.15.0", gameDir, nil)
 	if !result.Success {
 		t.Fatalf("InstallFabricLoader failed: %s", result.Error)
 	}
@@ -228,7 +229,7 @@ func TestInstallForgeLoaderInjectsMissingProfile(t *testing.T) {
 	gameDir := t.TempDir()
 
 	// The fake installer does not inject a profile itself; the service must.
-	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallForgeLoader("1.99", "47.2.0", gameDir, fakeForgeInstaller(t, 0, true), nil, nil)
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallForgeLoader(context.Background(), "1.99", "47.2.0", gameDir, fakeForgeInstaller(t, 0, true), nil, nil)
 	if !result.Success {
 		t.Fatalf("InstallForgeLoader failed: %s", result.Error)
 	}
@@ -247,7 +248,7 @@ func TestInstallForgeLoaderKeepsInjectedProfile(t *testing.T) {
 		t.Fatalf("seed profiles: %v", err)
 	}
 
-	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallForgeLoader("1.99", "47.2.0", gameDir, fakeForgeInstaller(t, 0, true), nil, nil)
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallForgeLoader(context.Background(), "1.99", "47.2.0", gameDir, fakeForgeInstaller(t, 0, true), nil, nil)
 	if !result.Success {
 		t.Fatalf("InstallForgeLoader failed: %s", result.Error)
 	}
@@ -366,7 +367,7 @@ func TestInstallForgeLoaderHappyPath(t *testing.T) {
 	gameDir := t.TempDir()
 
 	var logs logCollector
-	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallForgeLoader("1.99", "47.2.0", gameDir, fakeForgeInstaller(t, 0, true), logs.add, nil)
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallForgeLoader(context.Background(), "1.99", "47.2.0", gameDir, fakeForgeInstaller(t, 0, true), logs.add, nil)
 	if !result.Success {
 		t.Fatalf("InstallForgeLoader failed: %s", result.Error)
 	}
@@ -403,7 +404,7 @@ func TestInstallForgeLoaderInstallerFailure(t *testing.T) {
 	gameDir := t.TempDir()
 
 	var logs logCollector
-	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallForgeLoader("1.99", "47.2.0", gameDir, fakeForgeInstaller(t, 1, false), logs.add, nil)
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallForgeLoader(context.Background(), "1.99", "47.2.0", gameDir, fakeForgeInstaller(t, 1, false), logs.add, nil)
 	if result.Success || !strings.Contains(result.Error, "forge installer failed") {
 		t.Fatalf("Success=%v Error=%q, want an installer failure", result.Success, result.Error)
 	}
@@ -420,7 +421,7 @@ func TestInstallForgeLoaderMissingOutput(t *testing.T) {
 	srv := forgeInstallerFixture(t, http.StatusOK)
 	gameDir := t.TempDir()
 
-	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallForgeLoader("1.99", "47.2.0", gameDir, fakeForgeInstaller(t, 0, false), nil, nil)
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallForgeLoader(context.Background(), "1.99", "47.2.0", gameDir, fakeForgeInstaller(t, 0, false), nil, nil)
 	if result.Success || !strings.Contains(result.Error, "did not produce") {
 		t.Errorf("Success=%v Error=%q, want a verification failure", result.Success, result.Error)
 	}
@@ -430,7 +431,7 @@ func TestInstallForgeLoaderDownloadFailure(t *testing.T) {
 	srv := forgeInstallerFixture(t, http.StatusNotFound)
 	gameDir := t.TempDir()
 
-	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallForgeLoader("1.99", "47.2.0", gameDir, fakeForgeInstaller(t, 0, true), nil, nil)
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallForgeLoader(context.Background(), "1.99", "47.2.0", gameDir, fakeForgeInstaller(t, 0, true), nil, nil)
 	if result.Success || !strings.Contains(result.Error, "404") {
 		t.Errorf("Success=%v Error=%q, want failure mentioning 404", result.Success, result.Error)
 	}
@@ -457,7 +458,7 @@ func TestInstallForgeLoaderTimeout(t *testing.T) {
 	}
 
 	start := time.Now()
-	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallForgeLoader("1.99", "47.2.0", gameDir, javaPath, nil, nil)
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).InstallForgeLoader(context.Background(), "1.99", "47.2.0", gameDir, javaPath, nil, nil)
 	if result.Success || !strings.Contains(result.Error, "timed out") {
 		t.Errorf("Success=%v Error=%q, want a timeout failure", result.Success, result.Error)
 	}

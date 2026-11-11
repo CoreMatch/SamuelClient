@@ -53,6 +53,51 @@ func newTestApp() *App {
 	}
 }
 
+func TestCancelInstall(t *testing.T) {
+	app := newTestApp()
+
+	// Empty id is rejected.
+	if res := app.CancelInstall(""); res.Success {
+		t.Errorf("CancelInstall(\"\") must fail")
+	}
+
+	// Unknown id is an idempotent no-op.
+	res := app.CancelInstall("not-running")
+	if !res.Success {
+		t.Fatalf("CancelInstall of an unknown id must succeed (idempotent), got %q", res.Error)
+	}
+	if cancelled, _ := res.Data.(map[string]interface{})["cancelled"].(bool); cancelled {
+		t.Errorf("unknown id must report cancelled=false")
+	}
+
+	// A registered install is cancelled and its context done.
+	ctx, entry := app.beginInstall("1.99")
+	res = app.CancelInstall("1.99")
+	if !res.Success {
+		t.Fatalf("CancelInstall of a running id must succeed, got %q", res.Error)
+	}
+	if cancelled, _ := res.Data.(map[string]interface{})["cancelled"].(bool); !cancelled {
+		t.Errorf("running id must report cancelled=true")
+	}
+	select {
+	case <-ctx.Done():
+		// expected
+	default:
+		t.Errorf("context must be done after CancelInstall")
+	}
+	_ = entry
+
+	// Finishing the install removes it; a later cancel is again a no-op.
+	app.finishInstall("1.99", entry)
+	res = app.CancelInstall("1.99")
+	if !res.Success {
+		t.Fatalf("CancelInstall after finish must succeed, got %q", res.Error)
+	}
+	if cancelled, _ := res.Data.(map[string]interface{})["cancelled"].(bool); cancelled {
+		t.Errorf("finished install must report cancelled=false")
+	}
+}
+
 // clearLauncherSettings removes launcher.* rows so config tests start clean
 // (the DB is shared across the test binary).
 func clearLauncherSettings(t *testing.T) {

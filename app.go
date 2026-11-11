@@ -33,6 +33,12 @@ type App struct {
 	javaRepo         *repository.JavaRepository
 	tokenStore       services.TokenStore
 
+	// Install cancellation (PENDING-DECISIONS #10): one cancellable context per
+	// in-flight download/install, keyed by version id, so CancelInstall can
+	// abort it. Guarded by installMu.
+	installMu      sync.Mutex
+	installCancels map[string]*installCancel
+
 	// Match handoff state (INTEROP-SPEC §6): single pending slot plus the
 	// loopback server publishing it.
 	interopServer  *interop.Server
@@ -40,6 +46,13 @@ type App struct {
 	pendingHandoff *interop.HandoffPayload
 	started        bool
 	deepLink       *interop.DeepLink
+}
+
+// installCancel pairs a running install's cancel func with an identity the
+// cleanup path can compare, so a finished install never deletes a newer
+// install registered under the same version id.
+type installCancel struct {
+	cancel context.CancelFunc
 }
 
 // NewApp creates a new App application struct
@@ -51,6 +64,7 @@ func NewApp() *App {
 		launcherService:  services.NewLauncherService(),
 		javaRepo:         repository.NewJavaRepository(),
 		tokenStore:       services.NewKeychainTokenStore(),
+		installCancels:   map[string]*installCancel{},
 	}
 }
 

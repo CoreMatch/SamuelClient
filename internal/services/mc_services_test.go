@@ -3,6 +3,7 @@ package services
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -593,7 +594,7 @@ func TestGetVersionList(t *testing.T) {
 	srv, _ := installFixtures(t, http.StatusOK)
 	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
 
-	result := svc.GetVersionList()
+	result := svc.GetVersionList(context.Background())
 	if !result.Success {
 		t.Fatalf("GetVersionList failed: %s", result.Error)
 	}
@@ -615,7 +616,7 @@ func TestGetVersionListHTTPError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result := NewBMCLAPIServiceWithBaseURL(srv.URL).GetVersionList()
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).GetVersionList(context.Background())
 	if result.Success {
 		t.Fatal("expected failure for HTTP 404")
 	}
@@ -630,7 +631,7 @@ func TestGetVersionManifestRewritesMojangURL(t *testing.T) {
 
 	// The caller passes the official Mojang URL; the service must rewrite it
 	// onto the mirror (here: the test server).
-	result := svc.GetVersionManifest("https://piston-meta.mojang.com/v1/packages/abc/" + testVersionID + ".json")
+	result := svc.GetVersionManifest(context.Background(), "https://piston-meta.mojang.com/v1/packages/abc/"+testVersionID+".json")
 	if !result.Success {
 		t.Fatalf("GetVersionManifest failed: %s", result.Error)
 	}
@@ -692,12 +693,12 @@ func TestGetVersionManifestErrors(t *testing.T) {
 
 	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
 
-	result := svc.GetVersionManifest(srv.URL + "/missing.json")
+	result := svc.GetVersionManifest(context.Background(), srv.URL+"/missing.json")
 	if result.Success || !strings.Contains(result.Error, "500") {
 		t.Errorf("HTTP error case: Success=%v Error=%q, want failure mentioning 500", result.Success, result.Error)
 	}
 
-	result = svc.GetVersionManifest(srv.URL + "/bad-json.json")
+	result = svc.GetVersionManifest(context.Background(), srv.URL+"/bad-json.json")
 	if result.Success || result.Error == "" {
 		t.Errorf("invalid JSON case: Success=%v Error=%q, want decode failure", result.Success, result.Error)
 	}
@@ -733,7 +734,7 @@ func TestGetFabricInstallerHTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()
 
-	result := NewBMCLAPIServiceWithBaseURL(srv.URL).GetFabricInstaller("1.99", "0.15.0", t.TempDir())
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).GetFabricInstaller(context.Background(), "1.99", "0.15.0", t.TempDir())
 	if result.Success || !strings.Contains(result.Error, "404") {
 		t.Errorf("Success=%v Error=%q, want failure mentioning 404", result.Success, result.Error)
 	}
@@ -743,7 +744,7 @@ func TestDownloadForgeInstallerHTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()
 
-	result := NewBMCLAPIServiceWithBaseURL(srv.URL).DownloadForgeInstaller("1.99", "47.2.0", t.TempDir())
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).DownloadForgeInstaller(context.Background(), "1.99", "47.2.0", t.TempDir())
 	if result.Success || !strings.Contains(result.Error, "404") {
 		t.Errorf("Success=%v Error=%q, want failure mentioning 404", result.Success, result.Error)
 	}
@@ -760,7 +761,7 @@ func TestDownloadFileWritesContentAndReportsProgress(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "sub", "out.bin")
 
 	var calls []int64
-	result := svc.DownloadFile(srv.URL+"/file", dest, int64(len(body)), func(downloaded, total int64) {
+	result := svc.DownloadFile(context.Background(), srv.URL+"/file", dest, int64(len(body)), func(downloaded, total int64) {
 		calls = append(calls, downloaded)
 		if total != int64(len(body)) {
 			t.Errorf("progress total = %d, want %d", total, len(body))
@@ -797,7 +798,7 @@ func TestDownloadFileFailureRemovesPartial(t *testing.T) {
 	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
 	destPath := filepath.Join(t.TempDir(), "sub", "partial.jar")
 
-	result := svc.DownloadFile(srv.URL+"/x.jar", destPath, 100, nil)
+	result := svc.DownloadFile(context.Background(), srv.URL+"/x.jar", destPath, 100, nil)
 	if result.Success {
 		t.Fatal("expected failure for a truncated response")
 	}
@@ -812,7 +813,7 @@ func TestDownloadFileHTTPError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result := NewBMCLAPIServiceWithBaseURL(srv.URL).DownloadFile(srv.URL+"/missing", filepath.Join(t.TempDir(), "x"), 0, nil)
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).DownloadFile(context.Background(), srv.URL+"/missing", filepath.Join(t.TempDir(), "x"), 0, nil)
 	if result.Success {
 		t.Fatal("expected failure for HTTP 404")
 	}
@@ -847,7 +848,7 @@ func TestDownloadLibrariesRewritesAndSkipsExisting(t *testing.T) {
 	}}
 
 	var progressNames []string
-	result := svc.DownloadLibraries(libs, libsDir, func(name string, downloaded, total int64) {
+	result := svc.DownloadLibraries(context.Background(), libs, libsDir, func(name string, downloaded, total int64) {
 		progressNames = append(progressNames, name)
 	})
 	if !result.Success {
@@ -863,7 +864,7 @@ func TestDownloadLibrariesRewritesAndSkipsExisting(t *testing.T) {
 	}
 
 	// Second run: the file exists, so no request must be made.
-	result = svc.DownloadLibraries(libs, libsDir, nil)
+	result = svc.DownloadLibraries(context.Background(), libs, libsDir, nil)
 	if !result.Success {
 		t.Fatalf("second DownloadLibraries failed: %s", result.Error)
 	}
@@ -891,7 +892,7 @@ func TestDownloadLibrariesReportsFailureButContinues(t *testing.T) {
 		{Name: "com.example:good:1.0", Downloads: BMCLLibraryDownloads{Artifact: BMCLArtifact{Path: "good.jar", URL: "https://libraries.minecraft.net/good.jar", Size: 2}}},
 	}
 
-	result := svc.DownloadLibraries(libs, libsDir, nil)
+	result := svc.DownloadLibraries(context.Background(), libs, libsDir, nil)
 	if result.Success {
 		t.Fatal("expected failure when one library 404s")
 	}
@@ -932,7 +933,7 @@ func TestDownloadNativesExtractsOnlyNativeFiles(t *testing.T) {
 	}}
 
 	var progressNames []string
-	result := svc.DownloadNatives(libs, nativesDir, func(name string, downloaded, total int64) {
+	result := svc.DownloadNatives(context.Background(), libs, nativesDir, func(name string, downloaded, total int64) {
 		progressNames = append(progressNames, name)
 	})
 	if !result.Success {
@@ -1023,7 +1024,7 @@ func TestDownloadNativesSkipsUnusableEntries(t *testing.T) {
 
 	nativesDir := filepath.Join(t.TempDir(), "natives")
 	var progressCalls int
-	result := NewBMCLAPIServiceWithBaseURL(srv.URL).DownloadNatives(libs, nativesDir, func(name string, downloaded, total int64) {
+	result := NewBMCLAPIServiceWithBaseURL(srv.URL).DownloadNatives(context.Background(), libs, nativesDir, func(name string, downloaded, total int64) {
 		progressCalls++
 	})
 	if !result.Success {
@@ -1050,7 +1051,7 @@ func TestInstallVersionHappyPath(t *testing.T) {
 		stage, name string
 	}
 	var events []progressEvent
-	result := svc.InstallVersion(testVersionID, gameDir, func(stage, name string, downloaded, total int64) {
+	result := svc.InstallVersion(context.Background(), testVersionID, gameDir, func(stage, name string, downloaded, total int64) {
 		events = append(events, progressEvent{stage, name})
 	})
 	if !result.Success {
@@ -1143,7 +1144,7 @@ func TestInstallVersionUnknownVersion(t *testing.T) {
 	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
 	gameDir := t.TempDir()
 
-	result := svc.InstallVersion("does-not-exist", gameDir, nil)
+	result := svc.InstallVersion(context.Background(), "does-not-exist", gameDir, nil)
 	if result.Success {
 		t.Fatal("expected failure for unknown version")
 	}
@@ -1164,7 +1165,7 @@ func TestInstallVersionListFailureWritesNothing(t *testing.T) {
 	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
 	gameDir := t.TempDir()
 
-	result := svc.InstallVersion(testVersionID, gameDir, nil)
+	result := svc.InstallVersion(context.Background(), testVersionID, gameDir, nil)
 	if result.Success {
 		t.Fatal("expected failure when the version list is unavailable")
 	}
@@ -1179,7 +1180,7 @@ func TestInstallVersionJarFailureStopsBeforeLibraries(t *testing.T) {
 	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
 	gameDir := t.TempDir()
 
-	result := svc.InstallVersion(testVersionID, gameDir, nil)
+	result := svc.InstallVersion(context.Background(), testVersionID, gameDir, nil)
 	if result.Success {
 		t.Fatal("expected failure when the jar download fails")
 	}
@@ -1223,7 +1224,7 @@ func TestInstallVersionLibraryFailureSkipsNatives(t *testing.T) {
 	failSvc := NewBMCLAPIServiceWithBaseURL(failSrv.URL)
 	gameDir := t.TempDir()
 
-	result := failSvc.InstallVersion(testVersionID, gameDir, nil)
+	result := failSvc.InstallVersion(context.Background(), testVersionID, gameDir, nil)
 	if result.Success {
 		t.Fatal("expected failure when a library download fails")
 	}
@@ -1260,7 +1261,7 @@ func TestInstallVersionAssetFailureCleansUp(t *testing.T) {
 	defer failSrv.Close()
 
 	gameDir := t.TempDir()
-	result := NewBMCLAPIServiceWithBaseURL(failSrv.URL).InstallVersion(testVersionID, gameDir, nil)
+	result := NewBMCLAPIServiceWithBaseURL(failSrv.URL).InstallVersion(context.Background(), testVersionID, gameDir, nil)
 	if result.Success {
 		t.Fatal("expected failure when the asset index download fails")
 	}
@@ -1287,7 +1288,7 @@ func TestInstallVersionFailureKeepsPreExistingInstall(t *testing.T) {
 	okSrv, _ := installFixtures(t, http.StatusOK)
 	defer okSrv.Close()
 	gameDir := t.TempDir()
-	if result := NewBMCLAPIServiceWithBaseURL(okSrv.URL).InstallVersion(testVersionID, gameDir, nil); !result.Success {
+	if result := NewBMCLAPIServiceWithBaseURL(okSrv.URL).InstallVersion(context.Background(), testVersionID, gameDir, nil); !result.Success {
 		t.Fatalf("initial install failed: %s", result.Error)
 	}
 	versionDir := filepath.Join(gameDir, "versions", testVersionID)
@@ -1299,7 +1300,7 @@ func TestInstallVersionFailureKeepsPreExistingInstall(t *testing.T) {
 	// Second attempt: same version, but the jar download now fails.
 	failSrv, _ := installFixtures(t, http.StatusInternalServerError)
 	defer failSrv.Close()
-	result := NewBMCLAPIServiceWithBaseURL(failSrv.URL).InstallVersion(testVersionID, gameDir, nil)
+	result := NewBMCLAPIServiceWithBaseURL(failSrv.URL).InstallVersion(context.Background(), testVersionID, gameDir, nil)
 	if result.Success {
 		t.Fatal("expected failure when the jar download fails")
 	}
