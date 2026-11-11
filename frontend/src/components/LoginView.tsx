@@ -1,6 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
-import { HRPAuthLogin } from '../../wailsjs/go/main/App';
+import {
+  HRPAuthLogin,
+  MicrosoftBeginDeviceCode,
+  MicrosoftCompleteDeviceCode,
+} from '../../wailsjs/go/main/App';
+import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
 import { t } from '../i18n';
 import { Button, IconButton } from '../ui/button';
 import { TextField, Field } from '../ui/field';
@@ -16,9 +21,24 @@ export interface LoggedInAccount {
   uuid: string;
   accessToken: string;
   clientToken: string;
-  // HRPAuth is the only login path (ADR-0008: offline login removed;
-  // Microsoft login is designed in ADR-0007 and gated on Azure approval).
-  authType: 'hrpauth';
+  // HRPAuth is the primary login path (ADR-0008 removed offline login);
+  // Microsoft login (ADR-0007) maps a licensed Minecraft account onto the
+  // same HA account.
+  authType: 'hrpauth' | 'microsoft';
+  // Present only for Microsoft logins: the MSA refresh token that the app
+  // shell persists to the OS keychain (90-day rolling, ADR-0007). It never
+  // reaches localStorage.
+  msaRefreshToken?: string;
+}
+
+// Device-code grant state shown while the Go side polls the MSA token
+// endpoint (MicrosoftBeginDeviceCode -> MicrosoftCompleteDeviceCode).
+interface DeviceCodeState {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  expiresIn: number;
+  interval: number;
 }
 
 export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginViewProps) {
@@ -27,6 +47,13 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Microsoft device-code flow (ADR-0007): null while the credential form is
+  // shown, set once the device code is issued and the Go side starts polling.
+  const [deviceCode, setDeviceCode] = useState<DeviceCodeState | null>(null);
+  const [msBusy, setMsBusy] = useState(false);
+  // Every begin/cancel bumps the flow id; a completing poll whose id no
+  // longer matches was cancelled and its result is dropped.
+  const msFlowRef = useRef(0);
 
   const handleLogin = async () => {
     setError('');
@@ -67,6 +94,122 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
     }
   };
 
+  const resetMicrosoftFlow = () => {
+    setDeviceCode(null);
+    setMsBusy(false);
+  };
+
+  // Microsoft login (ADR-0007): show a device code, then let the Go side
+  // walk MSA -> XBL -> XSTS -> Minecraft Services -> HA exchange while the
+  // player completes the sign-in in a browser.
+  const handleMicrosoftLogin = async () => {
+    setError('');
+    setMsBusy(true);
+    const flow = ++msFlowRef.current;
+    try {
+      const begin = await MicrosoftBeginDeviceCode();
+      if (!begin.success || !begin.data) {
+        setError(begin.error || t('login.microsoft.failed'));
+        setMsBusy(false);
+        return;
+      }
+      const dc = begin.data as {
+        device_code: string;
+        user_code: string;
+        verification_uri: string;
+        expires_in: number;
+        interval: number;
+      };
+      setDeviceCode({
+        deviceCode: dc.device_code,
+        userCode: dc.user_code,
+        verificationUri: dc.verification_uri,
+        expiresIn: dc.expires_in,
+        interval: dc.interval,
+      });
+
+      const complete = await MicrosoftCompleteDeviceCode(dc.device_code, dc.expires_in, dc.interval);
+      if (flow !== msFlowRef.current) return; // cancelled while polling
+      resetMicrosoftFlow();
+
+      if (complete.success && complete.data) {
+        const data = complete.data as {
+          accessToken?: string;
+          clientToken?: string;
+          msaRefreshToken?: string;
+          uuid?: string;
+          username?: string;
+        };
+        if (!data.uuid || !data.username) {
+          setError(t('login.noProfile'));
+          return;
+        }
+        onLoginSuccess({
+          username: data.username,
+          uuid: data.uuid,
+          accessToken: data.accessToken ?? '',
+          clientToken: data.clientToken || generateClientToken(),
+          authType: 'microsoft',
+          msaRefreshToken: data.msaRefreshToken,
+        });
+      } else {
+        setError(complete.error || t('login.microsoft.failed'));
+      }
+    } catch {
+      // A cancelled flow must not touch the UI again.
+      if (flow === msFlowRef.current) {
+        resetMicrosoftFlow();
+        setError(t('login.microsoft.failed'));
+      }
+    }
+  };
+
+  const handleMicrosoftCancel = () => {
+    msFlowRef.current++;
+    resetMicrosoftFlow();
+    setError('');
+  };
+
+  // Device-code stage: the player finishes the sign-in in a browser while
+  // the Go side polls the MSA token endpoint.
+  if (deviceCode) {
+    return (
+      <div className="mx-auto mt-10 w-full max-w-[460px]">
+        <div className="rounded-lg bg-panel p-10">
+          <div className="flex flex-col gap-6">
+            {error && (
+              <Callout tone="danger" onDismiss={() => setError('')}>
+                {error}
+              </Callout>
+            )}
+
+            <p className="text-sm text-ink-soft">{t('login.microsoft.codePrompt')}</p>
+
+            <div
+              aria-label={t('login.microsoft.codeLabel')}
+              className="rounded-md border border-edge bg-raised px-4 py-5 text-center font-mono text-3xl font-semibold tracking-[0.3em] text-ink"
+            >
+              {deviceCode.userCode}
+            </div>
+
+            <div className="flex flex-col gap-2 text-sm text-ink-soft">
+              <span>{deviceCode.verificationUri}</span>
+              <Button variant="ghost" onClick={() => BrowserOpenURL(deviceCode.verificationUri)}>
+                {t('login.microsoft.openPage')}
+              </Button>
+            </div>
+
+            <p className="text-sm text-ink-faint">{t('login.microsoft.waiting')}</p>
+
+            <Button variant="ghost" onClick={handleMicrosoftCancel}>
+              {t('common.cancel')}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto mt-10 w-full max-w-[460px]">
       <div className="rounded-lg bg-panel p-10">
@@ -106,6 +249,16 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
 
           <Button size="lg" className="mt-4 w-full" onClick={handleLogin} loading={loading}>
             {t('login.submit')}
+          </Button>
+
+          <div className="flex items-center gap-3 text-xs text-ink-faint">
+            <div className="h-px flex-1 bg-edge" />
+            {t('login.or')}
+            <div className="h-px flex-1 bg-edge" />
+          </div>
+
+          <Button variant="secondary" className="w-full" onClick={handleMicrosoftLogin} loading={msBusy}>
+            {t('login.microsoft.submit')}
           </Button>
 
           <div className="text-center">
