@@ -7,6 +7,7 @@ import {
   DownloadVersion,
   InstallFabricLoader,
   InstallForgeLoader,
+  CancelInstall,
 } from '../../wailsjs/go/main/App';
 import InstallWizard from './InstallWizard';
 
@@ -19,6 +20,7 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   DownloadVersion: vi.fn(),
   InstallFabricLoader: vi.fn(),
   InstallForgeLoader: vi.fn(),
+  CancelInstall: vi.fn(),
 }));
 vi.mock('../../wailsjs/runtime/runtime', () => ({
   EventsOn: vi.fn(),
@@ -31,6 +33,7 @@ const mockGetForgeVersions = vi.mocked(GetForgeVersions);
 const mockDownloadVersion = vi.mocked(DownloadVersion);
 const mockInstallFabricLoader = vi.mocked(InstallFabricLoader);
 const mockInstallForgeLoader = vi.mocked(InstallForgeLoader);
+const mockCancelInstall = vi.mocked(CancelInstall);
 
 function mockManifest() {
   mockGetVersions.mockResolvedValue({
@@ -106,6 +109,31 @@ describe('InstallWizard', () => {
     await waitFor(() => expect(screen.getByText(/Installation failed: mirror down/)).toBeTruthy());
     fireEvent.click(screen.getByText('Retry'));
     await waitFor(() => expect(mockDownloadVersion).toHaveBeenCalledTimes(2));
+  });
+
+  it('cancels an in-flight install and finalizes cleanly', async () => {
+    // Hold the download open so the wizard stays in the installing phase.
+    let resolveDownload!: (v: unknown) => void;
+    const pending = new Promise(resolve => {
+      resolveDownload = resolve;
+    });
+    mockDownloadVersion.mockReturnValue(pending as ReturnType<typeof DownloadVersion>);
+    mockCancelInstall.mockResolvedValue({ success: true, data: { cancelled: true }, error: '' });
+
+    render(<InstallWizard onInstalled={vi.fn()} />);
+    await selectVersionAndNext();
+    fireEvent.click(screen.getAllByText('Next')[0]);
+    fireEvent.click(screen.getByText('Install'));
+
+    // Installing: a cancel control is offered.
+    fireEvent.click(await screen.findByText('Cancel'));
+    await waitFor(() => expect(mockCancelInstall).toHaveBeenCalledWith('1.99'));
+
+    // The backend settles the cancelled run with a failure; the wizard must
+    // finalize to the cancelled state rather than a scary error.
+    resolveDownload({ success: false, data: null, error: 'install cancelled' });
+    await waitFor(() => expect(screen.getByText(/Installation cancelled/)).toBeTruthy());
+    expect(screen.queryByText(/Installation failed/)).toBeNull();
   });
 
   it('shows the unified error state when the manifest fails', async () => {

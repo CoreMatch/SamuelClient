@@ -6,6 +6,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -50,7 +51,7 @@ func TestDownloadAssets(t *testing.T) {
 	assetsDir := filepath.Join(t.TempDir(), "assets")
 
 	var progressNames []string
-	result := svc.DownloadAssets(&BMCLAssetIndex{
+	result := svc.DownloadAssets(context.Background(), &BMCLAssetIndex{
 		ID:   "5",
 		URL:  "https://piston-meta.mojang.com/v1/assets/index.json",
 		Size: 1,
@@ -71,7 +72,7 @@ func TestDownloadAssets(t *testing.T) {
 
 	// Second run: the object exists, so it is skipped (no progress call).
 	progressNames = nil
-	result = svc.DownloadAssets(&BMCLAssetIndex{ID: "5", URL: "https://piston-meta.mojang.com/v1/assets/index.json"}, assetsDir, func(name string, downloaded, total int64) {
+	result = svc.DownloadAssets(context.Background(), &BMCLAssetIndex{ID: "5", URL: "https://piston-meta.mojang.com/v1/assets/index.json"}, assetsDir, func(name string, downloaded, total int64) {
 		progressNames = append(progressNames, name)
 	})
 	if !result.Success {
@@ -94,7 +95,7 @@ func TestGetFabricInstaller(t *testing.T) {
 
 	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
 	dir := t.TempDir()
-	result := svc.GetFabricInstaller("1.99", "0.15.0", dir)
+	result := svc.GetFabricInstaller(context.Background(), "1.99", "0.15.0", dir)
 	if !result.Success {
 		t.Fatalf("GetFabricInstaller failed: %s", result.Error)
 	}
@@ -116,7 +117,7 @@ func TestDownloadForgeInstaller(t *testing.T) {
 
 	svc := NewBMCLAPIServiceWithBaseURL(srv.URL)
 	dir := t.TempDir()
-	result := svc.DownloadForgeInstaller("1.12.2", "14.23.5.2859", dir)
+	result := svc.DownloadForgeInstaller(context.Background(), "1.12.2", "14.23.5.2859", dir)
 	if !result.Success {
 		t.Fatalf("DownloadForgeInstaller failed: %s", result.Error)
 	}

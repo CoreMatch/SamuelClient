@@ -19,9 +19,12 @@ package main
 //     and ends when the process exits.
 //   - "download:progress" — progress while DownloadVersion installs a
 //     version. Payload: {"version_id": string, "stage": "jar"|"library"|
-//     "native"|"asset"|"loader", "name": string, "downloaded": number,
-//     "total": number}. The "loader" stage is emitted by
-//     InstallFabricLoader/InstallForgeLoader.
+//     "native"|"asset"|"loader"|"cancelled", "name": string,
+//     "downloaded": number, "total": number}. The "loader" stage is emitted
+//     by InstallFabricLoader/InstallForgeLoader; total>0 means a real byte
+//     percentage is available, total<=0 means an indeterminate stage. A
+//     terminal "cancelled" stage is emitted when CancelInstall aborts a run so
+//     the progress UI can finalize instead of stalling mid-bar.
 //   - "interop:handoff" — match handoff lifecycle (INTEROP-SPEC.md).
 //     Payload: {"status": "pending"|"dismissed"|"gone"|"invalid"|
 //     "version_mismatch"|"pull_timeout", "handoff": <payload when pending>,
@@ -33,6 +36,7 @@ package main
 // frontend only sees the events and bindings below.
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
@@ -56,11 +60,79 @@ func (a *App) emit(event string, payload interface{}) {
 	wailsruntime.EventsEmit(a.ctx, event, payload)
 }
 
+// beginInstall registers a cancellable context for the install identified by
+// versionID and returns both. Starting an install for an id that is already in
+// flight cancels the previous run (only one tracked install per version id).
+// The caller must defer finishInstall(versionID, entry).
+func (a *App) beginInstall(versionID string) (context.Context, *installCancel) {
+	ctx, cancel := context.WithCancel(context.Background())
+	entry := &installCancel{cancel: cancel}
+	a.installMu.Lock()
+	if a.installCancels == nil {
+		a.installCancels = map[string]*installCancel{}
+	}
+	if prev, ok := a.installCancels[versionID]; ok {
+		prev.cancel()
+	}
+	a.installCancels[versionID] = entry
+	a.installMu.Unlock()
+	return ctx, entry
+}
+
+// finishInstall cancels and unregisters the install entry. It only deletes the
+// map entry if it still refers to this install, so a finished (e.g. superseded)
+// run never removes a newer install registered under the same version id.
+func (a *App) finishInstall(versionID string, entry *installCancel) {
+	entry.cancel()
+	a.installMu.Lock()
+	if cur, ok := a.installCancels[versionID]; ok && cur == entry {
+		delete(a.installCancels, versionID)
+	}
+	a.installMu.Unlock()
+}
+
+// CancelInstall aborts the in-flight download/install registered under
+// versionID (PENDING-DECISIONS #10). Idempotent: cancelling an id with no
+// running install succeeds without side effects. The cancelled install returns
+// from its own binding with an "install cancelled" error and runs its normal
+// failure cleanup, so a retry stays safe.
+func (a *App) CancelInstall(versionID string) *models.ApiResponse {
+	if versionID == "" {
+		return &models.ApiResponse{Success: false, Error: "version_id is required"}
+	}
+	a.installMu.Lock()
+	entry, ok := a.installCancels[versionID]
+	a.installMu.Unlock()
+	if !ok {
+		return &models.ApiResponse{Success: true, Data: map[string]interface{}{"cancelled": false}}
+	}
+	entry.cancel()
+	return &models.ApiResponse{Success: true, Data: map[string]interface{}{"cancelled": true}}
+}
+
+// installResult normalizes a service result after a cancellable install: when
+// the context was cancelled it reports the sentinel so the frontend can present
+// a clean "cancelled" outcome, and emits a terminal download:progress event so
+// any progress UI finalizes instead of stalling mid-bar.
+func (a *App) installResult(ctx context.Context, versionID string, result *models.ApiResponse) *models.ApiResponse {
+	if ctx.Err() == nil {
+		return result
+	}
+	a.emit("download:progress", map[string]interface{}{
+		"version_id": versionID,
+		"stage":      "cancelled",
+		"name":       "",
+		"downloaded": int64(0),
+		"total":      int64(0),
+	})
+	return &models.ApiResponse{Success: false, Error: services.ErrInstallCancelled.Error()}
+}
+
 // ==================== Versions & loaders (read) ====================
 
 // GetVersions returns the BMCLAPI version manifest list.
 func (a *App) GetVersions() *models.ApiResponse {
-	return a.bmclService.GetVersionList()
+	return a.bmclService.GetVersionList(context.Background())
 }
 
 // GetFabricVersions returns available Fabric loader versions for a Minecraft
@@ -458,6 +530,9 @@ func (a *App) DownloadVersion(versionID, gameDir string) *models.ApiResponse {
 		gameDir = a.launcherService.GetMinecraftDir()
 	}
 
+	ctx, entry := a.beginInstall(versionID)
+	defer a.finishInstall(versionID, entry)
+
 	progress := func(stage, name string, downloaded, total int64) {
 		a.emit("download:progress", map[string]interface{}{
 			"version_id": versionID,
@@ -468,7 +543,7 @@ func (a *App) DownloadVersion(versionID, gameDir string) *models.ApiResponse {
 		})
 	}
 
-	return a.bmclService.InstallVersion(versionID, gameDir, progress)
+	return a.installResult(ctx, versionID, a.bmclService.InstallVersion(ctx, versionID, gameDir, progress))
 }
 
 // InstallFabricLoader installs the Fabric loader profile on top of an
@@ -488,6 +563,9 @@ func (a *App) InstallFabricLoader(mcVersion, loaderVersion, gameDir string) *mod
 	}
 
 	versionID := fmt.Sprintf("fabric-loader-%s-%s", loaderVersion, mcVersion)
+	ctx, entry := a.beginInstall(versionID)
+	defer a.finishInstall(versionID, entry)
+
 	progress := func(stage, name string, downloaded, total int64) {
 		a.emit("download:progress", map[string]interface{}{
 			"version_id": versionID,
@@ -498,7 +576,7 @@ func (a *App) InstallFabricLoader(mcVersion, loaderVersion, gameDir string) *mod
 		})
 	}
 
-	return a.bmclService.InstallFabricLoader(mcVersion, loaderVersion, gameDir, progress)
+	return a.installResult(ctx, versionID, a.bmclService.InstallFabricLoader(ctx, mcVersion, loaderVersion, gameDir, progress))
 }
 
 // InstallForgeLoader downloads the Forge installer and runs it headless
@@ -517,6 +595,9 @@ func (a *App) InstallForgeLoader(mcVersion, forgeVersion, gameDir string) *model
 	}
 
 	versionID := mcVersion + "-forge-" + forgeVersion
+	ctx, entry := a.beginInstall(versionID)
+	defer a.finishInstall(versionID, entry)
+
 	progress := func(stage, name string, downloaded, total int64) {
 		a.emit("download:progress", map[string]interface{}{
 			"version_id": versionID,
@@ -534,7 +615,7 @@ func (a *App) InstallForgeLoader(mcVersion, forgeVersion, gameDir string) *model
 	}
 
 	javaPath := a.launcherService.GetJavaPath()
-	return a.bmclService.InstallForgeLoader(mcVersion, forgeVersion, gameDir, javaPath, logCallback, progress)
+	return a.installResult(ctx, versionID, a.bmclService.InstallForgeLoader(ctx, mcVersion, forgeVersion, gameDir, javaPath, logCallback, progress))
 }
 
 // ==================== Launch (write, streaming) ====================

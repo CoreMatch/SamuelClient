@@ -4,8 +4,10 @@ import (
 	"archive/zip"
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +23,21 @@ import (
 	"HRPMLW/internal/models"
 	"HRPMLW/internal/repository"
 )
+
+// ErrInstallCancelled is the sentinel wrapped by the install/download path when
+// the caller's context is cancelled (App.CancelInstall, PENDING-DECISIONS #10).
+// Bindings compare against it to report a clean "cancelled" outcome instead of
+// a generic failure.
+var ErrInstallCancelled = errors.New("install cancelled")
+
+// cancelled maps a context cancellation onto ErrInstallCancelled so every
+// install-path failure caused by a cancelled context is recognizable.
+func cancelled(ctx context.Context, cause error) error {
+	if ctx.Err() != nil {
+		return fmt.Errorf("%w: %v", ErrInstallCancelled, cause)
+	}
+	return cause
+}
 
 // ==================== Authlib Injector Service ====================
 
@@ -542,14 +559,24 @@ type BMCLOS struct {
 	Name string `json:"name"`
 }
 
+// getCtx issues a GET bound to ctx so an install cancelled via
+// App.CancelInstall aborts the in-flight request (PENDING-DECISIONS #10).
+func (b *BMCLAPIService) getCtx(ctx context.Context, url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return b.client.Do(req)
+}
+
 // GetVersionList returns all available Minecraft versions
 // BMCLAPI endpoint: /mc/game/version_manifest.json
-func (b *BMCLAPIService) GetVersionList() *models.ApiResponse {
+func (b *BMCLAPIService) GetVersionList(ctx context.Context) *models.ApiResponse {
 	url := b.baseURL + "/mc/game/version_manifest.json"
 
-	resp, err := b.client.Get(url)
+	resp, err := b.getCtx(ctx, url)
 	if err != nil {
-		return &models.ApiResponse{Success: false, Error: err.Error()}
+		return &models.ApiResponse{Success: false, Error: cancelled(ctx, err).Error()}
 	}
 	defer resp.Body.Close()
 
@@ -587,12 +614,12 @@ func (b *BMCLAPIService) toBMCLAPIMaven(u string) string {
 
 // GetVersionManifest returns version JSON for a specific version
 // The version URL from manifest should be replaced with BMCLAPI domain
-func (b *BMCLAPIService) GetVersionManifest(versionURL string) *models.ApiResponse {
+func (b *BMCLAPIService) GetVersionManifest(ctx context.Context, versionURL string) *models.ApiResponse {
 	bmclURL := b.toBMCLAPI(versionURL)
 
-	resp, err := b.client.Get(bmclURL)
+	resp, err := b.getCtx(ctx, bmclURL)
 	if err != nil {
-		return &models.ApiResponse{Success: false, Error: err.Error()}
+		return &models.ApiResponse{Success: false, Error: cancelled(ctx, err).Error()}
 	}
 	defer resp.Body.Close()
 
@@ -629,17 +656,23 @@ func (b *BMCLAPIService) GetVersionJAR(versionJSON *BMCLVersionJSON) *models.Api
 	}}
 }
 
-// DownloadFile downloads a file with progress callback
-func (b *BMCLAPIService) DownloadFile(url, destPath string, expectedSize int64, progressCallback func(downloaded, total int64)) *models.ApiResponse {
+// DownloadFile downloads a file with progress callback. The request is bound
+// to ctx so a cancelled install aborts the transfer mid-stream
+// (PENDING-DECISIONS #10); a cancelled download reports ErrInstallCancelled.
+func (b *BMCLAPIService) DownloadFile(ctx context.Context, url, destPath string, expectedSize int64, progressCallback func(downloaded, total int64)) *models.ApiResponse {
 	// Create directory if not exists
 	dir := filepath.Dir(destPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return &models.ApiResponse{Success: false, Error: err.Error()}
 	}
 
-	resp, err := b.client.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return &models.ApiResponse{Success: false, Error: err.Error()}
+	}
+	resp, err := b.client.Do(req)
+	if err != nil {
+		return &models.ApiResponse{Success: false, Error: cancelled(ctx, err).Error()}
 	}
 	defer resp.Body.Close()
 
@@ -684,7 +717,7 @@ func (b *BMCLAPIService) DownloadFile(url, destPath string, expectedSize int64, 
 			if err == io.EOF {
 				break
 			}
-			return &models.ApiResponse{Success: false, Error: err.Error()}
+			return &models.ApiResponse{Success: false, Error: cancelled(ctx, err).Error()}
 		}
 	}
 
@@ -697,9 +730,13 @@ func (b *BMCLAPIService) DownloadFile(url, destPath string, expectedSize int64, 
 
 // DownloadLibraries downloads all required libraries
 // BMCLAPI: https://libraries.minecraft.net/ -> https://bmclapi2.bangbang93.com/maven
-func (b *BMCLAPIService) DownloadLibraries(libraries []BMCLLibrary, libsDir string, progressCallback func(name string, downloaded, total int64)) *models.ApiResponse {
+func (b *BMCLAPIService) DownloadLibraries(ctx context.Context, libraries []BMCLLibrary, libsDir string, progressCallback func(name string, downloaded, total int64)) *models.ApiResponse {
 	var lastErr error
 	for _, lib := range libraries {
+		// A cancelled install stops the loop before the next file.
+		if ctx.Err() != nil {
+			return &models.ApiResponse{Success: false, Error: cancelled(ctx, ctx.Err()).Error()}
+		}
 		if !shouldDownloadLibrary(lib) {
 			continue
 		}
@@ -719,9 +756,14 @@ func (b *BMCLAPIService) DownloadLibraries(libraries []BMCLLibrary, libsDir stri
 			continue // Already exists
 		}
 
-		result := b.DownloadFile(url, artifactPath, artifact.Size, nil)
+		result := b.DownloadFile(ctx, url, artifactPath, artifact.Size, nil)
 		if !result.Success {
 			lastErr = fmt.Errorf("failed to download %s: %s", lib.Name, result.Error)
+			// A cancellation must not be swallowed by the continue-on-error
+			// library semantics: abort immediately.
+			if ctx.Err() != nil {
+				return &models.ApiResponse{Success: false, Error: cancelled(ctx, ctx.Err()).Error()}
+			}
 			continue // Try next library instead of failing completely
 		}
 
@@ -782,12 +824,12 @@ func (b *BMCLAPIService) GetFabricVersions(mcVersion string) *models.ApiResponse
 
 // GetFabricInstaller downloads Fabric installer
 // BMCLAPI: https://meta.fabricmc.net -> https://bmclapi2.bangbang93.com/fabric-meta
-func (b *BMCLAPIService) GetFabricInstaller(mcVersion, loaderVersion, targetDir string) *models.ApiResponse {
+func (b *BMCLAPIService) GetFabricInstaller(ctx context.Context, mcVersion, loaderVersion, targetDir string) *models.ApiResponse {
 	url := fmt.Sprintf("%s/fabric-meta/v2/versions/loader/%s/%s/profile/jar", b.baseURL, mcVersion, loaderVersion)
 
-	resp, err := b.client.Get(url)
+	resp, err := b.getCtx(ctx, url)
 	if err != nil {
-		return &models.ApiResponse{Success: false, Error: err.Error()}
+		return &models.ApiResponse{Success: false, Error: cancelled(ctx, err).Error()}
 	}
 	defer resp.Body.Close()
 
@@ -842,12 +884,12 @@ func (b *BMCLAPIService) GetForgeVersions(mcVersion string) *models.ApiResponse 
 // DownloadForgeInstaller downloads Forge installer
 // BMCLAPI serves the installer through its maven mirror (the historical
 // /forge/minecraft/<mc>/<ver>/installer endpoint 404s; verified live).
-func (b *BMCLAPIService) DownloadForgeInstaller(mcVersion, forgeVersion, targetDir string) *models.ApiResponse {
+func (b *BMCLAPIService) DownloadForgeInstaller(ctx context.Context, mcVersion, forgeVersion, targetDir string) *models.ApiResponse {
 	url := fmt.Sprintf("%s/maven/net/minecraftforge/forge/%s-%s/forge-%s-%s-installer.jar", b.baseURL, mcVersion, forgeVersion, mcVersion, forgeVersion)
 
-	resp, err := b.client.Get(url)
+	resp, err := b.getCtx(ctx, url)
 	if err != nil {
-		return &models.ApiResponse{Success: false, Error: err.Error()}
+		return &models.ApiResponse{Success: false, Error: cancelled(ctx, err).Error()}
 	}
 	defer resp.Body.Close()
 
@@ -889,16 +931,16 @@ func (b *BMCLAPIService) DownloadForgeInstaller(mcVersion, forgeVersion, targetD
 // download:progress contract). Failure removes a freshly created version
 // directory again (same semantics as InstallVersion); a pre-existing one is
 // left untouched so a retry cannot destroy a working loader install.
-func (b *BMCLAPIService) InstallFabricLoader(mcVersion, loaderVersion, gameDir string, progress func(stage, name string, downloaded, total int64)) *models.ApiResponse {
+func (b *BMCLAPIService) InstallFabricLoader(ctx context.Context, mcVersion, loaderVersion, gameDir string, progress func(stage, name string, downloaded, total int64)) *models.ApiResponse {
 	parentJSONPath := filepath.Join(gameDir, "versions", mcVersion, mcVersion+".json")
 	if _, err := os.Stat(parentJSONPath); err != nil {
 		return &models.ApiResponse{Success: false, Error: fmt.Sprintf("version %s is not installed; install the vanilla version first", mcVersion)}
 	}
 
 	profileURL := fmt.Sprintf("%s/fabric-meta/v2/versions/loader/%s/%s/profile/json", b.baseURL, mcVersion, loaderVersion)
-	resp, err := b.client.Get(profileURL)
+	resp, err := b.getCtx(ctx, profileURL)
 	if err != nil {
-		return &models.ApiResponse{Success: false, Error: err.Error()}
+		return &models.ApiResponse{Success: false, Error: cancelled(ctx, err).Error()}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -945,7 +987,7 @@ func (b *BMCLAPIService) InstallFabricLoader(mcVersion, loaderVersion, gameDir s
 	// Fabric meta omits artifact URLs for its own maven artifacts; derive
 	// them from the maven coordinates (verified against the live API).
 	b.fillMavenURLs(profile.Libraries)
-	libDownload := b.DownloadLibraries(profile.Libraries, filepath.Join(gameDir, "libraries"), libProgress)
+	libDownload := b.DownloadLibraries(ctx, profile.Libraries, filepath.Join(gameDir, "libraries"), libProgress)
 	if !libDownload.Success {
 		return fail(libDownload)
 	}
@@ -1076,12 +1118,12 @@ var forgeInstallTimeout = 10 * time.Minute
 // semantics as InstallVersion). logCallback may be invoked concurrently
 // (stdout and stderr are streamed in parallel). Verified against the real
 // 1.20.4 / 49.0.3 installer from the BMCLAPI mirror on JDK 25.
-func (b *BMCLAPIService) InstallForgeLoader(mcVersion, forgeVersion, gameDir, javaPath string, logCallback func(source, line string), progress func(stage, name string, downloaded, total int64)) *models.ApiResponse {
+func (b *BMCLAPIService) InstallForgeLoader(ctx context.Context, mcVersion, forgeVersion, gameDir, javaPath string, logCallback func(source, line string), progress func(stage, name string, downloaded, total int64)) *models.ApiResponse {
 	installerName := "forge-installer-" + forgeVersion + ".jar"
 	if progress != nil {
 		progress("loader", installerName, 0, 0)
 	}
-	download := b.DownloadForgeInstaller(mcVersion, forgeVersion, gameDir)
+	download := b.DownloadForgeInstaller(ctx, mcVersion, forgeVersion, gameDir)
 	if !download.Success {
 		return download
 	}
@@ -1102,7 +1144,12 @@ func (b *BMCLAPIService) InstallForgeLoader(mcVersion, forgeVersion, gameDir, ja
 	if javaPath == "" {
 		javaPath = "java"
 	}
-	cmd := exec.Command(javaPath, "-jar", installerPath, "--installClient")
+	// The installer run is bounded by both the caller's cancellation and the
+	// standing forgeInstallTimeout; CommandContext kills the process when the
+	// derived context is done (PENDING-DECISIONS #10).
+	runCtx, runCancel := context.WithTimeout(ctx, forgeInstallTimeout)
+	defer runCancel()
+	cmd := exec.CommandContext(runCtx, javaPath, "-jar", installerPath, "--installClient")
 	cmd.Dir = gameDir
 
 	stdout, err := cmd.StdoutPipe()
@@ -1159,17 +1206,18 @@ func (b *BMCLAPIService) InstallForgeLoader(mcVersion, forgeVersion, gameDir, ja
 		return resp
 	}
 
-	select {
-	case err := <-waitErr:
-		<-streamDone
-		if err != nil {
+	err = <-waitErr
+	<-streamDone
+	if err != nil {
+		switch {
+		case ctx.Err() != nil:
+			// The caller cancelled the install (CancelInstall).
+			return fail(&models.ApiResponse{Success: false, Error: cancelled(ctx, err).Error()})
+		case runCtx.Err() == context.DeadlineExceeded:
+			return fail(&models.ApiResponse{Success: false, Error: fmt.Sprintf("forge installer timed out after %v", forgeInstallTimeout)})
+		default:
 			return fail(&models.ApiResponse{Success: false, Error: fmt.Sprintf("forge installer failed: %v (see launcher:log output)", err)})
 		}
-	case <-time.After(forgeInstallTimeout):
-		_ = cmd.Process.Kill()
-		<-waitErr
-		<-streamDone
-		return fail(&models.ApiResponse{Success: false, Error: fmt.Sprintf("forge installer timed out after %v", forgeInstallTimeout)})
 	}
 
 	// Verify the generated version directory.
@@ -1215,13 +1263,13 @@ func findForgeVersionDir(versionsRoot, mcVersion string) (id, dir string, found 
 
 // DownloadAssets downloads game assets
 // BMCLAPI: http://resources.download.minecraft.net -> https://bmclapi2.bangbang93.com/assets
-func (b *BMCLAPIService) DownloadAssets(assetIndex *BMCLAssetIndex, assetsDir string, progressCallback func(name string, downloaded, total int64)) *models.ApiResponse {
+func (b *BMCLAPIService) DownloadAssets(ctx context.Context, assetIndex *BMCLAssetIndex, assetsDir string, progressCallback func(name string, downloaded, total int64)) *models.ApiResponse {
 	// Download asset index JSON (rewritten to BMCLAPI mirror)
 	assetIndexURL := b.toBMCLAPI(assetIndex.URL)
 
-	resp, err := b.client.Get(assetIndexURL)
+	resp, err := b.getCtx(ctx, assetIndexURL)
 	if err != nil {
-		return &models.ApiResponse{Success: false, Error: err.Error()}
+		return &models.ApiResponse{Success: false, Error: cancelled(ctx, err).Error()}
 	}
 	defer resp.Body.Close()
 
@@ -1242,6 +1290,10 @@ func (b *BMCLAPIService) DownloadAssets(assetIndex *BMCLAssetIndex, assetsDir st
 
 	// Download each asset
 	for name, obj := range assetIndexJSON.Objects {
+		// A cancelled install stops the loop before the next object.
+		if ctx.Err() != nil {
+			return &models.ApiResponse{Success: false, Error: cancelled(ctx, ctx.Err()).Error()}
+		}
 		hash := obj.Hash
 		subDir := hash[:2]
 		url := fmt.Sprintf("%s/assets/%s/%s", b.baseURL, subDir, hash)
@@ -1251,7 +1303,7 @@ func (b *BMCLAPIService) DownloadAssets(assetIndex *BMCLAssetIndex, assetsDir st
 			continue // Already exists
 		}
 
-		result := b.DownloadFile(url, destPath, obj.Size, nil)
+		result := b.DownloadFile(ctx, url, destPath, obj.Size, nil)
 		if !result.Success {
 			return &models.ApiResponse{Success: false, Error: fmt.Sprintf("failed to download asset %s: %s", name, result.Error)}
 		}
@@ -1265,8 +1317,12 @@ func (b *BMCLAPIService) DownloadAssets(assetIndex *BMCLAssetIndex, assetsDir st
 }
 
 // DownloadNatives downloads native libraries for the current platform
-func (b *BMCLAPIService) DownloadNatives(libraries []BMCLLibrary, nativesDir string, progressCallback func(name string, downloaded, total int64)) *models.ApiResponse {
+func (b *BMCLAPIService) DownloadNatives(ctx context.Context, libraries []BMCLLibrary, nativesDir string, progressCallback func(name string, downloaded, total int64)) *models.ApiResponse {
 	for _, lib := range libraries {
+		// A cancelled install stops the loop before the next native.
+		if ctx.Err() != nil {
+			return &models.ApiResponse{Success: false, Error: cancelled(ctx, ctx.Err()).Error()}
+		}
 		if len(lib.Downloads.Classifiers) == 0 {
 			continue
 		}
@@ -1294,8 +1350,11 @@ func (b *BMCLAPIService) DownloadNatives(libraries []BMCLLibrary, nativesDir str
 		url := b.toBMCLAPIMaven(artifact.URL)
 
 		// Extract the native jar
-		resp, err := b.client.Get(url)
+		resp, err := b.getCtx(ctx, url)
 		if err != nil {
+			if ctx.Err() != nil {
+				return &models.ApiResponse{Success: false, Error: cancelled(ctx, err).Error()}
+			}
 			continue
 		}
 
@@ -1396,9 +1455,9 @@ func (b *BMCLAPIService) extractNatives(jarPath, destDir string) error {
 // surface live progress. stage is one of "jar", "library", "native" or
 // "asset"; name identifies the artifact; downloaded/total are byte counts.
 // The Wails binding forwards these as "download:progress" events.
-func (b *BMCLAPIService) InstallVersion(versionID, gameDir string, progress func(stage, name string, downloaded, total int64)) *models.ApiResponse {
+func (b *BMCLAPIService) InstallVersion(ctx context.Context, versionID, gameDir string, progress func(stage, name string, downloaded, total int64)) *models.ApiResponse {
 	// First get the version list to find the version URL
-	listResult := b.GetVersionList()
+	listResult := b.GetVersionList(ctx)
 	if !listResult.Success {
 		return listResult
 	}
@@ -1422,7 +1481,7 @@ func (b *BMCLAPIService) InstallVersion(versionID, gameDir string, progress func
 	}
 
 	// Get version manifest
-	manifestResult := b.GetVersionManifest(versionURL)
+	manifestResult := b.GetVersionManifest(ctx, versionURL)
 	if !manifestResult.Success {
 		return manifestResult
 	}
@@ -1494,7 +1553,7 @@ func (b *BMCLAPIService) InstallVersion(versionID, gameDir string, progress func
 	if progress != nil {
 		jarProgress = func(downloaded, total int64) { progress("jar", versionID+".jar", downloaded, total) }
 	}
-	jarDownload := b.DownloadFile(jarURL, jarPath, jarSize, jarProgress)
+	jarDownload := b.DownloadFile(ctx, jarURL, jarPath, jarSize, jarProgress)
 	if !jarDownload.Success {
 		return fail(jarDownload)
 	}
@@ -1505,7 +1564,7 @@ func (b *BMCLAPIService) InstallVersion(versionID, gameDir string, progress func
 	if progress != nil {
 		libProgress = func(name string, downloaded, total int64) { progress("library", name, downloaded, total) }
 	}
-	libDownload := b.DownloadLibraries(versionJSON.Libraries, librariesDir, libProgress)
+	libDownload := b.DownloadLibraries(ctx, versionJSON.Libraries, librariesDir, libProgress)
 	if !libDownload.Success {
 		return fail(libDownload)
 	}
@@ -1515,7 +1574,7 @@ func (b *BMCLAPIService) InstallVersion(versionID, gameDir string, progress func
 	if progress != nil {
 		nativeProgress = func(name string, downloaded, total int64) { progress("native", name, downloaded, total) }
 	}
-	nativesDownload := b.DownloadNatives(versionJSON.Libraries, nativesDir, nativeProgress)
+	nativesDownload := b.DownloadNatives(ctx, versionJSON.Libraries, nativesDir, nativeProgress)
 	if !nativesDownload.Success {
 		return fail(nativesDownload)
 	}
@@ -1530,7 +1589,7 @@ func (b *BMCLAPIService) InstallVersion(versionID, gameDir string, progress func
 		if progress != nil {
 			assetProgress = func(name string, downloaded, total int64) { progress("asset", name, downloaded, total) }
 		}
-		assetsDownload := b.DownloadAssets(&versionJSON.AssetIndex, assetsDir, assetProgress)
+		assetsDownload := b.DownloadAssets(ctx, &versionJSON.AssetIndex, assetsDir, assetProgress)
 		if !assetsDownload.Success {
 			return fail(assetsDownload)
 		}

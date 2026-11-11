@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Box, Feather, Flame } from 'lucide-react';
 import { Asset } from '@ha/ui';
 import {
@@ -8,6 +8,7 @@ import {
   DownloadVersion,
   InstallFabricLoader,
   InstallForgeLoader,
+  CancelInstall,
 } from '../../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 import { LoadingSkeleton, ErrorState } from './states';
@@ -66,10 +67,15 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
   const [selectedLoaderVersion, setSelectedLoaderVersion] = useState('');
 
   // Step 3 state: install lifecycle.
-  const [phase, setPhase] = useState<'idle' | 'installing' | 'success' | 'error'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'installing' | 'success' | 'error' | 'cancelled'>('idle');
   const [installError, setInstallError] = useState('');
   const [installedLabel, setInstalledLabel] = useState('');
   const [progress, setProgress] = useState<Record<string, InstallProgress>>({});
+  // activeInstallIdRef tracks the version id currently installing so the
+  // cancel button targets the right run; cancelRequestedRef distinguishes a
+  // user cancel from a genuine failure when the install promise settles.
+  const activeInstallIdRef = useRef('');
+  const cancelRequestedRef = useRef(false);
 
   const fetchVersions = useCallback(async () => {
     setLoading(true);
@@ -103,6 +109,16 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
   useEffect(() => {
     EventsOn('download:progress', (p: { version_id?: string; stage?: string; downloaded?: number; total?: number }) => {
       if (!p || !p.version_id) return;
+      // A terminal "cancelled" stage clears the entry so the bar finalizes
+      // instead of stalling mid-progress.
+      if (p.stage === 'cancelled') {
+        setProgress(prev => {
+          const next = { ...prev };
+          delete next[p.version_id as string];
+          return next;
+        });
+        return;
+      }
       let pct: number | null = null;
       if (p.total && p.total > 0 && typeof p.downloaded === 'number') {
         pct = Math.min(100, Math.floor((p.downloaded / p.total) * 100));
@@ -173,17 +189,21 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
     if (!selectedVersion) return;
     setPhase('installing');
     setInstallError('');
+    cancelRequestedRef.current = false;
     try {
+      activeInstallIdRef.current = selectedVersion.id;
       const download = await DownloadVersion(selectedVersion.id, '');
       if (!download.success) {
         throw new Error(download.error || 'Download failed');
       }
       if (loaderType === 'fabric') {
+        activeInstallIdRef.current = `fabric-loader-${selectedLoaderVersion}-${selectedVersion.id}`;
         const result = await InstallFabricLoader(selectedVersion.id, selectedLoaderVersion, '');
         if (!result.success) throw new Error(result.error || 'Loader install failed');
         const data = result.data as { version_id?: string } | null;
         setInstalledLabel(data?.version_id || expectedLoaderVersionId());
       } else if (loaderType === 'forge') {
+        activeInstallIdRef.current = `${selectedVersion.id}-forge-${selectedLoaderVersion}`;
         const result = await InstallForgeLoader(selectedVersion.id, selectedLoaderVersion, '');
         if (!result.success) throw new Error(result.error || 'Loader install failed');
         const data = result.data as { version_id?: string } | null;
@@ -194,9 +214,25 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
       setPhase('success');
       onInstalled();
     } catch (err) {
-      setInstallError(err instanceof Error ? err.message : String(err));
-      setPhase('error');
+      if (cancelRequestedRef.current) {
+        // A user-initiated cancel finalizes cleanly rather than surfacing a
+        // failure; the backend already ran its failure cleanup so a retry is
+        // safe.
+        setPhase('cancelled');
+      } else {
+        setInstallError(err instanceof Error ? err.message : String(err));
+        setPhase('error');
+      }
+    } finally {
+      activeInstallIdRef.current = '';
     }
+  };
+
+  const cancelInstall = () => {
+    const id = activeInstallIdRef.current;
+    if (!id) return;
+    cancelRequestedRef.current = true;
+    void CancelInstall(id);
   };
 
   const resetWizard = () => {
@@ -398,6 +434,11 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
                 )}
               </div>
               <Progress value={activeProgress?.pct ?? null} />
+              <div className="mt-3 flex justify-end">
+                <Button variant="secondary" onClick={cancelInstall}>
+                  {t('common.cancel')}
+                </Button>
+              </div>
             </div>
           )}
 
@@ -413,6 +454,12 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
             </div>
           )}
 
+          {phase === 'cancelled' && (
+            <div className="mt-5">
+              <Callout tone="warning">{t('wizard.installCancelled')}</Callout>
+            </div>
+          )}
+
           <div className="mt-8 flex justify-between">
             {phase === 'success' ? (
               <Button variant="secondary" onClick={resetWizard}>
@@ -423,7 +470,7 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
                 {t('wizard.back')}
               </Button>
             )}
-            {phase === 'success' ? null : phase === 'error' ? (
+            {phase === 'success' ? null : phase === 'error' || phase === 'cancelled' ? (
               <Button onClick={runInstall}>{t('common.retry')}</Button>
             ) : (
               <Button onClick={runInstall} disabled={phase === 'installing'} loading={phase === 'installing'}>

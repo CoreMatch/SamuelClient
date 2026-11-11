@@ -72,6 +72,7 @@ const en = {
   'wizard.summaryVanilla': 'Minecraft {version} (vanilla).',
   'wizard.installSuccess': 'Installed {version}.',
   'wizard.installFailed': 'Installation failed: {error}',
+  'wizard.installCancelled': 'Installation cancelled. You can retry when ready.',
   'install.step.jar': 'Game file',
   'install.step.library': 'Libraries',
   'install.step.native': 'Natives',
