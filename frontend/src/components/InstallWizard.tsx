@@ -10,9 +10,10 @@ import {
   InstallForgeLoader,
   CancelInstall,
 } from '../../wailsjs/go/main/App';
-import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 import { LoadingSkeleton, ErrorState } from './states';
 import { t } from '../i18n';
+import { useInstallProgress, installStepKey, stageIcon } from '../useInstallProgress';
+import type { InstallProgress } from '../useInstallProgress';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Select } from '../ui/select';
@@ -35,11 +36,6 @@ interface MCVersion {
 }
 
 type LoaderType = 'vanilla' | 'fabric' | 'forge';
-
-interface InstallProgress {
-  stage: string;
-  pct: number | null;
-}
 
 interface InstallWizardProps {
   // Called after a successful install so the installed list refreshes.
@@ -70,7 +66,8 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
   const [phase, setPhase] = useState<'idle' | 'installing' | 'success' | 'error' | 'cancelled'>('idle');
   const [installError, setInstallError] = useState('');
   const [installedLabel, setInstalledLabel] = useState('');
-  const [progress, setProgress] = useState<Record<string, InstallProgress>>({});
+  // download:progress subscription shared with the HomeView loader install.
+  const { progress, clearProgress } = useInstallProgress();
   // activeInstallIdRef tracks the version id currently installing so the
   // cancel button targets the right run; cancelRequestedRef distinguishes a
   // user cancel from a genuine failure when the install promise settles.
@@ -103,32 +100,6 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
   useEffect(() => {
     fetchVersions();
   }, [fetchVersions]);
-
-  // download:progress events drive the progress row (same contract as the
-  // old version list: {version_id, stage, name, downloaded, total}).
-  useEffect(() => {
-    EventsOn('download:progress', (p: { version_id?: string; stage?: string; downloaded?: number; total?: number }) => {
-      if (!p || !p.version_id) return;
-      // A terminal "cancelled" stage clears the entry so the bar finalizes
-      // instead of stalling mid-progress.
-      if (p.stage === 'cancelled') {
-        setProgress(prev => {
-          const next = { ...prev };
-          delete next[p.version_id as string];
-          return next;
-        });
-        return;
-      }
-      let pct: number | null = null;
-      if (p.total && p.total > 0 && typeof p.downloaded === 'number') {
-        pct = Math.min(100, Math.floor((p.downloaded / p.total) * 100));
-      }
-      setProgress(prev => ({ ...prev, [p.version_id as string]: { stage: p.stage || '', pct } }));
-    });
-    return () => {
-      EventsOff('download:progress');
-    };
-  }, []);
 
   // Entering the loader step fetches both loader catalogs for the selected
   // Minecraft version (top 5 each, mirroring the previous home dropdown).
@@ -243,7 +214,7 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
     setPhase('idle');
     setInstallError('');
     setInstalledLabel('');
-    setProgress({});
+    clearProgress();
   };
 
   // The progress row follows the active install: the vanilla download first,
@@ -482,30 +453,4 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
       )}
     </div>
   );
-}
-
-// Maps a "download:progress" stage to its i18n key; unknown stages fall
-// back to the generic game-file label instead of rendering a raw key.
-function installStepKey(stage: string): 'install.step.jar' | 'install.step.library' | 'install.step.native' | 'install.step.asset' | 'install.step.loader' {
-  switch (stage) {
-    case 'library':
-      return 'install.step.library';
-    case 'native':
-      return 'install.step.native';
-    case 'asset':
-      return 'install.step.asset';
-    case 'loader':
-      return 'install.step.loader';
-    default:
-      return 'install.step.jar';
-  }
-}
-
-// Graphical stage markers for the install progress row (text assists only):
-// file-download stages share the download glyph, the loader stage its own.
-function stageIcon(stage: string) {
-  if (stage === 'loader') {
-    return <Asset id="icon-loader" size={16} />;
-  }
-  return <Asset id="icon-download" size={16} />;
 }

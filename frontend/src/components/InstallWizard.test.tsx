@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import {
   GetVersions,
   GetFabricVersions,
@@ -142,7 +142,11 @@ describe('InstallWizard', () => {
     await waitFor(() =>
       expect(screen.getByText("Couldn't load the version list.")).toBeTruthy(),
     );
-    fireEvent.click(screen.getByText('Retry'));
+    // The async act lets the retried fetch settle inside act (no console
+    // noise after the test body ends).
+    await act(async () => {
+      fireEvent.click(screen.getByText('Retry'));
+    });
     expect(mockGetVersions).toHaveBeenCalledTimes(2);
   });
 });
