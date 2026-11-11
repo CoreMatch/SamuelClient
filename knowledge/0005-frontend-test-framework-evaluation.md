@@ -59,5 +59,5 @@ runner. No `package.json` change was made for this evaluation.
 - `frontend/src/vitest.setup.ts` — matchMedia stub for MUI under jsdom.
 - Patrol run on branch `chore/nightly-patrol`: `npm test` → 2 test files,
   10 tests passed; `npm run lint` → 0 errors / 0 warnings.
-- Mock seam: `frontend/src/components/LoginView.test.tsx:L8-L11 fp=93f13eb1 ~ vi.mock('../../wailsjs/go/main/App', () => ({` and
+- Mock seam: `frontend/src/components/LoginView.test.tsx:L13-L17 fp=328f44bb ~ vi.mock('../../wailsjs/go/main/App', () => ({` and
   `HomeView.test.tsx:18` (`vi.mock('../../wailsjs/go/main/App')`).
