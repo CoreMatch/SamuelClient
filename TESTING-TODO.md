@@ -256,3 +256,17 @@ button activation and view switching work, but Radix Select popovers do not
 open. This is a limitation of the synthetic-event verification channel, not
 an application defect — after each upgrade a human should click one dropdown
 manually to confirm the popover renders. Do not file this as a regression.
+
+**Microsoft login landed (2026-11-12, branches
+`feat/microsoft-login-client-20261112` /
+`feat/microsoft-login-frontend-20261112`)**: ADR-0007 is implemented against
+the public chain with swappable endpoints defaulting to the local mcmock.
+Frontend coverage added in `LoginView.test.tsx` (device-code rendering,
+open-page, exchange success → `authType: 'microsoft'` + MSA refresh token,
+begin/exchange failures, cancel drops late results) and
+`accountStorage.test.ts` (Microsoft accounts route through
+`StoreMicrosoftAccountTokens`; the refresh token never reaches
+localStorage). Note: item #7's historical LoginView description ("offline
+login via the type select") predates ADR-0008 and is obsolete — offline
+login no longer exists. Remaining gap from #7: VersionManager /
+AccountManager / SettingsView still have no dedicated tests.

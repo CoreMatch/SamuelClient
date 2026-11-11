@@ -1,6 +1,19 @@
-# ADR-0007: Microsoft Login Mapped onto HA Accounts — Design (Implementation Gated on Azure Approval)
+# ADR-0007: Microsoft Login Mapped onto HA Accounts — Design (Implemented Against the Public Chain; Azure Credentials Config-Only)
 
-- **Status**: proposed (design frozen; Microsoft-login implementation waits for an approved Azure application; the client-side prep work of this entry — offline removal, keychain token storage, disclaimer — is implemented)
+- **Status**: accepted (implemented 2026-11-12 against the public chain with swappable endpoints; only the real Azure credentials remain config-only)
+
+> **Implementation note (2026-11-12)**: the author unlocked implementation
+> before the Azure application / Mojang allowlist review by authorizing a
+> public-standard mock. Implemented and end-to-end verified: contract 1.2.0
+> registered in HA-Contract (`/authserver/microsoft`, `/player/microsoft-bind`,
+> `/player/microsoft-unbind`); server-side exchange/bind/unbind with
+> re-verification in HRPAuth-Yggdrasil-API; the local mock identity service
+> (`HRPAuth-Yggdrasil-API/tools/mcmock`, MSA/XBL/XSTS/Minecraft-Services on one
+> host); this client's device-code flow (`internal/services/microsoft_auth.go`,
+> `frontend/src/components/LoginView.tsx`) with the MSA refresh token in the OS
+> keychain (`StoreMicrosoftAccountTokens`). Every endpoint base is a swappable
+> var defaulting to the mock; when the Azure application passes review only
+> those values change, never the code path.
 
 ## Context
 
@@ -287,5 +300,8 @@ bump, run drift verification, then implement (standard contract-first rule).
 - Competitor patterns (dual channel, client-id policies, token storage,
   offline gating): HMCL/Prism source investigation, 2026-11-08 — external to
   this repo.
-- Not verified: review approval likelihood for this project; device-code UX
-  with `XboxLive.signin` on the consumers tenant (no first-hand test yet).
+- Not verified: review approval likelihood for this project. The device-code
+  UX with `XboxLive.signin` on the consumers tenant was first-hand verified
+  2026-11-12 against the local mcmock (same request/response shapes as the
+  public chain); verification against the real Microsoft endpoints remains
+  until the Azure application is approved.

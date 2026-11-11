@@ -1,11 +1,12 @@
-# DRAFT — DO NOT COMMIT TO HA-Contract yet.
+# SUPERSEDED — registered in HA-Contract 1.2.0 (2026-11-12).
 #
 # Contract draft for the Microsoft-login mapping endpoints of
 # HRPAuth-Yggdrasil-API, accompanying knowledge entry 0007 of SamuelClient.
-# Author decision 2026-11: lands in HA-Contract
-# docs/api/openapi/hrpauth-yggdrasil-business.yaml (version bump + drift
-# verification) only after the Azure application passes Mojang's allowlist
-# review. Until then this file is the single working copy.
+# The author unlocked implementation before the Azure review (public-standard
+# mock first); this draft was registered in HA-Contract
+# docs/api/openapi/hrpauth-yggdrasil-business.yaml 1.2.0 on 2026-11-12 and the
+# endpoints are implemented. Kept for history; the HA-Contract file is now the
+# single source of truth.
 #
 # Conventions follow the existing hrpauth-yggdrasil-business.yaml:
 #   - Yggdrasil protocol surface keeps the Mojang error envelope
