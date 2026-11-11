@@ -287,3 +287,16 @@ gains a cancel button, and a cancelled run emits a terminal
 download:progress stage so the bar finalizes. Failure cleanup / retry safety
 unchanged. New coverage: internal/services/cancel_test.go,
 bindings_test.go::TestCancelInstall, InstallWizard cancel-flow test.
+
+**HomeView loader quick-install progress/cancel parity (2026-11-12, branch
+`feat/homeview-loader-progress-20261112`)**: the HomeView loader dropdown
+install now shows a `download:progress` bar and a cancel button calling
+`CancelInstall(versionID)`, with the same semantics as the InstallWizard
+(real byte percentage for downloads, indeterminate loader stage, cancel
+clears the entry and finalizes to a retryable cancelled state — no residual
+rows). The subscription is extracted into the shared
+`frontend/src/useInstallProgress.tsx` hook (plus the stage label/icon
+helpers) used by both views, so the two paths cannot drift apart. New
+coverage: HomeView cancel-flow test (progress event rendering, cancel
+targeting the loader version id, cleared entry, retry re-runs the install).
+Frontend suite: 11 files / 72 tests, tsc/eslint clean.

@@ -209,7 +209,7 @@ After the migration landed, the owner decided a second round of reductions:
   comment at `bindings.go:L11-L27 fp=2ee046aa ~ Streaming (live launch logs, download progress) `); `main.go::main` (Bind); generated bindings
   are not committed (`.gitignore`, `frontend/wailsjs/`).
 - Event contract consumers: `bindings.go::emit` (`EventsEmit` wrapper),
-  `frontend/src/components/HomeView.tsx:L132-L132 fp=a3f3f8ec ~ EventsOff('launcher:log');` (`launcher:log`),
+  `frontend/src/components/HomeView.tsx:L152-L152 fp=a3f3f8ec ~ EventsOff('launcher:log');` (`launcher:log`),
   `frontend/src/components/VersionManager.tsx:L68-L68 fp=ef86bd47 ~ <TabsTrigger value="installed">{t('versions.tab.` (`download:progress`); the
   same contract text lives in `README.md:L99-L106 fp=b7e49263 ~ | Java (read) | `GetJavaInstallations` |`.
 - Logs retirement: `internal/database/database.go::runMigrations` (fresh databases
