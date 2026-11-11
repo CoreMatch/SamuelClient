@@ -1587,19 +1587,25 @@ func (l *LauncherService) GetJavaPath() string {
 		}
 	}
 
-	// Check common locations
-	paths := []string{
-		"/usr/bin/java",
-		"/usr/local/bin/java",
-		"/opt/java/bin/java",
-	}
-	for _, p := range paths {
+	// Check common locations.
+	for _, p := range commonJavaPaths {
 		if _, err := os.Stat(p); err == nil {
 			return p
 		}
 	}
 
 	return "java" // Fallback to PATH
+}
+
+// commonJavaPaths are the filesystem locations probed when JAVA_HOME is unset
+// or does not contain a usable bin/java. It is a package variable (rather than
+// an inline literal) so tests can point the scan at temporary files and cover
+// the common-path and bare-"java" fallback branches deterministically
+// (PENDING-DECISIONS #9, option B).
+var commonJavaPaths = []string{
+	"/usr/bin/java",
+	"/usr/local/bin/java",
+	"/opt/java/bin/java",
 }
 
 // Setting keys used to persist the launcher config in the `settings` table.
