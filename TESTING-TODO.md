@@ -268,5 +268,10 @@ begin/exchange failures, cancel drops late results) and
 `StoreMicrosoftAccountTokens`; the refresh token never reaches
 localStorage). Note: item #7's historical LoginView description ("offline
 login via the type select") predates ADR-0008 and is obsolete — offline
-login no longer exists. Remaining gap from #7: VersionManager /
-AccountManager / SettingsView still have no dedicated tests.
+login no longer exists. The #7 coverage gap is closed on
+`test/remaining-views-20261112`: dedicated suites for AccountManager
+(selection hydration from the keychain, legacy refusal, delete with
+keychain cleanup), VersionManager (installed-tab list, delete, empty
+state; wizard stubbed — it has its own suite) and SettingsView (Java
+CRUD flows, memory save + validation). Frontend suite: 11 files / 70
+tests.
