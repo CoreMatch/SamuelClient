@@ -206,7 +206,7 @@ After the migration landed, the owner decided a second round of reductions:
   `app.go:L13-L16 fp=b0b1f84b ~ )` (boundary note); `main.go::main` (`wails.Run` with the asset
   server and bindings only).
 - Binding surface: `bindings.go` (every bound method; the event-contract
-  comment at `bindings.go:L11-L24 fp=72dbe5ba ~ Streaming (live launch logs, download progress) `); `main.go::main` (Bind); generated bindings
+  comment at `bindings.go:L11-L27 fp=2ee046aa ~ Streaming (live launch logs, download progress) `); `main.go::main` (Bind); generated bindings
   are not committed (`.gitignore`, `frontend/wailsjs/`).
 - Event contract consumers: `bindings.go::emit` (`EventsEmit` wrapper),
   `frontend/src/components/HomeView.tsx:L132-L132 fp=a3f3f8ec ~ EventsOff('launcher:log');` (`launcher:log`),

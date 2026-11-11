@@ -275,3 +275,15 @@ keychain cleanup), VersionManager (installed-tab list, delete, empty
 state; wizard stubbed — it has its own suite) and SettingsView (Java
 CRUD flows, memory save + validation). Frontend suite: 11 files / 70
 tests.
+
+**GetJavaPath coverage + install cancellation landed (2026-11-12, author
+decisions on PENDING-DECISIONS #9/#10, both option B)**: item 6's GetJavaPath
+fallback gap is closed — the common-path scan is the injectable
+`commonJavaPaths` var with deterministic tests for the scan and bare-"java"
+branches. Item 11's cancellation is implemented — context.Context threads the
+whole install path (NewRequestWithContext + CommandContext), App holds a
+per-version cancel, `CancelInstall(versionID)` is a new binding, InstallWizard
+gains a cancel button, and a cancelled run emits a terminal
+download:progress stage so the bar finalizes. Failure cleanup / retry safety
+unchanged. New coverage: internal/services/cancel_test.go,
+bindings_test.go::TestCancelInstall, InstallWizard cancel-flow test.
