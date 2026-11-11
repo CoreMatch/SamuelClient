@@ -26,11 +26,12 @@ import (
 type App struct {
 	ctx context.Context
 
-	authService     *services.AuthService
-	bmclService     *services.BMCLAPIService
-	launcherService *services.LauncherService
-	javaRepo        *repository.JavaRepository
-	tokenStore      services.TokenStore
+	authService      *services.AuthService
+	microsoftService *services.MicrosoftService
+	bmclService      *services.BMCLAPIService
+	launcherService  *services.LauncherService
+	javaRepo         *repository.JavaRepository
+	tokenStore       services.TokenStore
 
 	// Match handoff state (INTEROP-SPEC §6): single pending slot plus the
 	// loopback server publishing it.
@@ -44,11 +45,12 @@ type App struct {
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		authService:     services.NewAuthService(),
-		bmclService:     services.NewBMCLAPIService(),
-		launcherService: services.NewLauncherService(),
-		javaRepo:        repository.NewJavaRepository(),
-		tokenStore:      services.NewKeychainTokenStore(),
+		authService:      services.NewAuthService(),
+		microsoftService: services.NewMicrosoftService(),
+		bmclService:      services.NewBMCLAPIService(),
+		launcherService:  services.NewLauncherService(),
+		javaRepo:         repository.NewJavaRepository(),
+		tokenStore:       services.NewKeychainTokenStore(),
 	}
 }
 

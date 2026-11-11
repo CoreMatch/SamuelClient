@@ -43,10 +43,12 @@ var HRPAuthBaseURL = "https://ha.mcnb.dev/yggdrasil-api"
 
 // IsHRPAuthAccount reports whether an account type is the HRPAuth flavor.
 // The legacy "authlib-injector" value (pre-migration stored accounts) is
-// accepted so un-migrated data keeps working.
+// accepted so un-migrated data keeps working. "microsoft" accounts (ADR-0007)
+// also end on an HA Yggdrasil session, so they launch through the same
+// authlib-injector path.
 func IsHRPAuthAccount(authType string) bool {
 	switch strings.ToLower(authType) {
-	case "hrpauth", "authlib-injector":
+	case "hrpauth", "authlib-injector", "microsoft":
 		return true
 	default:
 		return false

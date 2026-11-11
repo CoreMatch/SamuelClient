@@ -276,6 +276,89 @@ func (a *App) HRPAuthValidate(accessToken, clientToken string) *models.ApiRespon
 	return a.authService.ValidateHRPAuthToken(accessToken, clientToken)
 }
 
+// ==================== Microsoft login (ADR-0007) ====================
+//
+// The client walks the public Microsoft OAuth chain (endpoints swappable,
+// defaulting to the local mcmock) and exchanges the resulting Minecraft
+// Services token at the HA side. The MSA refresh token is persisted in the OS
+// keychain alongside the Yggdrasil session tokens.
+
+// MicrosoftBeginDeviceCode starts the MSA device-code flow. The frontend shows
+// the returned user_code + verification_uri, then calls
+// MicrosoftCompleteDeviceCode with the device_code.
+func (a *App) MicrosoftBeginDeviceCode() *models.ApiResponse {
+	dc, err := a.microsoftService.StartDeviceCode()
+	if err != nil {
+		return &models.ApiResponse{Success: false, Error: err.Error()}
+	}
+	return &models.ApiResponse{Success: true, Data: map[string]interface{}{
+		"device_code":      dc.DeviceCode,
+		"user_code":        dc.UserCode,
+		"verification_uri": dc.VerificationURI,
+		"expires_in":       dc.ExpiresIn,
+		"interval":         dc.Interval,
+	}}
+}
+
+// MicrosoftCompleteDeviceCode polls the device-code grant, walks the
+// XBL/XSTS/Minecraft chain, and exchanges the MC token for an HA Yggdrasil
+// session. It returns the session tokens, the MSA refresh token (for keychain
+// storage) and the resolved identity; the frontend persists metadata and calls
+// StoreMicrosoftAccountTokens.
+func (a *App) MicrosoftCompleteDeviceCode(deviceCode string, expiresIn, interval int) *models.ApiResponse {
+	if deviceCode == "" {
+		return &models.ApiResponse{Success: false, Error: "device code is required"}
+	}
+	dc := &services.DeviceCodeResponse{DeviceCode: deviceCode, ExpiresIn: expiresIn, Interval: interval}
+
+	msa, err := a.microsoftService.PollDeviceCode(dc)
+	if err != nil {
+		return &models.ApiResponse{Success: false, Error: err.Error()}
+	}
+	mcToken, err := a.microsoftService.FullChain(msa.AccessToken)
+	if err != nil {
+		return &models.ApiResponse{Success: false, Error: err.Error()}
+	}
+	exch, err := a.microsoftService.Exchange(mcToken, "")
+	if err != nil {
+		return &models.ApiResponse{Success: false, Error: err.Error()}
+	}
+
+	uuid, name := "", ""
+	if exch.SelectedProfile != nil {
+		uuid = exch.SelectedProfile.ID
+		name = exch.SelectedProfile.Name
+	}
+
+	return &models.ApiResponse{Success: true, Data: map[string]interface{}{
+		"accessToken":     exch.AccessToken,
+		"clientToken":     exch.ClientToken,
+		"msaRefreshToken": msa.RefreshToken,
+		"uuid":            uuid,
+		"username":        name,
+		"claimRequired":   exch.ClaimRequired,
+	}}
+}
+
+// StoreMicrosoftAccountTokens persists a Microsoft account's token triple
+// (Yggdrasil access/client + MSA refresh token) in the OS keychain.
+func (a *App) StoreMicrosoftAccountTokens(id, accessToken, clientToken, msaRefreshToken string) *models.ApiResponse {
+	if id == "" {
+		return &models.ApiResponse{Success: false, Error: "account id is required"}
+	}
+	if accessToken == "" {
+		return &models.ApiResponse{Success: false, Error: "access token is required"}
+	}
+	if err := a.tokenStore.Set(id, services.TokenPair{
+		AccessToken:     accessToken,
+		ClientToken:     clientToken,
+		MSARefreshToken: msaRefreshToken,
+	}); err != nil {
+		return &models.ApiResponse{Success: false, Error: err.Error()}
+	}
+	return &models.ApiResponse{Success: true}
+}
+
 // newClientToken generates a random 32-character client token.
 func newClientToken() string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
