@@ -194,6 +194,30 @@ func (a *App) GetLauncherConfig() *models.ApiResponse {
 	return &models.ApiResponse{Success: true, Data: a.launcherService.GetLauncherConfig()}
 }
 
+// ==================== Game directory (read / write) ====================
+
+// GetGameDirStatus reports the effective game directory for the settings UI.
+// Data is services.GameDirStatus: {"path": string, "source": "auto"|"custom",
+// "exists": bool}.
+func (a *App) GetGameDirStatus() *models.ApiResponse {
+	return &models.ApiResponse{Success: true, Data: a.launcherService.GameDirStatus()}
+}
+
+// SetGameDir persists a user-specified game directory. An empty dir clears
+// the override and returns to auto-detection. Data is the new GameDirStatus.
+func (a *App) SetGameDir(dir string) *models.ApiResponse {
+	return a.launcherService.SetGameDir(dir)
+}
+
+// ScanGameDirs walks common disk locations (home directory, plus drive roots
+// on Windows) looking for Minecraft game directories. Data is
+// {"dirs": []services.GameDirCandidate} with path and version_count per entry.
+func (a *App) ScanGameDirs() *models.ApiResponse {
+	return &models.ApiResponse{Success: true, Data: map[string]interface{}{
+		"dirs": services.ScanGameDirs(),
+	}}
+}
+
 // ==================== Match handoff (INTEROP-SPEC) ====================
 
 // GetPendingHandoff returns the currently pending match handoff, if any.
@@ -251,11 +275,12 @@ type InstalledVersion struct {
 	HasJAR  bool   `json:"has_jar"`
 }
 
-// GetInstalledVersions scans <gameDir>/versions and reports every directory
-// that contains a version JSON, so the UI can populate its version dropdown
-// from disk.
+// GetInstalledVersions scans the effective game directory's versions/ folder
+// (user override first, auto-detected default otherwise) and reports every
+// directory that contains a version JSON, so the UI can populate its version
+// dropdown from disk.
 func (a *App) GetInstalledVersions() *models.ApiResponse {
-	gameDir := a.launcherService.GetMinecraftDir()
+	gameDir := a.launcherService.ResolveGameDir()
 	versionsDir := filepath.Join(gameDir, "versions")
 
 	entries, err := os.ReadDir(versionsDir)
@@ -531,7 +556,7 @@ func (a *App) DownloadVersion(versionID, gameDir string) *models.ApiResponse {
 		return &models.ApiResponse{Success: false, Error: "version_id is required"}
 	}
 	if gameDir == "" {
-		gameDir = a.launcherService.GetMinecraftDir()
+		gameDir = a.launcherService.ResolveGameDir()
 	}
 
 	ctx, entry := a.beginInstall(versionID)
@@ -563,7 +588,7 @@ func (a *App) InstallFabricLoader(mcVersion, loaderVersion, gameDir string) *mod
 		return &models.ApiResponse{Success: false, Error: "loader version is required"}
 	}
 	if gameDir == "" {
-		gameDir = a.launcherService.GetMinecraftDir()
+		gameDir = a.launcherService.ResolveGameDir()
 	}
 
 	versionID := fmt.Sprintf("fabric-loader-%s-%s", loaderVersion, mcVersion)
@@ -595,7 +620,7 @@ func (a *App) InstallForgeLoader(mcVersion, forgeVersion, gameDir string) *model
 		return &models.ApiResponse{Success: false, Error: "forge version is required"}
 	}
 	if gameDir == "" {
-		gameDir = a.launcherService.GetMinecraftDir()
+		gameDir = a.launcherService.ResolveGameDir()
 	}
 
 	versionID := mcVersion + "-forge-" + forgeVersion
@@ -672,7 +697,7 @@ func (a *App) LaunchGame(req LaunchGameRequest) *models.ApiResponse {
 
 	gameDir := req.GameDir
 	if gameDir == "" {
-		gameDir = a.launcherService.GetMinecraftDir()
+		gameDir = a.launcherService.ResolveGameDir()
 	}
 
 	// Match handoff preflight (INTEROP-SPEC §6): validate the join target

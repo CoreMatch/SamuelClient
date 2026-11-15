@@ -1005,3 +1005,88 @@ func TestGetInteropStatusWithoutListener(t *testing.T) {
 		t.Errorf("status = %+v", data)
 	}
 }
+
+// ==================== game directory bindings ====================
+
+func TestGameDirBindings(t *testing.T) {
+	clearLauncherSettings(t)
+	t.Cleanup(func() { clearLauncherSettings(t) })
+	app := newTestApp()
+
+	dir := t.TempDir()
+	result := app.SetGameDir(dir)
+	if !result.Success {
+		t.Fatalf("SetGameDir failed: %s", result.Error)
+	}
+	status, ok := result.Data.(services.GameDirStatus)
+	if !ok || status.Path != dir || status.Source != "custom" || !status.Exists {
+		t.Fatalf("SetGameDir status = %+v, want custom %q exists", result.Data, dir)
+	}
+
+	result = app.GetGameDirStatus()
+	if !result.Success {
+		t.Fatalf("GetGameDirStatus failed: %s", result.Error)
+	}
+	if status, ok := result.Data.(services.GameDirStatus); !ok || status.Path != dir || status.Source != "custom" {
+		t.Fatalf("GetGameDirStatus = %+v, want custom %q", result.Data, dir)
+	}
+
+	// GetInstalledVersions must scan the override directory, not the
+	// platform default.
+	vdir := filepath.Join(dir, "versions", "1.99")
+	if err := os.MkdirAll(vdir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(vdir, "1.99.json"), []byte(`{"type": "release"}`), 0644); err != nil {
+		t.Fatalf("write json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(vdir, "1.99.jar"), []byte("jar"), 0644); err != nil {
+		t.Fatalf("write jar: %v", err)
+	}
+	result = app.GetInstalledVersions()
+	if !result.Success {
+		t.Fatalf("GetInstalledVersions failed: %s", result.Error)
+	}
+	versions := result.Data.(map[string]interface{})["versions"].([]InstalledVersion)
+	if len(versions) != 1 || versions[0].ID != "1.99" {
+		t.Fatalf("versions = %+v, want the override dir's 1.99", versions)
+	}
+
+	// Empty clears the override: back to auto-detection.
+	result = app.SetGameDir("")
+	if !result.Success {
+		t.Fatalf("SetGameDir(\"\") failed: %s", result.Error)
+	}
+	if status, ok := result.Data.(services.GameDirStatus); !ok || status.Source != "auto" {
+		t.Fatalf("after clear status = %+v, want auto", result.Data)
+	}
+}
+
+func TestSetGameDirBindingRejectsRelativePath(t *testing.T) {
+	clearLauncherSettings(t)
+	t.Cleanup(func() { clearLauncherSettings(t) })
+	app := newTestApp()
+	if result := app.SetGameDir("relative/path"); result.Success {
+		t.Error("relative path must be rejected")
+	}
+}
+
+func TestScanGameDirsBinding(t *testing.T) {
+	// The real disk walk is replaced through the services seam so the test
+	// never touches the developer's home directory.
+	old := services.ScanGameDirs
+	services.ScanGameDirs = func() []services.GameDirCandidate {
+		return []services.GameDirCandidate{{Path: "/fake/.minecraft", VersionCount: 2}}
+	}
+	t.Cleanup(func() { services.ScanGameDirs = old })
+
+	app := newTestApp()
+	result := app.ScanGameDirs()
+	if !result.Success {
+		t.Fatalf("ScanGameDirs failed: %s", result.Error)
+	}
+	dirs, ok := result.Data.(map[string]interface{})["dirs"].([]services.GameDirCandidate)
+	if !ok || len(dirs) != 1 || dirs[0].Path != "/fake/.minecraft" || dirs[0].VersionCount != 2 {
+		t.Fatalf("dirs = %+v, want the fake candidate", result.Data)
+	}
+}

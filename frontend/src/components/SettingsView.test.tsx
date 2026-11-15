@@ -10,6 +10,9 @@ import {
   UpdateJavaInstallation,
   DeleteJavaInstallation,
   SetDefaultJavaInstallation,
+  GetGameDirStatus,
+  SetGameDir,
+  ScanGameDirs,
 } from '../../wailsjs/go/main/App';
 
 // The Wails bindings are replaced with test doubles; the settings view must
@@ -22,6 +25,9 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   UpdateJavaInstallation: vi.fn(),
   DeleteJavaInstallation: vi.fn(),
   SetDefaultJavaInstallation: vi.fn(),
+  GetGameDirStatus: vi.fn(),
+  SetGameDir: vi.fn(),
+  ScanGameDirs: vi.fn(),
 }));
 
 const mockGetConfig = vi.mocked(GetLauncherConfig);
@@ -31,6 +37,9 @@ const mockAddJava = vi.mocked(AddJavaInstallation);
 const mockUpdateJava = vi.mocked(UpdateJavaInstallation);
 const mockDeleteJava = vi.mocked(DeleteJavaInstallation);
 const mockSetDefault = vi.mocked(SetDefaultJavaInstallation);
+const mockGetGameDirStatus = vi.mocked(GetGameDirStatus);
+const mockSetGameDir = vi.mocked(SetGameDir);
+const mockScanGameDirs = vi.mocked(ScanGameDirs);
 
 const launcherConfig = {
   java_path: '/opt/java/bin/java',
@@ -87,6 +96,13 @@ describe('SettingsView', () => {
     mockAddJava.mockResolvedValue(ok(javaRows));
     mockUpdateJava.mockResolvedValue(ok(javaRows));
     mockUpdateConfig.mockResolvedValue(ok({ ...launcherConfig, max_memory: 6144 }));
+    mockGetGameDirStatus.mockResolvedValue(
+      ok({ path: '/home/player/.minecraft', source: 'auto', exists: true }),
+    );
+    mockSetGameDir.mockResolvedValue(
+      ok({ path: '/games/mc/.minecraft', source: 'custom', exists: true }),
+    );
+    mockScanGameDirs.mockResolvedValue(ok({ dirs: [] }));
   });
 
   it('renders the Java installations with their paths', async () => {
@@ -194,5 +210,81 @@ describe('SettingsView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByText('Minimum memory cannot exceed maximum memory')).toBeTruthy();
     expect(mockUpdateConfig).not.toHaveBeenCalled();
+  });
+
+  it('shows the auto-detected game directory with its source badge', async () => {
+    renderView();
+
+    expect(await screen.findByText('Auto-detected')).toBeTruthy();
+    expect(screen.getByText('/home/player/.minecraft')).toBeTruthy();
+  });
+
+  it('warns when the game directory does not exist', async () => {
+    mockGetGameDirStatus.mockResolvedValue(
+      ok({ path: '/missing/.minecraft', source: 'auto', exists: false }),
+    );
+    renderView();
+
+    expect(
+      await screen.findByText("This directory doesn't exist yet. Installing a version will create it."),
+    ).toBeTruthy();
+  });
+
+  it('scans the disk and applies a found directory', async () => {
+    mockScanGameDirs.mockResolvedValue(
+      ok({
+        dirs: [
+          { path: '/games/mc/.minecraft', version_count: 2 },
+          { path: '/home/player/.minecraft', version_count: 1 },
+        ],
+      }),
+    );
+    renderView();
+    await screen.findAllByText('JDK 17');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scan disk' }));
+    expect(await screen.findByText('/games/mc/.minecraft')).toBeTruthy();
+    expect(screen.getByText('2 versions')).toBeTruthy();
+    // The directory already in use is marked and cannot be re-applied.
+    expect(screen.getByRole('button', { name: 'In use' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use' }));
+    await waitFor(() => expect(mockSetGameDir).toHaveBeenCalledWith('/games/mc/.minecraft'));
+  });
+
+  it('shows the empty notice when the scan finds nothing', async () => {
+    renderView();
+    await screen.findAllByText('JDK 17');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scan disk' }));
+    expect(
+      await screen.findByText('No game directories found. You can specify one manually.'),
+    ).toBeTruthy();
+  });
+
+  it('specifies a custom directory through the editor', async () => {
+    renderView();
+    await screen.findAllByText('JDK 17');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Specify directory' }));
+    fireEvent.change(screen.getByLabelText('Game Directory'), {
+      target: { value: '  /games/mc/.minecraft  ' },
+    });
+    // The editor's Save button renders before the memory section's Save.
+    const saveButtons = screen.getAllByRole('button', { name: 'Save' });
+    fireEvent.click(saveButtons[0]);
+
+    await waitFor(() => expect(mockSetGameDir).toHaveBeenCalledWith('/games/mc/.minecraft'));
+  });
+
+  it('resets a custom directory to auto-detection', async () => {
+    mockGetGameDirStatus.mockResolvedValue(
+      ok({ path: '/games/mc/.minecraft', source: 'custom', exists: true }),
+    );
+    renderView();
+
+    expect(await screen.findByText('Custom')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Use auto-detection' }));
+    await waitFor(() => expect(mockSetGameDir).toHaveBeenCalledWith(''));
   });
 });

@@ -1662,17 +1662,6 @@ func NewLauncherService() *LauncherService {
 	}
 }
 
-// GetMinecraftDir returns the Minecraft directory path
-func (l *LauncherService) GetMinecraftDir() string {
-	home, _ := os.UserHomeDir()
-	if runtime.GOOS == "windows" {
-		return filepath.Join(os.Getenv("APPDATA"), ".minecraft")
-	} else if runtime.GOOS == "darwin" {
-		return filepath.Join(home, "Library", "Application Support", "minecraft")
-	}
-	return filepath.Join(home, ".minecraft")
-}
-
 // GetJavaPath finds Java installation
 func (l *LauncherService) GetJavaPath() string {
 	javaHome := os.Getenv("JAVA_HOME")
@@ -1731,10 +1720,7 @@ func (l *LauncherService) GetLauncherConfig() models.LauncherConfig {
 	width := parseIntSetting(settings[settingKeyGameWidth], 854)
 	height := parseIntSetting(settings[settingKeyGameHeight], 480)
 
-	gameDir := settings[settingKeyGameDir]
-	if gameDir == "" {
-		gameDir = l.GetMinecraftDir()
-	}
+	gameDir := l.ResolveGameDir()
 
 	javaArgs := settings[settingKeyJavaArgs]
 
@@ -1751,8 +1737,8 @@ func (l *LauncherService) GetLauncherConfig() models.LauncherConfig {
 }
 
 // SaveLauncherConfig persists the user-editable subset of the launcher
-// configuration. JavaPath and GameDir are auto-detected on every launch and
-// intentionally not overwritten here.
+// configuration. JavaPath is auto-detected on every launch and GameDir is
+// managed through SetGameDir; both are intentionally not overwritten here.
 //
 // The values are written to the `settings` table under the keys defined
 // above. Invalid (non-numeric) memory/size values are rejected before
@@ -1914,7 +1900,7 @@ func (l *LauncherService) BuildLaunchCommand(config models.LauncherConfig, versi
 
 	gameDir := config.GameDir
 	if gameDir == "" {
-		gameDir = l.GetMinecraftDir()
+		gameDir = l.ResolveGameDir()
 	}
 
 	librariesDir := filepath.Join(gameDir, "libraries")
@@ -2170,7 +2156,7 @@ func (l *LauncherService) LaunchGame(config models.LauncherConfig, version *mode
 
 	gameDir := config.GameDir
 	if gameDir == "" {
-		gameDir = l.GetMinecraftDir()
+		gameDir = l.ResolveGameDir()
 	}
 
 	logsDir := filepath.Join(gameDir, "logs")

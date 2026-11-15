@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FolderOpen, Pencil, Plus, Save, Star, Trash2, X } from 'lucide-react';
+import { FolderOpen, Pencil, Plus, Save, Search, Star, Trash2, X } from 'lucide-react';
 import {
   GetLauncherConfig,
   GetJavaInstallations,
@@ -8,10 +8,14 @@ import {
   UpdateJavaInstallation,
   DeleteJavaInstallation,
   SetDefaultJavaInstallation,
+  GetGameDirStatus,
+  SetGameDir,
+  ScanGameDirs,
 } from '../../wailsjs/go/main/App';
 import { LoadingSkeleton } from './states';
 import { t } from '../i18n';
 import { Button, IconButton } from '../ui/button';
+import { Badge } from '../ui/badge';
 import { TextField } from '../ui/field';
 import { Slider } from '../ui/progress';
 import { Callout } from '../ui/callout';
@@ -36,6 +40,17 @@ interface LauncherConfig {
   game_width: number;
   game_height: number;
   java_args?: string;
+}
+
+interface GameDirStatus {
+  path: string;
+  source: 'auto' | 'custom';
+  exists: boolean;
+}
+
+interface GameDirCandidate {
+  path: string;
+  version_count: number;
 }
 
 // Maximum memory cap for the slider. Minecraft's launcher standard does not
@@ -73,9 +88,21 @@ export default function SettingsView() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [dirty, setDirty] = useState(false);
 
+  // Game directory: effective path + source (auto-detected vs user override),
+  // the on-demand disk scan results, and the manual-path editor.
+  const [gameDirStatus, setGameDirStatus] = useState<GameDirStatus | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanResults, setScanResults] = useState<GameDirCandidate[] | null>(null);
+  const [scanError, setScanError] = useState('');
+  const [editingDir, setEditingDir] = useState(false);
+  const [dirDraft, setDirDraft] = useState('');
+  const [dirError, setDirError] = useState('');
+  const [savingDir, setSavingDir] = useState(false);
+
   useEffect(() => {
     fetchConfig();
     fetchJavaInstallations();
+    fetchGameDirStatus();
   }, []);
 
   const fetchConfig = async () => {
@@ -91,6 +118,58 @@ export default function SettingsView() {
       }
     } catch (err) {
       console.error('Failed to fetch config:', err);
+    }
+  };
+
+  const fetchGameDirStatus = async () => {
+    try {
+      const result = await GetGameDirStatus();
+      if (result.success && result.data) {
+        setGameDirStatus(result.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch game directory status:', err);
+    }
+  };
+
+  // applyGameDir persists a directory choice (empty = back to auto-detection)
+  // and refreshes both the status badge and the config used by the mods
+  // folder shortcut.
+  const applyGameDir = async (dir: string) => {
+    setSavingDir(true);
+    setDirError('');
+    try {
+      const result = await SetGameDir(dir);
+      if (result.success && result.data) {
+        setGameDirStatus(result.data);
+        setEditingDir(false);
+        setScanResults(null);
+        fetchConfig();
+      } else {
+        setDirError(result.error || t('settings.dirSaveFailed'));
+      }
+    } catch {
+      setDirError(t('settings.dirSaveFailed'));
+    } finally {
+      setSavingDir(false);
+    }
+  };
+
+  const handleScanGameDirs = async () => {
+    setScanning(true);
+    setScanError('');
+    setScanResults(null);
+    try {
+      const result = await ScanGameDirs();
+      if (result.success) {
+        setScanResults(result.data?.dirs ?? []);
+      } else {
+        setScanError(result.error || t('settings.scanFailed'));
+      }
+    } catch {
+      setScanError(t('settings.scanFailed'));
+    } finally {
+      setScanning(false);
     }
   };
 
@@ -374,10 +453,100 @@ export default function SettingsView() {
             )}
           </div>
           <div>
-            <p className="text-sm font-medium text-ink-muted">{t('settings.gameDir')}</p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-medium text-ink-muted">{t('settings.gameDir')}</p>
+              {gameDirStatus && (
+                <Badge tone={gameDirStatus.source === 'custom' ? 'info' : 'neutral'}>
+                  {gameDirStatus.source === 'custom' ? t('settings.gameDirCustom') : t('settings.gameDirAuto')}
+                </Badge>
+              )}
+            </div>
             <p className="mt-2 break-all rounded bg-white/4 px-3 py-1.5 font-mono text-sm text-ink-muted">
-              {config?.game_dir || t('settings.notConfigured')}
+              {gameDirStatus?.path || config?.game_dir || t('settings.notConfigured')}
             </p>
+            {gameDirStatus && !gameDirStatus.exists && (
+              <p className="mt-2 text-sm text-warn">{t('settings.gameDirMissing')}</p>
+            )}
+            <div className="mt-3 flex flex-wrap gap-3">
+              <Button variant="secondary" onClick={handleScanGameDirs} loading={scanning}>
+                {!scanning && <Search className="size-4" aria-hidden />}
+                {scanning ? t('settings.scanning') : t('settings.scanDirs')}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setEditingDir(true);
+                  setDirDraft(gameDirStatus?.path ?? '');
+                  setDirError('');
+                }}
+              >
+                <Pencil className="size-4" aria-hidden />
+                {t('settings.specifyDir')}
+              </Button>
+              {gameDirStatus?.source === 'custom' && (
+                <Button variant="secondary" onClick={() => applyGameDir('')} disabled={savingDir}>
+                  {t('settings.resetDir')}
+                </Button>
+              )}
+            </div>
+            {editingDir && (
+              <div className="mt-3 flex flex-col gap-3">
+                <TextField
+                  label={t('settings.gameDir')}
+                  value={dirDraft}
+                  onChange={e => setDirDraft(e.target.value)}
+                  placeholder="/home/user/.minecraft"
+                />
+                {dirError && <Callout tone="danger">{dirError}</Callout>}
+                <div className="flex gap-3">
+                  <Button
+                    onClick={() => applyGameDir(dirDraft.trim())}
+                    loading={savingDir}
+                    disabled={!dirDraft.trim()}
+                  >
+                    {!savingDir && <Save className="size-4" aria-hidden />}
+                    {t('settings.save')}
+                  </Button>
+                  <Button variant="secondary" onClick={() => setEditingDir(false)}>
+                    {t('common.cancel')}
+                  </Button>
+                </div>
+              </div>
+            )}
+            {scanError && (
+              <div className="mt-3">
+                <Callout tone="danger" onDismiss={() => setScanError('')}>
+                  {scanError}
+                </Callout>
+              </div>
+            )}
+            {scanResults &&
+              (scanResults.length === 0 ? (
+                <p className="mt-3 text-sm text-ink-muted">{t('settings.scanEmpty')}</p>
+              ) : (
+                <div className="mt-3 flex flex-col gap-2">
+                  {scanResults.map(candidate => (
+                    <div
+                      key={candidate.path}
+                      className="flex items-center justify-between gap-3 rounded-md bg-raised px-4 py-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="break-all font-mono text-sm text-ink">{candidate.path}</p>
+                        <p className="mt-0.5 text-xs text-ink-faint">
+                          {t('settings.versionCount', { count: candidate.version_count })}
+                        </p>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        onClick={() => applyGameDir(candidate.path)}
+                        disabled={savingDir || candidate.path === gameDirStatus?.path}
+                      >
+                        {candidate.path === gameDirStatus?.path ? t('settings.inUse') : t('settings.useDir')}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ))}
           </div>
         </div>
       </section>
@@ -391,8 +560,8 @@ export default function SettingsView() {
           onClick={() => {
             const base = config?.game_dir;
             if (!base) return;
-            // mods 目录 = 生效的游戏目录（用户设置优先，否则平台默认，见
-            // Go 侧 GetLauncherConfig/GetMinecraftDir）下的 mods/
+            // mods 目录 = 生效的游戏目录（用户设置优先，否则候选探测，见
+            // Go 侧 ResolveGameDir）下的 mods/
             const modsDir = `${base.replace(/[\\/]+$/, '')}/mods`.replace(/\\/g, '/');
             const fileUrl = modsDir.startsWith('/') ? `file://${modsDir}` : `file:///${modsDir}`;
             window.open(encodeURI(fileUrl), '_blank');
