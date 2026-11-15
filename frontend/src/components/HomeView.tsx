@@ -385,7 +385,7 @@ export default function HomeView({
         access_token: currentAccount.accessToken,
         client_token: currentAccount.clientToken,
         auth_type: currentAccount.authType,
-        authlib_jar: localStorage.getItem('authlib_jar_path') || '',
+        authlib_jar: '',
         authlib_meta: '',
         game_dir: '',
         java_path: '',

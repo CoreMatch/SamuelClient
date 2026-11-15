@@ -1829,6 +1829,71 @@ func TestBuildLaunchCommandHRPAuthInjector(t *testing.T) {
 	}
 }
 
+// LaunchGame must default to the bundled authlib-injector agent (ADR-0009)
+// for HRPAuth accounts, honour an explicit jar override, and never inject
+// for other account types.
+func TestLaunchGameBundledAuthlibJar(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skipf("fake java is a shell script; GOOS=%s", runtime.GOOS)
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	pointHRPAuthAt(t, "https://auth.example.com")
+
+	javaPath := filepath.Join(t.TempDir(), "java")
+	if err := os.WriteFile(javaPath, []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+		t.Fatalf("write fake java: %v", err)
+	}
+
+	svc := NewLauncherService()
+	version := &models.MinecraftVersion{VersionID: "1.99"}
+	account := &models.MinecraftAccount{Username: "Steve", UUID: "u", AccessToken: "at", ClientToken: "ct", AuthType: "hrpauth"}
+
+	launchArgs := func(jarOverride string) string {
+		t.Helper()
+		gameDir := t.TempDir()
+		writeVersionJSON(t, gameDir, "1.99", testVersionJSON)
+		res := svc.LaunchGame(
+			models.LauncherConfig{JavaPath: javaPath, GameDir: gameDir, AuthlibJar: jarOverride},
+			version, account, nil,
+		)
+		if !res.Success {
+			t.Fatalf("LaunchGame: %s", res.Error)
+		}
+		data, ok := res.Data.(map[string]interface{})
+		if !ok {
+			t.Fatalf("LaunchGame Data is %T, want map", res.Data)
+		}
+		args, ok := data["args"].([]string)
+		if !ok {
+			t.Fatalf("LaunchGame args is %T, want []string", data["args"])
+		}
+		return strings.Join(args, "\x00")
+	}
+
+	// No explicit jar: the bundled agent is extracted and injected.
+	bundled := filepath.Join(home, ".hrpml", "authlib-injector.jar")
+	joined := launchArgs("")
+	if want := "-javaagent:" + bundled + "=https://auth.example.com"; !strings.Contains(joined, want) {
+		t.Errorf("args missing %q\nfull args: %s", want, joined)
+	}
+	if _, err := os.Stat(bundled); err != nil {
+		t.Errorf("bundled jar was not extracted: %v", err)
+	}
+
+	// An explicit jar override is used verbatim.
+	joined = launchArgs("/opt/custom-authlib.jar")
+	if want := "-javaagent:/opt/custom-authlib.jar=https://auth.example.com"; !strings.Contains(joined, want) {
+		t.Errorf("args missing override %q\nfull args: %s", want, joined)
+	}
+
+	// Non-HRPAuth accounts never get the agent.
+	account.AuthType = "offline"
+	if joined = launchArgs(""); strings.Contains(joined, "-javaagent:") {
+		t.Errorf("offline account must not get -javaagent\nfull args: %s", joined)
+	}
+}
+
 func TestBuildLaunchCommandForgeTweakClass(t *testing.T) {
 	gameDir := t.TempDir()
 	writeVersionJSON(t, gameDir, "1.12.2", strings.Replace(testVersionJSON, "net.minecraft.client.main.Main", "net.minecraft.launchwrapper.Launch", 1))

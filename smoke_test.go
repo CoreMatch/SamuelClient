@@ -132,6 +132,9 @@ func TestSmokeLoginInstallLaunch(t *testing.T) {
 	authSrv := fakeHRPAuth(t)
 	bmclSrv := fakeBMCLAPI(t)
 	pointHRPAuthAt(t, authSrv.URL)
+	// The bundled authlib-injector jar is extracted under $HOME/.hrpml;
+	// keep that out of the real home directory.
+	t.Setenv("HOME", t.TempDir())
 
 	app := newTestApp()
 	app.bmclService = services.NewBMCLAPIServiceWithBaseURL(bmclSrv.URL)
@@ -216,5 +219,10 @@ func TestSmokeLoginInstallLaunch(t *testing.T) {
 	if !strings.Contains(content, "--username") || !strings.Contains(content, "SmokePlayer") ||
 		!strings.Contains(content, "--accessToken") || !strings.Contains(content, "smoke-access") {
 		t.Errorf("launch command in log lacks game args:\n%s", content)
+	}
+	// The hrpauth launch must inject the bundled authlib-injector agent
+	// (ADR-0009) pointed at the built-in HRPAuth endpoint.
+	if !strings.Contains(content, "-javaagent:") || !strings.Contains(content, "authlib-injector.jar="+authSrv.URL) {
+		t.Errorf("launch command in log lacks the bundled authlib-injector agent:\n%s", content)
 	}
 }

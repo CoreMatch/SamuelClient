@@ -2114,6 +2114,18 @@ func stripDashes(s string) string {
 // "launcher:log" event so the UI can render live launch logs without any
 // HTTP polling.
 func (l *LauncherService) LaunchGame(config models.LauncherConfig, version *models.MinecraftVersion, account *models.MinecraftAccount, logCallback func(source, line string)) *models.ApiResponse {
+	// HRPAuth sessions only authenticate in-game through authlib-injector;
+	// default to the agent bundled in the binary (ADR-0009) unless an
+	// explicit jar is configured. Extraction failure aborts the launch —
+	// without the agent the game could never join an online server.
+	if account != nil && IsHRPAuthAccount(account.AuthType) && config.AuthlibJar == "" {
+		jarPath, err := EnsureAuthlibInjectorJar()
+		if err != nil {
+			return &models.ApiResponse{Success: false, Error: fmt.Sprintf("authlib-injector: %v", err)}
+		}
+		config.AuthlibJar = jarPath
+	}
+
 	args, err := l.BuildLaunchCommand(config, version, account)
 	if err != nil {
 		return &models.ApiResponse{Success: false, Error: err.Error()}

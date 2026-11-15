@@ -175,7 +175,7 @@ export default function App() {
         access_token: account.accessToken,
         client_token: account.clientToken,
         auth_type: account.authType,
-        authlib_jar: localStorage.getItem('authlib_jar_path') || '',
+        authlib_jar: '',
         authlib_meta: '',
         game_dir: '',
         java_path: '',

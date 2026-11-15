@@ -623,13 +623,15 @@ func (a *App) InstallForgeLoader(mcVersion, forgeVersion, gameDir string) *model
 // LaunchGameRequest mirrors the previous POST /api/v1/launcher/launch body so
 // the frontend can keep the same field names.
 type LaunchGameRequest struct {
-	VersionID     string `json:"version_id"`
-	VersionType   string `json:"version_type"`
-	Username      string `json:"username"`
-	UUID          string `json:"uuid"`
-	AccessToken   string `json:"access_token"`
-	ClientToken   string `json:"client_token"`
-	AuthType      string `json:"auth_type"`
+	VersionID   string `json:"version_id"`
+	VersionType string `json:"version_type"`
+	Username    string `json:"username"`
+	UUID        string `json:"uuid"`
+	AccessToken string `json:"access_token"`
+	ClientToken string `json:"client_token"`
+	AuthType    string `json:"auth_type"`
+	// Optional override; empty launches with the agent bundled in the
+	// binary (ADR-0009).
 	AuthlibJar    string `json:"authlib_jar"`
 	AuthlibMeta   string `json:"authlib_meta"`
 	GameDir       string `json:"game_dir"`

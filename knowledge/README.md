@@ -42,3 +42,4 @@ Each entry is one page in ADR style:
 | [0006](0006-match-handoff-boundary.md) | Match Handoff Boundary: Loopback Interop Listener Beside the Wails Binding Surface | accepted |
 | [0007](0007-microsoft-login-and-ha-account-binding-design.md) | Microsoft Login Mapped onto HA Accounts — Design (Implementation Gated on Azure Approval) | proposed |
 | [0008](0008-ha-only-auth-prep.md) | HA-only Auth Prep: Offline Entry Removed, Tokens in the OS Keychain, Product Disclaimer | accepted |
+| [0009](0009-bundled-authlib-injector.md) | authlib-injector Agent Bundled in the Binary | accepted |
