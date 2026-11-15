@@ -43,3 +43,4 @@ Each entry is one page in ADR style:
 | [0007](0007-microsoft-login-and-ha-account-binding-design.md) | Microsoft Login Mapped onto HA Accounts — Design (Implementation Gated on Azure Approval) | proposed |
 | [0008](0008-ha-only-auth-prep.md) | HA-only Auth Prep: Offline Entry Removed, Tokens in the OS Keychain, Product Disclaimer | accepted |
 | [0009](0009-bundled-authlib-injector.md) | authlib-injector Agent Bundled in the Binary | accepted |
+| [0010](0010-portable-data-dir-and-token-fallback.md) | Portable Data Directory and Automatic Keychain-to-File Token Fallback | accepted |

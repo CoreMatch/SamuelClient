@@ -208,13 +208,13 @@ After the migration landed, the owner decided a second round of reductions:
 ## Evidence
 
 - No HTTP listener: `go.mod` (direct dependencies are Wails and SQLite only);
-  `app.go:L13-L16 fp=b0b1f84b ~ )` (boundary note); `main.go::main` (`wails.Run` with the asset
+  `app.go:L14-L17 fp=b0b1f84b ~ )` (boundary note); `main.go::main` (`wails.Run` with the asset
   server and bindings only).
 - Binding surface: `bindings.go` (every bound method; the event-contract
   comment at `bindings.go:L11-L36 fp=a6bcf502 ~ Streaming (live launch logs, download progress) `); `main.go::main` (Bind); generated bindings
   are not committed (`.gitignore`, `frontend/wailsjs/`).
 - Event contract consumers: `bindings.go::emit` (`EventsEmit` wrapper),
-  `frontend/src/components/HomeView.tsx:L123-L123 fp=a3f3f8ec ~ EventsOff('launcher:log');` (`launcher:log`),
+  `frontend/src/components/HomeView.tsx:L135-L135 fp=a3f3f8ec ~ EventsOff('launcher:log');` (`launcher:log`),
   `frontend/src/components/VersionManager.tsx:L68-L68 fp=ef86bd47 ~ <TabsTrigger value="installed">{t('versions.tab.` (`download:progress`); the
   same contract text lives in `README.md:L99-L106 fp=b7e49263 ~ | Java (read) | `GetJavaInstallations` |`.
 - Logs retirement: `internal/database/database.go::runMigrations` (fresh databases

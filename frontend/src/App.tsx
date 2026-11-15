@@ -41,9 +41,22 @@ const navItems: NavItem[] = [
   { id: 'settings', labelKey: 'nav.settings', icon: 'icon-settings' },
 ];
 
+const VERSION_STORAGE_KEY = 'selected_version';
+
+function readStoredVersion(): InstalledVersion | null {
+  try {
+    const raw = localStorage.getItem(VERSION_STORAGE_KEY);
+    if (!raw) return null;
+    const version = JSON.parse(raw) as InstalledVersion;
+    return version && typeof version.id === 'string' ? version : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
   const [selectedView, setSelectedView] = useState<string>('home');
-  const [selectedVersion, setSelectedVersion] = useState<InstalledVersion | null>(null);
+  const [selectedVersion, setSelectedVersion] = useState<InstalledVersion | null>(readStoredVersion);
   const [currentAccount, setCurrentAccount] = useState<StoredAccount | null>(null);
   const [showLogin, setShowLogin] = useState(false);
 
@@ -58,6 +71,7 @@ export default function App() {
   // migration, keychain availability, and token-storage warnings.
   const [offlineRemoved, setOfflineRemoved] = useState<string[] | null>(null);
   const [keychainError, setKeychainError] = useState('');
+  const [keychainFallback, setKeychainFallback] = useState(false);
   const [tokenStorageWarning, setTokenStorageWarning] = useState('');
 
   useEffect(() => {
@@ -80,7 +94,12 @@ export default function App() {
     setOfflineRemoved(consumeOfflineRemovedNotice());
     KeychainStatus()
       .then(result => {
-        if (result.success && result.data && result.data.available === false) {
+        if (!result.success || !result.data) return;
+        if (result.data.backend === 'file') {
+          // Automatic keychain-to-file fallback (ADR-0010): informational,
+          // not an error — sessions persist in tokens.json.
+          setKeychainFallback(true);
+        } else if (result.data.available === false) {
           setKeychainError(String(result.data.error || 'unknown error'));
         }
       })
@@ -241,6 +260,20 @@ export default function App() {
     setSelectedView('home');
   };
 
+  // The selected version survives restarts (localStorage metadata only).
+  const handleVersionSelect = (version: InstalledVersion | null) => {
+    setSelectedVersion(version);
+    try {
+      if (version) {
+        localStorage.setItem(VERSION_STORAGE_KEY, JSON.stringify(version));
+      } else {
+        localStorage.removeItem(VERSION_STORAGE_KEY);
+      }
+    } catch {
+      // Storage unavailable: the selection still works for this session.
+    }
+  };
+
   const handleAddAccount = () => {
     setShowLogin(true);
   };
@@ -267,13 +300,13 @@ export default function App() {
         return (
           <HomeView
             selectedVersion={selectedVersion}
-            onVersionSelect={setSelectedVersion}
+            onVersionSelect={handleVersionSelect}
             currentAccount={currentAccount}
             onOpenSettings={handleOpenSettings}
           />
         );
       case 'versions':
-        return <VersionManager onSelectVersion={setSelectedVersion} />;
+        return <VersionManager onSelectVersion={handleVersionSelect} />;
       case 'accounts':
         return (
           <AccountManager
@@ -287,7 +320,7 @@ export default function App() {
         return (
           <HomeView
             selectedVersion={selectedVersion}
-            onVersionSelect={setSelectedVersion}
+            onVersionSelect={handleVersionSelect}
             currentAccount={currentAccount}
             onOpenSettings={handleOpenSettings}
           />
@@ -383,6 +416,13 @@ export default function App() {
             {keychainError && (
               <div className="mb-4">
                 <Callout tone="danger">{t('app.keychainUnavailable', { error: keychainError })}</Callout>
+              </div>
+            )}
+            {keychainFallback && (
+              <div className="mb-4">
+                <Callout tone="info" onDismiss={() => setKeychainFallback(false)}>
+                  {t('app.keychainFallback')}
+                </Callout>
               </div>
             )}
             {tokenStorageWarning && (

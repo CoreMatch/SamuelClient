@@ -39,6 +39,7 @@ const en = {
   'play.launching': 'Launching…',
   'play.selectVersionAccount': 'Please select a version and account',
   'play.launchFailed': 'Failed to launch game. Please try again.',
+  'play.settingsSaveFailed': 'Could not save launch settings: {error}',
 
   // Versions page & install wizard
   'versions.tab.install': 'Install',
@@ -183,6 +184,8 @@ const en = {
     'The system credential store is unavailable on this machine. Session tokens cannot be stored securely; sign-in may need to be repeated and tokens may remain in fallback storage. ({error})',
   'app.tokenStorageWarning':
     'Signed in, but the session tokens could not be stored in the system credential store ({error}). This session works, but you may need to sign in again next time.',
+  'app.keychainFallback':
+    'This device has no usable OS keychain, so session tokens are kept in a local file (tokens.json) beside the launcher data. Keep that folder private.',
 
   // Match handoff (INTEROP-SPEC)
   'handoff.title': 'Match found',

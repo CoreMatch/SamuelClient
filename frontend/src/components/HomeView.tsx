@@ -13,6 +13,8 @@ import { Badge } from '../ui/badge';
 import {
   GetJavaInstallations,
   GetInstalledVersions,
+  GetLauncherConfig,
+  UpdateLauncherConfig,
   LaunchGame,
 } from '../../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
@@ -47,6 +49,15 @@ interface JavaInstallation {
   is_default: boolean;
 }
 
+// Persisted launch settings live in the backend settings table (SQLite).
+interface BackendLauncherConfig {
+  max_memory: number;
+  min_memory: number;
+  java_args: string;
+  game_width: number;
+  game_height: number;
+}
+
 // LiveLogLine is one line of game output streamed over the "launcher:log"
 // Wails event (ADR-0004).
 interface LiveLogLine {
@@ -63,6 +74,7 @@ interface HomeViewProps {
 }
 
 const STORAGE_KEY = 'launcher_settings';
+const JAVA_STORAGE_KEY = 'selected_java';
 
 interface LauncherSettings {
   maxMemory: number;
@@ -130,12 +142,11 @@ export default function HomeView({
       if (result.success && Array.isArray(result.data)) {
         const data = result.data as JavaInstallation[];
         setJavaInstallations(data);
+        // The user's last choice wins over the auto-detected default.
+        const storedId = localStorage.getItem(JAVA_STORAGE_KEY);
+        const stored = storedId ? data.find(j => String(j.id) === storedId) : undefined;
         const defaultJava = data.find((j: JavaInstallation) => j.is_default);
-        if (defaultJava) {
-          setSelectedJava(defaultJava);
-        } else if (data.length > 0) {
-          setSelectedJava(data[0]);
-        }
+        setSelectedJava(stored ?? defaultJava ?? data[0] ?? null);
       }
     } catch (err) {
       console.error('Failed to load Java installations:', err);
@@ -168,37 +179,81 @@ export default function HomeView({
             }));
           // merge, keep localStorage order, dedupe by id
           const seen = new Set(local.map(v => v.id));
-          const merged = [...local, ...fromDisk.filter(v => !seen.has(v.id))];
-          setVersions(merged);
+          applyVersions([...local, ...fromDisk.filter(v => !seen.has(v.id))]);
           return;
         }
       } catch (e) {
         console.error('Failed to query installed versions from backend:', e);
       }
-      setVersions(local);
+      applyVersions(local);
     } catch (err) {
       console.error('Failed to load versions:', err);
     }
   };
 
-  const loadSettings = () => {
+  const applyVersions = (list: InstalledVersion[]) => {
+    setVersions(list);
+    // A restored selection that is no longer installed must not linger.
+    if (currentVersion && !list.some(v => v.id === currentVersion.id)) {
+      setCurrentVersion(null);
+      onVersionSelect(null);
+    }
+  };
+
+  const loadSettings = async () => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(stored) });
+      const result = await GetLauncherConfig();
+      if (!result.success || !result.data) return;
+      const cfg = result.data as BackendLauncherConfig;
+      let next: LauncherSettings = {
+        maxMemory: cfg.max_memory,
+        minMemory: cfg.min_memory,
+        javaArgs: cfg.java_args ?? '',
+        gameWidth: cfg.game_width,
+        gameHeight: cfg.game_height,
+      };
+      // One-time adoption of settings saved before the SQLite migration.
+      const legacy = localStorage.getItem(STORAGE_KEY);
+      if (legacy) {
+        localStorage.removeItem(STORAGE_KEY);
+        try {
+          next = { ...next, ...JSON.parse(legacy) };
+        } catch {
+          // Corrupt legacy copy: keep the backend values.
+        }
+        await persistSettings(next);
       }
+      setSettings(next);
     } catch (err) {
       console.error('Failed to load settings:', err);
     }
   };
 
-  const saveSettings = (newSettings: LauncherSettings) => {
+  const persistSettings = async (next: LauncherSettings) => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newSettings));
-      setSettings(newSettings);
-    } catch (err) {
-      console.error('Failed to save settings:', err);
+      const result = await UpdateLauncherConfig({
+        java_path: '',
+        max_memory: next.maxMemory,
+        min_memory: next.minMemory,
+        java_args: next.javaArgs,
+        game_width: next.gameWidth,
+        game_height: next.gameHeight,
+        game_dir: '',
+        java_dir: '',
+        bmclapi_mirrors: '',
+        authlib_jar: '',
+      });
+      if (!result.success) {
+        setError(t('play.settingsSaveFailed', { error: result.error || 'unknown error' }));
+      }
+    } catch {
+      setError(t('play.settingsSaveFailed', { error: 'unexpected failure' }));
     }
+  };
+
+  const saveSettings = (newSettings: LauncherSettings) => {
+    setSettings(newSettings);
+    void persistSettings(newSettings);
   };
 
   const handleVersionChange = (versionId: string) => {
@@ -246,7 +301,7 @@ export default function HomeView({
         authlib_jar: '',
         authlib_meta: '',
         game_dir: '',
-        java_path: '',
+        java_path: selectedJava?.path ?? '',
         loader_type: loader?.type ?? '',
         loader_version: loader?.version ?? '',
         join_server: '',
@@ -319,6 +374,11 @@ export default function HomeView({
               onValueChange={value => {
                 const java = javaInstallations.find(j => String(j.id) === value);
                 setSelectedJava(java || null);
+                if (java) {
+                  localStorage.setItem(JAVA_STORAGE_KEY, String(java.id));
+                } else {
+                  localStorage.removeItem(JAVA_STORAGE_KEY);
+                }
               }}
               placeholder={t('play.noJava')}
               options={javaInstallations.map(j => ({

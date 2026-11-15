@@ -30,8 +30,9 @@ Product decisions recorded with the owner (2026-11-15):
   SHA-256 verified against the official artifact index:
   `9c7f4343e6c82034958ffb48c14a2cb0c85928be7283103ce17da00c6d5a7b10`.
 - `-javaagent` needs a real file, so `EnsureAuthlibInjectorJar`
-  materializes the embedded bytes to `~/.hrpml/authlib-injector.jar`
-  (the launcher data directory, shared with the SQLite database).
+  materializes the embedded bytes to `<data dir>/authlib-injector.jar`
+  (the launcher data directory beside the executable, shared with the
+  SQLite database; ADR-0010).
   An identical on-disk copy is left untouched; a missing or outdated copy
   is replaced atomically (temp file + rename).
 - `LauncherService.LaunchGame` defaults `config.AuthlibJar` to the
@@ -63,14 +64,15 @@ Product decisions recorded with the owner (2026-11-15):
 - Bundling + extraction: `internal/services/authlib_jar.go:17`
   (`go:embed`), `:22` (`AuthlibInjectorVersion`), `:28`
   (`EnsureAuthlibInjectorJar`); data directory from
-  `internal/database/database.go:24` (`DefaultConfig`, `~/.hrpml`).
-- Launch defaulting: `internal/services/mc_services.go:2117-2127`
-  (`LaunchGame`); injection site unchanged at
-  `internal/services/mc_services.go:1976-1988` (`BuildLaunchCommand`).
-- Binding override semantics: `bindings.go:633-635`
+  `internal/database/database.go:58` (`DefaultConfig`, portable data dir
+  per ADR-0010).
+- Launch defaulting: `internal/services/mc_services.go:2140-2150`
+  (`LaunchGame`); injection site at
+  `internal/services/mc_services.go:1999-2003` (`BuildLaunchCommand`).
+- Binding override semantics: `bindings.go:670-672`
   (`LaunchGameRequest.AuthlibJar`).
-- Frontend dead-read removal: `frontend/src/components/HomeView.tsx:388`,
-  `frontend/src/App.tsx:178` (both now send `authlib_jar: ''`).
+- Frontend dead-read removal: `frontend/src/components/HomeView.tsx:301`,
+  `frontend/src/App.tsx:197` (both now send `authlib_jar: ''`).
 - Tests: `internal/services/authlib_jar_test.go` (extraction,
   idempotence, corrupt-copy replacement, manifest/version cross-check),
   `internal/services/mc_services_test.go:1835`

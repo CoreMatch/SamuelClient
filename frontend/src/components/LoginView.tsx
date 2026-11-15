@@ -41,8 +41,10 @@ interface DeviceCodeState {
   interval: number;
 }
 
+const LAST_USERNAME_KEY = 'last_username';
+
 export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginViewProps) {
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(() => localStorage.getItem(LAST_USERNAME_KEY) ?? '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -77,6 +79,8 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
           setLoading(false);
           return;
         }
+        // Remember the login name (never the password) for the next sign-in.
+        localStorage.setItem(LAST_USERNAME_KEY, username.trim());
         onLoginSuccess({
           username: profile.name,
           uuid: profile.id,

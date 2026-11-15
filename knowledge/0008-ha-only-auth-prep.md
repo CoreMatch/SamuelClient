@@ -93,7 +93,9 @@ not depend on that gate and land now:
 - On machines without a secret service the migration refuses to run and the
   user sees the reason; tokens stay in legacy storage until the platform is
   fixed. This is deliberate: silent plaintext fallback after promising
-  keychain storage would be worse than a loud degradation.
+  keychain storage would be worse than a loud degradation. (Partially
+  superseded by ADR-0010: an automatic keychain-to-file fallback with a
+  visible UI notice is now the owner-approved trade-off.)
 - The keychain entry per account is keyed by the stable account id; deleting
   an account deletes its entry (best-effort — deletion must not fail on an
   already-clean keychain).

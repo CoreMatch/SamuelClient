@@ -35,6 +35,7 @@ const deviceCodeData = {
 describe('LoginView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   it('rejects login without credentials before calling the backend', async () => {
@@ -89,6 +90,32 @@ describe('LoginView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Login' }));
 
     expect(await screen.findByText('Invalid credentials')).toBeTruthy();
+  });
+
+  it('prefills the last used username', () => {
+    localStorage.setItem('last_username', 'steve');
+    render(<LoginView onLoginSuccess={vi.fn()} onSwitchToAccounts={vi.fn()} />);
+
+    expect((screen.getByLabelText('Username') as HTMLInputElement).value).toBe('steve');
+  });
+
+  it('remembers the username after a successful login', async () => {
+    mockHRPAuthLogin.mockResolvedValue({
+      success: true,
+      data: {
+        accessToken: 'access-1',
+        clientToken: 'client-1',
+        selectedProfile: { id: 'uuid-1', name: 'Steve' },
+      },
+      error: '',
+    });
+    render(<LoginView onLoginSuccess={vi.fn()} onSwitchToAccounts={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'steve' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Login' }));
+
+    await waitFor(() => expect(localStorage.getItem('last_username')).toBe('steve'));
   });
 
   it('offers no offline login path anymore (ADR-0008)', () => {
