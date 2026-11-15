@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -63,8 +64,11 @@ func NewApp() *App {
 		bmclService:      services.NewBMCLAPIService(),
 		launcherService:  services.NewLauncherService(),
 		javaRepo:         repository.NewJavaRepository(),
-		tokenStore:       services.NewKeychainTokenStore(),
-		installCancels:   map[string]*installCancel{},
+		tokenStore: services.NewFallbackTokenStore(
+			services.NewKeychainTokenStore(),
+			services.NewFileTokenStore(filepath.Join(database.DataDir(), "tokens.json")),
+		),
+		installCancels: map[string]*installCancel{},
 	}
 }
 
@@ -73,7 +77,9 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	// Initialize database
+	// Initialize database. Data lives next to the executable (ADR-0010);
+	// adopt any pre-portability ~/.hrpml data before opening the new path.
+	database.AdoptLegacyData(database.DataDir())
 	if err := database.Initialize(database.DefaultConfig()); err != nil {
 		fmt.Printf("Failed to initialize database: %v\n", err)
 	}

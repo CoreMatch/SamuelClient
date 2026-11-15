@@ -125,14 +125,89 @@ func TestMigrationsCreateExpectedIndexes(t *testing.T) {
 }
 
 func TestDefaultConfigPath(t *testing.T) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Skipf("cannot resolve home directory: %v", err)
-	}
+	dir := t.TempDir()
+	old := DataDirFn
+	DataDirFn = func() string { return dir }
+	t.Cleanup(func() { DataDirFn = old })
 
 	cfg := DefaultConfig()
-	want := filepath.Join(home, ".hrpml", "data.db")
+	want := filepath.Join(dir, "data.db")
 	if cfg.Path != want {
 		t.Errorf("DefaultConfig().Path = %q, want %q", cfg.Path, want)
+	}
+}
+
+func TestDirWritable(t *testing.T) {
+	if !dirWritable(t.TempDir()) {
+		t.Error("a fresh temp dir must be reported writable")
+	}
+	if dirWritable(filepath.Join(t.TempDir(), "does-not-exist")) {
+		t.Error("a missing dir must not be reported writable")
+	}
+}
+
+func TestAdoptLegacyDataMovesFiles(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads this on Windows
+	legacy := filepath.Join(home, ".hrpml")
+	if err := os.MkdirAll(legacy, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range map[string]string{"data.db": "legacy-db", "authlib-injector.jar": "legacy-jar"} {
+		if err := os.WriteFile(filepath.Join(legacy, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	dir := t.TempDir()
+	AdoptLegacyData(dir)
+
+	for name, want := range map[string]string{"data.db": "legacy-db", "authlib-injector.jar": "legacy-jar"} {
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil || string(data) != want {
+			t.Errorf("%s not adopted: %q err=%v", name, data, err)
+		}
+		if _, err := os.Stat(filepath.Join(legacy, name)); !os.IsNotExist(err) {
+			t.Errorf("%s still present in legacy dir: %v", name, err)
+		}
+	}
+}
+
+func TestAdoptLegacyDataKeepsExistingTarget(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	legacy := filepath.Join(home, ".hrpml")
+	if err := os.MkdirAll(legacy, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, "data.db"), []byte("legacy-db"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "data.db"), []byte("current-db"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	AdoptLegacyData(dir)
+
+	if data, err := os.ReadFile(filepath.Join(dir, "data.db")); err != nil || string(data) != "current-db" {
+		t.Errorf("existing target was overwritten: %q err=%v", data, err)
+	}
+}
+
+func TestAdoptLegacyDataNoLegacy(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	dir := t.TempDir()
+
+	AdoptLegacyData(dir)
+
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 0 {
+		t.Errorf("no-legacy adoption must be a no-op: err=%v entries=%d", err, len(entries))
 	}
 }

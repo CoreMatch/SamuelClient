@@ -3,16 +3,17 @@ package services
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
+
+	"HRPMLW/internal/database"
 )
 
-// swapMinecraftDirCandidates points the candidate probe at fn for one test.
-func swapMinecraftDirCandidates(t *testing.T, fn func() []string) {
+// swapDataDir points the launcher data directory at dir for one test.
+func swapDataDir(t *testing.T, dir string) {
 	t.Helper()
-	old := minecraftDirCandidates
-	minecraftDirCandidates = fn
-	t.Cleanup(func() { minecraftDirCandidates = old })
+	old := database.DataDirFn
+	database.DataDirFn = func() string { return dir }
+	t.Cleanup(func() { database.DataDirFn = old })
 }
 
 // makeGameDir creates root/name with a versions/ profile per given id (or an
@@ -35,70 +36,13 @@ func makeGameDir(t *testing.T, root, name string, versionIDs ...string) string {
 	return dir
 }
 
-func TestGetMinecraftDirProbesCandidatesInOrder(t *testing.T) {
-	root := t.TempDir()
-	missing := filepath.Join(root, "missing")
-	real := makeGameDir(t, root, "real", "1.0")
-	swapMinecraftDirCandidates(t, func() []string { return []string{missing, real} })
+func TestGetMinecraftDirIsPortableDefault(t *testing.T) {
+	dataDir := t.TempDir()
+	swapDataDir(t, dataDir)
 
-	if got := NewLauncherService().GetMinecraftDir(); got != real {
-		t.Errorf("GetMinecraftDir = %q, want %q", got, real)
-	}
-}
-
-func TestGetMinecraftDirSkipsExistingDirWithoutVersions(t *testing.T) {
-	// An existing but empty official directory must not shadow a populated
-	// alternative (the macOS multi-launcher case).
-	root := t.TempDir()
-	empty := makeGameDir(t, root, "empty")
-	real := makeGameDir(t, root, "real", "1.0")
-	swapMinecraftDirCandidates(t, func() []string { return []string{empty, real} })
-
-	if got := NewLauncherService().GetMinecraftDir(); got != real {
-		t.Errorf("GetMinecraftDir = %q, want %q", got, real)
-	}
-}
-
-func TestGetMinecraftDirFallsBackToFirstCandidate(t *testing.T) {
-	root := t.TempDir()
-	first := filepath.Join(root, "first")
-	second := filepath.Join(root, "second")
-	swapMinecraftDirCandidates(t, func() []string { return []string{first, second} })
-
-	if got := NewLauncherService().GetMinecraftDir(); got != first {
-		t.Errorf("GetMinecraftDir = %q, want fallback %q", got, first)
-	}
-}
-
-func TestDefaultMinecraftDirCandidates(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	var want []string
-	switch runtime.GOOS {
-	case "windows":
-		t.Setenv("USERPROFILE", home)
-		appData := filepath.Join(home, "AppData", "Roaming")
-		t.Setenv("APPDATA", appData)
-		want = []string{filepath.Join(appData, ".minecraft"), filepath.Join(home, ".minecraft")}
-	case "darwin":
-		want = []string{
-			filepath.Join(home, "Library", "Application Support", "minecraft"),
-			filepath.Join(home, ".minecraft"),
-		}
-	default:
-		want = []string{
-			filepath.Join(home, ".minecraft"),
-			filepath.Join(home, ".var", "app", "com.mojang.Minecraft", "data", "minecraft"),
-		}
-	}
-	got := defaultMinecraftDirCandidates()
-	if len(got) != len(want) {
-		t.Fatalf("candidates = %v, want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("candidate[%d] = %q, want %q", i, got[i], want[i])
-		}
+	want := filepath.Join(dataDir, ".minecraft")
+	if got := NewLauncherService().GetMinecraftDir(); got != want {
+		t.Errorf("GetMinecraftDir = %q, want %q", got, want)
 	}
 }
 
@@ -106,13 +50,12 @@ func TestResolveGameDirPrefersPersistedOverride(t *testing.T) {
 	clearLauncherSettings(t)
 	t.Cleanup(func() { clearLauncherSettings(t) })
 	root := t.TempDir()
-	detected := makeGameDir(t, root, "detected", "1.0")
+	swapDataDir(t, root)
 	override := makeGameDir(t, root, "override", "1.0")
-	swapMinecraftDirCandidates(t, func() []string { return []string{detected} })
 
 	svc := NewLauncherService()
-	if got := svc.ResolveGameDir(); got != detected {
-		t.Fatalf("ResolveGameDir without override = %q, want %q", got, detected)
+	if got, want := svc.ResolveGameDir(), filepath.Join(root, ".minecraft"); got != want {
+		t.Fatalf("ResolveGameDir without override = %q, want %q", got, want)
 	}
 	if res := svc.SetGameDir(override); !res.Success {
 		t.Fatalf("SetGameDir failed: %s", res.Error)
@@ -126,8 +69,8 @@ func TestGameDirStatus(t *testing.T) {
 	clearLauncherSettings(t)
 	t.Cleanup(func() { clearLauncherSettings(t) })
 	root := t.TempDir()
-	detected := makeGameDir(t, root, "detected", "1.0")
-	swapMinecraftDirCandidates(t, func() []string { return []string{detected} })
+	swapDataDir(t, root)
+	detected := makeGameDir(t, root, ".minecraft", "1.0")
 	svc := NewLauncherService()
 
 	status := svc.GameDirStatus()
@@ -150,7 +93,7 @@ func TestSetGameDirValidationAndClear(t *testing.T) {
 	t.Cleanup(func() { clearLauncherSettings(t) })
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	swapMinecraftDirCandidates(t, func() []string { return []string{filepath.Join(home, ".minecraft")} })
+	swapDataDir(t, home)
 	svc := NewLauncherService()
 
 	if res := svc.SetGameDir("relative/path"); res.Success {
@@ -165,7 +108,7 @@ func TestSetGameDirValidationAndClear(t *testing.T) {
 		t.Errorf("tilde expansion = %+v, want path %q source custom", status, want)
 	}
 
-	// Empty clears the override: back to auto-detection.
+	// Empty clears the override: back to the portable default.
 	if res := svc.SetGameDir(""); !res.Success {
 		t.Fatalf("SetGameDir(\"\") failed: %s", res.Error)
 	}

@@ -53,6 +53,14 @@ func newTestApp() *App {
 	}
 }
 
+// swapDataDir points the launcher data directory at dir for one test.
+func swapDataDir(t *testing.T, dir string) {
+	t.Helper()
+	old := database.DataDirFn
+	database.DataDirFn = func() string { return dir }
+	t.Cleanup(func() { database.DataDirFn = old })
+}
+
 func TestCancelInstall(t *testing.T) {
 	app := newTestApp()
 
@@ -629,6 +637,7 @@ func TestUpdateLauncherConfigBinding(t *testing.T) {
 func TestGetInstalledVersionsBinding(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	swapDataDir(t, home)
 
 	versionsDir := filepath.Join(home, ".minecraft", "versions")
 	// Complete version: json + jar.
@@ -874,6 +883,7 @@ func TestInstallForgeLoaderBindingSuccess(t *testing.T) {
 func TestGetInstalledVersionsLoaderInheritsParentJar(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	swapDataDir(t, home)
 
 	versionsDir := filepath.Join(home, ".minecraft", "versions")
 	parent := filepath.Join(versionsDir, "1.99")

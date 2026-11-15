@@ -12,15 +12,14 @@ import (
 )
 
 func TestEnsureAuthlibInjectorJar(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads this on Windows
+	dataDir := t.TempDir()
+	swapDataDir(t, dataDir)
 
 	path, err := EnsureAuthlibInjectorJar()
 	if err != nil {
 		t.Fatalf("EnsureAuthlibInjectorJar: %v", err)
 	}
-	if want := filepath.Join(home, ".hrpml", "authlib-injector.jar"); path != want {
+	if want := filepath.Join(dataDir, "authlib-injector.jar"); path != want {
 		t.Fatalf("jar path = %q, want %q", path, want)
 	}
 	content, err := os.ReadFile(path)

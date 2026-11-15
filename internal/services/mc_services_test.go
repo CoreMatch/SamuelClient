@@ -1838,6 +1838,7 @@ func TestLaunchGameBundledAuthlibJar(t *testing.T) {
 	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	swapDataDir(t, home)
 	pointHRPAuthAt(t, "https://auth.example.com")
 
 	javaPath := filepath.Join(t.TempDir(), "java")
@@ -1872,7 +1873,7 @@ func TestLaunchGameBundledAuthlibJar(t *testing.T) {
 	}
 
 	// No explicit jar: the bundled agent is extracted and injected.
-	bundled := filepath.Join(home, ".hrpml", "authlib-injector.jar")
+	bundled := filepath.Join(home, "authlib-injector.jar")
 	joined := launchArgs("")
 	if want := "-javaagent:" + bundled + "=https://auth.example.com"; !strings.Contains(joined, want) {
 		t.Errorf("args missing %q\nfull args: %s", want, joined)
@@ -2033,14 +2034,12 @@ func TestGetJavaPathFallsBackToBareJava(t *testing.T) {
 	}
 }
 
-func TestGetMinecraftDirUsesHome(t *testing.T) {
-	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
-		t.Skipf("linux-specific expectation; GOOS=%s", runtime.GOOS)
-	}
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	if got := NewLauncherService().GetMinecraftDir(); got != filepath.Join(home, ".minecraft") {
-		t.Errorf("GetMinecraftDir = %q, want %q", got, filepath.Join(home, ".minecraft"))
+func TestGetMinecraftDirPortableDefault(t *testing.T) {
+	dataDir := t.TempDir()
+	swapDataDir(t, dataDir)
+	want := filepath.Join(dataDir, ".minecraft")
+	if got := NewLauncherService().GetMinecraftDir(); got != want {
+		t.Errorf("GetMinecraftDir = %q, want %q", got, want)
 	}
 }
 

@@ -529,19 +529,27 @@ func (a *App) DeleteAccountTokens(id string) *models.ApiResponse {
 	return &models.ApiResponse{Success: true}
 }
 
-// KeychainStatus reports whether the OS credential store is usable on this
-// machine. Data is {"available": bool, "error": string}; the frontend shows a
-// persistent warning when unavailable instead of silently degrading.
+// KeychainStatus reports whether a credential store is usable on this
+// machine and which one is active. Data is {"available": bool, "error":
+// string, "backend": "keychain"|"file"|""}; the frontend shows a persistent
+// warning when nothing is usable, and an informational notice when the
+// automatic file fallback (ADR-0010) is active instead of the OS keychain.
 func (a *App) KeychainStatus() *models.ApiResponse {
+	backend := ""
+	if br, ok := a.tokenStore.(interface{ Backend() string }); ok {
+		backend = br.Backend()
+	}
 	if err := a.tokenStore.Available(); err != nil {
 		return &models.ApiResponse{Success: true, Data: map[string]interface{}{
 			"available": false,
 			"error":     err.Error(),
+			"backend":   backend,
 		}}
 	}
 	return &models.ApiResponse{Success: true, Data: map[string]interface{}{
 		"available": true,
 		"error":     "",
+		"backend":   backend,
 	}}
 }
 

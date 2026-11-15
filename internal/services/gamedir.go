@@ -1,6 +1,6 @@
 package services
 
-// Game directory resolution: platform candidate probing, the persisted user
+// Game directory resolution: the portable default, the persisted user
 // override, and an on-demand disk scan. Every code path that touches the game
 // directory (config display, version scan, install, launch) goes through
 // ResolveGameDir so a user-specified directory is honored consistently.
@@ -12,61 +12,17 @@ import (
 	"sort"
 	"strings"
 
+	"HRPMLW/internal/database"
 	"HRPMLW/internal/models"
 )
 
-// minecraftDirCandidates is the seam for the platform candidate list (same
-// pattern as commonJavaPaths): tests point it at temporary directories.
-var minecraftDirCandidates = defaultMinecraftDirCandidates
-
-// defaultMinecraftDirCandidates lists the well-known game directories for the
-// current platform, most likely first. Evaluated per call so HOME/APPDATA
-// changes (and test overrides) take effect.
-func defaultMinecraftDirCandidates() []string {
-	home, _ := os.UserHomeDir()
-	switch runtime.GOOS {
-	case "windows":
-		var candidates []string
-		if appData := os.Getenv("APPDATA"); appData != "" {
-			candidates = append(candidates, filepath.Join(appData, ".minecraft"))
-		}
-		return append(candidates, filepath.Join(home, ".minecraft"))
-	case "darwin":
-		return []string{
-			filepath.Join(home, "Library", "Application Support", "minecraft"),
-			filepath.Join(home, ".minecraft"),
-		}
-	default:
-		return []string{
-			filepath.Join(home, ".minecraft"),
-			filepath.Join(home, ".var", "app", "com.mojang.Minecraft", "data", "minecraft"),
-		}
-	}
-}
-
-// GetMinecraftDir returns the auto-detected game directory: the first
-// platform candidate that exists and contains a versions/ subdirectory.
-// When no candidate qualifies it falls back to the first candidate, so a
-// fresh machine still installs into the platform default location.
+// GetMinecraftDir returns the default game directory: .minecraft inside the
+// launcher data directory (next to the executable), so downloads stay with
+// the portable launcher folder (ADR-0010). Existing installs elsewhere are
+// not auto-adopted; the settings UI (ScanGameDirs + SetGameDir) lets the user
+// point the launcher at one, and ResolveGameDir honors that override.
 func (l *LauncherService) GetMinecraftDir() string {
-	candidates := minecraftDirCandidates()
-	for _, dir := range candidates {
-		if looksLikeGameDir(dir) {
-			return dir
-		}
-	}
-	return candidates[0]
-}
-
-// looksLikeGameDir reports whether dir is an existing directory with a
-// versions/ subdirectory — the minimal layout every launcher writes.
-func looksLikeGameDir(dir string) bool {
-	fi, err := os.Stat(dir)
-	if err != nil || !fi.IsDir() {
-		return false
-	}
-	vfi, err := os.Stat(filepath.Join(dir, "versions"))
-	return err == nil && vfi.IsDir()
+	return filepath.Join(database.DataDir(), ".minecraft")
 }
 
 // ResolveGameDir returns the effective game directory: the persisted user
