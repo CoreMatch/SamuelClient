@@ -10,6 +10,7 @@ import {
   CancelInstall,
 } from '../../wailsjs/go/main/App';
 import InstallWizard from './InstallWizard';
+import { EventsOn } from '../../wailsjs/runtime/runtime';
 
 // All Wails bindings are test doubles; the wizard must never reach a real
 // backend. The runtime event bus is stubbed out too.
@@ -23,7 +24,8 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   CancelInstall: vi.fn(),
 }));
 vi.mock('../../wailsjs/runtime/runtime', () => ({
-  EventsOn: vi.fn(),
+  // Wails' EventsOn returns a per-callback unsubscribe function.
+  EventsOn: vi.fn(() => vi.fn()),
   EventsOff: vi.fn(),
 }));
 
@@ -34,6 +36,7 @@ const mockDownloadVersion = vi.mocked(DownloadVersion);
 const mockInstallFabricLoader = vi.mocked(InstallFabricLoader);
 const mockInstallForgeLoader = vi.mocked(InstallForgeLoader);
 const mockCancelInstall = vi.mocked(CancelInstall);
+const mockEventsOn = vi.mocked(EventsOn);
 
 function mockManifest() {
   mockGetVersions.mockResolvedValue({
@@ -134,6 +137,42 @@ describe('InstallWizard', () => {
     resolveDownload({ success: false, data: null, error: 'install cancelled' });
     await waitFor(() => expect(screen.getByText(/Installation cancelled/)).toBeTruthy());
     expect(screen.queryByText(/Installation failed/)).toBeNull();
+  });
+
+  it('advances cumulative progress and finalizes instead of pinning at 100%', async () => {
+    // Hold the download open so progress events can be streamed mid-install.
+    let resolveDownload!: (v: unknown) => void;
+    const pending = new Promise(resolve => {
+      resolveDownload = resolve;
+    });
+    mockDownloadVersion.mockReturnValue(pending as ReturnType<typeof DownloadVersion>);
+
+    render(<InstallWizard onInstalled={vi.fn()} />);
+    await selectVersionAndNext();
+    fireEvent.click(screen.getAllByText('Next')[0]);
+    fireEvent.click(screen.getByText('Install'));
+
+    // Drive the shared download:progress subscription with the cumulative byte
+    // counts the backend now emits: downloaded grows toward a constant stage
+    // total and only reaches it on the final artifact.
+    const emit = mockEventsOn.mock.calls.find(c => c[0] === 'download:progress')?.[1] as
+      | ((p: { version_id: string; stage: string; downloaded: number; total: number }) => void)
+      | undefined;
+    expect(emit).toBeDefined();
+
+    act(() => emit!({ version_id: '1.99', stage: 'library', downloaded: 30, total: 100 }));
+    expect(screen.getByText('30%')).toBeTruthy();
+    act(() => emit!({ version_id: '1.99', stage: 'library', downloaded: 75, total: 100 }));
+    expect(screen.getByText('75%')).toBeTruthy();
+    // The old per-artifact (size, size) events pinned the bar at 100% here.
+    expect(screen.queryByText('100%')).toBeNull();
+
+    // Success resolves the binding promise; the progress row unmounts entirely
+    // rather than freezing at a residual 100%.
+    resolveDownload({ success: true, data: null, error: '' });
+    await waitFor(() => expect(screen.getByText(/Installed 1\.99/)).toBeTruthy());
+    expect(screen.queryByText('75%')).toBeNull();
+    expect(screen.queryByText('100%')).toBeNull();
   });
 
   it('shows the unified error state when the manifest fails', async () => {

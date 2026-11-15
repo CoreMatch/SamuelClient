@@ -22,9 +22,13 @@ package main
 //     "native"|"asset"|"loader"|"cancelled", "name": string,
 //     "downloaded": number, "total": number}. The "loader" stage is emitted
 //     by InstallFabricLoader/InstallForgeLoader; total>0 means a real byte
-//     percentage is available, total<=0 means an indeterminate stage. A
-//     terminal "cancelled" stage is emitted when CancelInstall aborts a run so
-//     the progress UI can finalize instead of stalling mid-bar.
+//     percentage is available, total<=0 means an indeterminate stage.
+//     downloaded/total are cumulative within a stage: downloaded grows toward
+//     the stage total as each artifact completes and only equals it when the
+//     stage is done (so the bar advances 0->100 instead of pinning at 100%
+//     after the first file). A terminal "cancelled" stage is emitted when
+//     CancelInstall aborts a run so the progress UI can finalize instead of
+//     stalling mid-bar.
 //   - "interop:handoff" — match handoff lifecycle (INTEROP-SPEC.md).
 //     Payload: {"status": "pending"|"dismissed"|"gone"|"invalid"|
 //     "version_mismatch"|"pull_timeout", "handoff": <payload when pending>,

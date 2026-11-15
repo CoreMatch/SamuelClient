@@ -38,8 +38,6 @@ const en = {
   'play.play': 'Play',
   'play.launching': 'Launching…',
   'play.selectVersionAccount': 'Please select a version and account',
-  'play.selectVersionFirst': 'Please select a Minecraft version first',
-  'play.loaderInstallFailed': 'Failed to install loader. Please try again.',
   'play.launchFailed': 'Failed to launch game. Please try again.',
 
   // Versions page & install wizard

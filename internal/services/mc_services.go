@@ -731,6 +731,18 @@ func (b *BMCLAPIService) DownloadFile(ctx context.Context, url, destPath string,
 // DownloadLibraries downloads all required libraries
 // BMCLAPI: https://libraries.minecraft.net/ -> https://bmclapi2.bangbang93.com/maven
 func (b *BMCLAPIService) DownloadLibraries(ctx context.Context, libraries []BMCLLibrary, libsDir string, progressCallback func(name string, downloaded, total int64)) *models.ApiResponse {
+	// Progress is cumulative across the whole stage: total is the byte sum of
+	// every applicable library and downloaded grows as each one completes, so
+	// the bar advances 0->100 instead of reporting (size, size) == 100% for
+	// every single file. Already-present libraries are credited silently.
+	var total int64
+	for _, lib := range libraries {
+		if shouldDownloadLibrary(lib) && len(strings.Split(lib.Name, ":")) == 3 {
+			total += lib.Downloads.Artifact.Size
+		}
+	}
+
+	var downloaded int64
 	var lastErr error
 	for _, lib := range libraries {
 		// A cancelled install stops the loop before the next file.
@@ -753,6 +765,7 @@ func (b *BMCLAPIService) DownloadLibraries(ctx context.Context, libraries []BMCL
 		artifactPath := filepath.Join(libsDir, group, parts[1], parts[2], parts[1]+"-"+parts[2]+".jar")
 
 		if _, err := os.Stat(artifactPath); err == nil {
+			downloaded += artifact.Size
 			continue // Already exists
 		}
 
@@ -767,8 +780,9 @@ func (b *BMCLAPIService) DownloadLibraries(ctx context.Context, libraries []BMCL
 			continue // Try next library instead of failing completely
 		}
 
+		downloaded += artifact.Size
 		if progressCallback != nil {
-			progressCallback(lib.Name, artifact.Size, artifact.Size)
+			progressCallback(lib.Name, downloaded, total)
 		}
 	}
 
@@ -1288,6 +1302,16 @@ func (b *BMCLAPIService) DownloadAssets(ctx context.Context, assetIndex *BMCLAss
 		return &models.ApiResponse{Success: false, Error: err.Error()}
 	}
 
+	// Progress is cumulative across the whole asset stage (the longest part of
+	// an install): total is the byte sum of all objects and downloaded grows as
+	// each completes, so the bar advances 0->100 instead of pinning at 100% on
+	// the first object. Already-present objects are credited silently.
+	var total int64
+	for _, obj := range assetIndexJSON.Objects {
+		total += obj.Size
+	}
+	var downloaded int64
+
 	// Download each asset
 	for name, obj := range assetIndexJSON.Objects {
 		// A cancelled install stops the loop before the next object.
@@ -1300,6 +1324,7 @@ func (b *BMCLAPIService) DownloadAssets(ctx context.Context, assetIndex *BMCLAss
 
 		destPath := filepath.Join(assetsDir, "objects", subDir, hash)
 		if _, err := os.Stat(destPath); err == nil {
+			downloaded += obj.Size
 			continue // Already exists
 		}
 
@@ -1308,8 +1333,9 @@ func (b *BMCLAPIService) DownloadAssets(ctx context.Context, assetIndex *BMCLAss
 			return &models.ApiResponse{Success: false, Error: fmt.Sprintf("failed to download asset %s: %s", name, result.Error)}
 		}
 
+		downloaded += obj.Size
 		if progressCallback != nil {
-			progressCallback(name, obj.Size, obj.Size)
+			progressCallback(name, downloaded, total)
 		}
 	}
 
@@ -1318,27 +1344,35 @@ func (b *BMCLAPIService) DownloadAssets(ctx context.Context, assetIndex *BMCLAss
 
 // DownloadNatives downloads native libraries for the current platform
 func (b *BMCLAPIService) DownloadNatives(ctx context.Context, libraries []BMCLLibrary, nativesDir string, progressCallback func(name string, downloaded, total int64)) *models.ApiResponse {
+	// Determine native classifier based on OS
+	classifier := ""
+	switch runtime.GOOS {
+	case "windows":
+		classifier = "natives-windows"
+	case "darwin":
+		classifier = "natives-macos"
+	case "linux":
+		classifier = "natives-linux"
+	}
+
+	// Progress is cumulative across the natives applicable on this OS, so the
+	// bar advances 0->100 rather than reporting 100% for every single file.
+	var total int64
+	if classifier != "" {
+		for _, lib := range libraries {
+			if artifact, ok := lib.Downloads.Classifiers[classifier]; ok {
+				total += artifact.Size
+			}
+		}
+	}
+	var downloaded int64
+
 	for _, lib := range libraries {
 		// A cancelled install stops the loop before the next native.
 		if ctx.Err() != nil {
 			return &models.ApiResponse{Success: false, Error: cancelled(ctx, ctx.Err()).Error()}
 		}
-		if len(lib.Downloads.Classifiers) == 0 {
-			continue
-		}
-
-		// Determine native classifier based on OS
-		classifier := ""
-		switch runtime.GOOS {
-		case "windows":
-			classifier = "natives-windows"
-		case "darwin":
-			classifier = "natives-macos"
-		case "linux":
-			classifier = "natives-linux"
-		}
-
-		if classifier == "" {
+		if len(lib.Downloads.Classifiers) == 0 || classifier == "" {
 			continue
 		}
 
@@ -1388,8 +1422,9 @@ func (b *BMCLAPIService) DownloadNatives(ctx context.Context, libraries []BMCLLi
 			continue
 		}
 
+		downloaded += artifact.Size
 		if progressCallback != nil {
-			progressCallback(lib.Name, artifact.Size, artifact.Size)
+			progressCallback(lib.Name, downloaded, total)
 		}
 	}
 
@@ -1453,8 +1488,10 @@ func (b *BMCLAPIService) extractNatives(jarPath, destDir string) error {
 //
 // progress, when non-nil, is invoked as each stage advances so callers can
 // surface live progress. stage is one of "jar", "library", "native" or
-// "asset"; name identifies the artifact; downloaded/total are byte counts.
-// The Wails binding forwards these as "download:progress" events.
+// "asset"; name identifies the artifact; downloaded/total are cumulative byte
+// counts within the stage (downloaded grows toward total as artifacts
+// complete, reaching total only when the stage is done). The Wails binding
+// forwards these as "download:progress" events.
 func (b *BMCLAPIService) InstallVersion(ctx context.Context, versionID, gameDir string, progress func(stage, name string, downloaded, total int64)) *models.ApiResponse {
 	// First get the version list to find the version URL
 	listResult := b.GetVersionList(ctx)

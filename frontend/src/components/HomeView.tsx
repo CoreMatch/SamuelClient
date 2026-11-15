@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Asset, patternStyle } from '@ha/ui';
 import type { StoredAccount } from '../accountStorage';
 import type { InstalledVersion } from '../types';
@@ -7,34 +7,28 @@ import GetStartedChecklist from './GetStartedChecklist';
 import { Button } from '../ui/button';
 import { Select } from '../ui/select';
 import { Field, NumberField, TextField } from '../ui/field';
-import { Progress, Slider } from '../ui/progress';
+import { Slider } from '../ui/progress';
 import { Callout } from '../ui/callout';
 import { Badge } from '../ui/badge';
-import { useInstallProgress, installStepKey, stageIcon } from '../useInstallProgress';
 import {
   GetJavaInstallations,
   GetInstalledVersions,
-  GetFabricVersions,
-  GetForgeVersions,
-  InstallFabricLoader,
-  InstallForgeLoader,
   LaunchGame,
-  CancelInstall,
 } from '../../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 
-interface ModLoader {
-  name: string;
+// Loader ids mirror the backend install scheme (bindings.go): fabric-loader-<lv>-<mc>, <mc>-forge<lv>.
+interface InstalledLoader {
+  type: 'fabric' | 'forge';
   version: string;
 }
 
-// One loader install attempt; kept around after a cancel so the retry button
-// can re-run the exact same install.
-interface LoaderInstallTarget {
-  loaderName: string;
-  mcVersionId: string;
-  loaderVersion: string;
-  isFabric: boolean;
+function detectLoader(versionId: string): InstalledLoader | null {
+  const fabric = versionId.match(/^fabric-loader-(.+)-([^-]+)$/);
+  if (fabric) return { type: 'fabric', version: fabric[1] };
+  const forge = versionId.match(/^(.+)-forge-?(.+)$/);
+  if (forge) return { type: 'forge', version: forge[2] };
+  return null;
 }
 
 // Shapes of the backend payloads consumed below (see bindings.go).
@@ -43,14 +37,6 @@ interface BackendInstalledVersion {
   type: string;
   has_json: boolean;
   has_jar: boolean;
-}
-
-interface FabricLoaderEntry {
-  loader: { version: string };
-}
-
-interface ForgeVersionEntry {
-  version: string;
 }
 
 interface JavaInstallation {
@@ -84,8 +70,6 @@ interface LauncherSettings {
   javaArgs: string;
   gameWidth: number;
   gameHeight: number;
-  selectedLoader: string;
-  loaderVersion: string;
 }
 
 const DEFAULT_SETTINGS: LauncherSettings = {
@@ -94,8 +78,6 @@ const DEFAULT_SETTINGS: LauncherSettings = {
   javaArgs: '',
   gameWidth: 854,
   gameHeight: 480,
-  selectedLoader: 'none',
-  loaderVersion: '',
 };
 
 export default function HomeView({
@@ -106,7 +88,6 @@ export default function HomeView({
 }: HomeViewProps) {
   const [versions, setVersions] = useState<InstalledVersion[]>([]);
   const [currentVersion, setCurrentVersion] = useState<InstalledVersion | null>(selectedVersion);
-  const [loaders, setLoaders] = useState<ModLoader[]>([]);
   const [settings, setSettings] = useState<LauncherSettings>(DEFAULT_SETTINGS);
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState('');
@@ -114,16 +95,6 @@ export default function HomeView({
   const [showLogs, setShowLogs] = useState(false);
   const [javaInstallations, setJavaInstallations] = useState<JavaInstallation[]>([]);
   const [selectedJava, setSelectedJava] = useState<JavaInstallation | null>(null);
-  const [installingLoader, setInstallingLoader] = useState<string | null>(null);
-  // installingLoaderId is the backend version id of the in-flight loader
-  // install (same scheme as InstallWizard); it targets CancelInstall and
-  // picks the matching download:progress entry. loaderCancelled keeps the
-  // cancelled target so the retry button can re-run the same install.
-  const [installingLoaderId, setInstallingLoaderId] = useState('');
-  const [loaderCancelled, setLoaderCancelled] = useState<LoaderInstallTarget | null>(null);
-  const cancelRequestedRef = useRef(false);
-  // download:progress subscription shared with the InstallWizard.
-  const { progress } = useInstallProgress();
   // First-run checklist state: the game has launched at least once.
   const [hasLaunched, setHasLaunched] = useState(() => localStorage.getItem('has_launched_game') === '1');
 
@@ -230,123 +201,9 @@ export default function HomeView({
     }
   };
 
-  const fetchLoaders = async (mcVersion: string) => {
-    try {
-      const [fabricResult, forgeResult] = await Promise.all([
-        GetFabricVersions(mcVersion),
-        GetForgeVersions(mcVersion),
-      ]);
-
-      const loaderList: ModLoader[] = [{ name: 'none', version: '' }];
-
-      if (fabricResult.success && Array.isArray(fabricResult.data)) {
-        (fabricResult.data as FabricLoaderEntry[]).slice(0, 5).forEach(f => {
-          loaderList.push({
-            name: `fabric-${f.loader.version}`,
-            version: f.loader.version,
-          });
-        });
-      }
-
-      if (forgeResult.success && Array.isArray(forgeResult.data)) {
-        (forgeResult.data as ForgeVersionEntry[]).slice(0, 5).forEach(f => {
-          loaderList.push({
-            name: `forge-${f.version}`,
-            version: f.version,
-          });
-        });
-      }
-
-      setLoaders(loaderList);
-    } catch (err) {
-      console.error('Failed to fetch loaders:', err);
-    }
-  };
-
   const handleVersionChange = (versionId: string) => {
     const version = versions.find(v => v.id === versionId);
     setCurrentVersion(version || null);
-    if (version) {
-      fetchLoaders(version.id);
-    }
-  };
-
-  const handleLoaderChange = async (loaderName: string) => {
-    const loader = loaders.find(l => l.name === loaderName);
-    saveSettings({
-      ...settings,
-      selectedLoader: loaderName,
-      loaderVersion: loader?.version || '',
-    });
-
-    if (!loader || loader.name === 'none' || !loader.version) {
-      return;
-    }
-    if (!currentVersion) {
-      setError(t('play.selectVersionFirst'));
-      return;
-    }
-
-    // Loader versions install through the dedicated bindings: Fabric writes a
-    // profile JSON inheriting the vanilla version, Forge runs its installer.
-    // The resulting version shows up in the version list afterwards.
-    await startLoaderInstall({
-      loaderName: loader.name,
-      mcVersionId: currentVersion.id,
-      loaderVersion: loader.version,
-      isFabric: loader.name.startsWith('fabric-'),
-    });
-  };
-
-  // loaderVersionId mirrors the backend's version id scheme for loader
-  // installs (bindings.go), so it targets CancelInstall and matches the
-  // download:progress entries.
-  const loaderVersionId = (target: LoaderInstallTarget) =>
-    target.isFabric
-      ? `fabric-loader-${target.loaderVersion}-${target.mcVersionId}`
-      : `${target.mcVersionId}-forge-${target.loaderVersion}`;
-
-  // startLoaderInstall runs one loader install attempt with the same
-  // semantics as the InstallWizard: progress comes from the shared
-  // useInstallProgress subscription, a user cancel finalizes to the
-  // retryable cancelled state instead of an error, and the backend's
-  // failure cleanup keeps retries safe.
-  const startLoaderInstall = async (target: LoaderInstallTarget) => {
-    setError('');
-    setLoaderCancelled(null);
-    cancelRequestedRef.current = false;
-    setInstallingLoader(target.loaderName);
-    setInstallingLoaderId(loaderVersionId(target));
-    try {
-      const result = target.isFabric
-        ? await InstallFabricLoader(target.mcVersionId, target.loaderVersion, '')
-        : await InstallForgeLoader(target.mcVersionId, target.loaderVersion, '');
-      if (result.success) {
-        await loadVersions();
-      } else if (cancelRequestedRef.current) {
-        // A user-initiated cancel finalizes cleanly rather than surfacing a
-        // failure; the backend already ran its failure cleanup so a retry
-        // is safe.
-        setLoaderCancelled(target);
-      } else {
-        setError(result.error || t('play.loaderInstallFailed'));
-      }
-    } catch {
-      if (cancelRequestedRef.current) {
-        setLoaderCancelled(target);
-      } else {
-        setError(t('play.loaderInstallFailed'));
-      }
-    } finally {
-      setInstallingLoader(null);
-      setInstallingLoaderId('');
-    }
-  };
-
-  const cancelLoaderInstall = () => {
-    if (!installingLoaderId) return;
-    cancelRequestedRef.current = true;
-    void CancelInstall(installingLoaderId);
   };
 
   const handleSettingChange = (key: keyof LauncherSettings, value: number | string) => {
@@ -368,6 +225,7 @@ export default function HomeView({
       return;
     }
 
+    const loader = detectLoader(currentVersion.id);
     setLaunching(true);
     setError('');
     setShowLogs(true);
@@ -389,8 +247,8 @@ export default function HomeView({
         authlib_meta: '',
         game_dir: '',
         java_path: '',
-        loader_type: settings.selectedLoader === 'none' ? '' : settings.selectedLoader.split('-')[0],
-        loader_version: settings.loaderVersion,
+        loader_type: loader?.type ?? '',
+        loader_version: loader?.version ?? '',
         join_server: '',
         join_port: 0,
         max_memory: settings.maxMemory,
@@ -414,10 +272,8 @@ export default function HomeView({
     }
   };
 
-  // Progress entry for the in-flight loader install (shared subscription);
-  // download stages carry a real byte percentage, the loader run itself is
-  // indeterminate until its files report totals.
-  const loaderProgress = installingLoaderId ? progress[installingLoaderId] : undefined;
+  // Read-only: the selected version's installed loader, derived from its id.
+  const installedLoader = currentVersion ? detectLoader(currentVersion.id) : null;
 
   return (
     <div className="flex flex-col gap-8">
@@ -446,48 +302,15 @@ export default function HomeView({
           </Field>
 
           <Field label={t('play.loader')} htmlFor="play-loader">
-            <Select
-              ariaLabel={t('play.loader')}
-              value={settings.selectedLoader}
-              onValueChange={handleLoaderChange}
-              disabled={installingLoader !== null}
-              options={loaders.map(l => ({
-                value: l.name,
-                label: l.name === 'none' ? t('play.none') : l.name.replace('-', ' '),
-              }))}
-            />
+            <div
+              id="play-loader"
+              className="flex h-11 w-full items-center rounded-md border border-edge bg-raised px-4 text-base text-ink"
+            >
+              {installedLoader
+                ? `${installedLoader.type === 'fabric' ? 'Fabric' : 'Forge'} ${installedLoader.version}`
+                : t('play.none')}
+            </div>
           </Field>
-
-          {installingLoader && (
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <span className="inline-flex items-center gap-2 text-sm text-ink-muted">
-                  {stageIcon(loaderProgress?.stage || 'loader')}
-                  {t(installStepKey(loaderProgress?.stage || 'loader'))}
-                </span>
-                {loaderProgress?.pct != null && (
-                  <span className="font-mono text-sm text-ink-muted">{loaderProgress.pct}%</span>
-                )}
-              </div>
-              <Progress value={loaderProgress?.pct ?? null} />
-              <div className="mt-3 flex justify-end">
-                <Button variant="secondary" onClick={cancelLoaderInstall}>
-                  {t('common.cancel')}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {loaderCancelled && (
-            <div className="flex items-center gap-4">
-              <div className="flex-1">
-                <Callout tone="warning">{t('wizard.installCancelled')}</Callout>
-              </div>
-              <Button variant="secondary" onClick={() => startLoaderInstall(loaderCancelled)}>
-                {t('common.retry')}
-              </Button>
-            </div>
-          )}
 
           <Field label={t('play.java')} htmlFor="play-java">
             <Select

@@ -62,7 +62,12 @@ the following:
      to the loader installs. The jar stage emits as download chunks arrive;
      library/native/asset emit once per completed artifact; the loader stage
      emits once per completed loader library (Fabric) or once before the
-     installer download (Forge).
+     installer download (Forge). `downloaded`/`total` are cumulative within a
+     stage: `downloaded` grows toward the stage total as artifacts complete
+     and only equals it when the stage is done, so the bar advances 0→100
+     instead of pinning at 100% after the first file. A terminal `cancelled`
+     stage is emitted when `CancelInstall` aborts a run so the UI can
+     finalize instead of stalling mid-bar.
 
    The same contract text lives in the comment at the top of `bindings.go`
    and in the README.

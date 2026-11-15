@@ -158,6 +158,9 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
 
   const runInstall = async () => {
     if (!selectedVersion) return;
+    // Start from a clean slate so a retry/re-install never renders a residual
+    // 100% entry left over from a previous run.
+    clearProgress();
     setPhase('installing');
     setInstallError('');
     cancelRequestedRef.current = false;
@@ -166,6 +169,12 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
       const download = await DownloadVersion(selectedVersion.id, '');
       if (!download.success) {
         throw new Error(download.error || 'Download failed');
+      }
+      if (loaderType !== 'vanilla') {
+        // The loader reports progress under its own version id; drop the
+        // finished vanilla entry so the bar doesn't sit at the vanilla 100%
+        // while the loader profile is fetched.
+        clearProgress();
       }
       if (loaderType === 'fabric') {
         activeInstallIdRef.current = `fabric-loader-${selectedLoaderVersion}-${selectedVersion.id}`;

@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Asset } from '@ha/ui';
-import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
+import { EventsOn } from '../wailsjs/runtime/runtime';
 
-// useInstallProgress is the single shared subscription for the
-// "download:progress" Wails event (ADR-0004). Both the InstallWizard and the
-// HomeView loader quick-install render their progress bars from it, so the
-// two paths share one contract interpretation instead of drifting apart.
+// useInstallProgress is the shared subscription for the "download:progress"
+// Wails event (ADR-0004). Install progress bars render from it so every
+// install path shares one contract interpretation instead of drifting apart.
 //
 // Semantics (identical for every consumer):
-//   - total > 0  -> real byte percentage, floored and clamped to 100
+//   - total > 0  -> real byte percentage, floored and clamped to 100.
+//     downloaded/total are cumulative within a stage, so the bar advances
+//     0->100 and only reads 100% when the stage is actually finished.
 //   - total <= 0 -> indeterminate stage (pct stays null; the bar pulses)
 //   - terminal "cancelled" stage -> the entry is deleted so the bar
 //     finalizes instead of stalling mid-progress (no residual rows)
@@ -29,7 +30,7 @@ export function useInstallProgress() {
   const [progress, setProgress] = useState<Record<string, InstallProgress>>({});
 
   useEffect(() => {
-    EventsOn('download:progress', (p: DownloadProgressPayload) => {
+    const off = EventsOn('download:progress', (p: DownloadProgressPayload) => {
       if (!p || !p.version_id) return;
       // A terminal "cancelled" stage clears the entry so the bar finalizes
       // instead of stalling mid-progress.
@@ -47,9 +48,10 @@ export function useInstallProgress() {
       }
       setProgress(prev => ({ ...prev, [p.version_id as string]: { stage: p.stage || '', pct } }));
     });
-    return () => {
-      EventsOff('download:progress');
-    };
+    // Unsubscribe only this consumer's callback. A name-based EventsOff would
+    // drop every listener for the event, so one view unmounting could silently
+    // freeze another view's in-flight progress bar.
+    return off;
   }, []);
 
   const clearProgress = () => setProgress({});

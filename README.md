@@ -112,7 +112,9 @@ Live data is pushed from Go to the frontend via Wails runtime events:
   Payload: `{ "source": "stdout" | "stderr", "line": string }`.
 - `download:progress` — progress while `DownloadVersion` installs a version
   or `InstallFabricLoader`/`InstallForgeLoader` install a mod loader.
-  Payload: `{ "version_id": string, "stage": "jar" | "library" | "native" | "asset" | "loader", "name": string, "downloaded": number, "total": number }`.
+  Payload: `{ "version_id": string, "stage": "jar" | "library" | "native" | "asset" | "loader" | "cancelled", "name": string, "downloaded": number, "total": number }`.
+  `downloaded`/`total` are cumulative within a stage (the bar advances 0→100 and only
+  reads 100% when the stage finishes); a terminal `cancelled` stage finalizes an aborted run.
 - `interop:handoff` — match handoff lifecycle from the matchmaking client.
   Payload: `{ "status": "pending" | "dismissed" | "gone" | "invalid" | "version_mismatch" | "pull_timeout", "handoff": <payload when pending>, "message": <readable text for degraded statuses> }`.
 
