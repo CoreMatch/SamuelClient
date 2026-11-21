@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Trash2 } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Pencil, Trash2 } from 'lucide-react';
 import { Asset } from '@ha/ui';
 import { GetInstalledVersions } from '../../wailsjs/go/main/App';
 import { installedFromDisk, versionKey, type DiskVersion, type InstalledVersion } from '../types';
@@ -8,7 +8,9 @@ import { EmptyState, ErrorState, LoadingSkeleton } from './states';
 import { t } from '../i18n';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { Badge } from '../ui/badge';
-import { IconButton } from '../ui/button';
+import { Button, IconButton } from '../ui/button';
+import { TextField } from '../ui/field';
+import { readVersionNicknames, saveVersionNickname } from '../versionNicknames';
 
 interface VersionManagerProps {
   onSelectVersion: (version: InstalledVersion) => void;
@@ -22,6 +24,14 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
   const [loading, setLoading] = useState(false);
   const [scanFailed, setScanFailed] = useState(false);
   const [tabValue, setTabValue] = useState('install');
+  const [nicknames, setNicknames] = useState(readVersionNicknames);
+  const [nicknameEdit, setNicknameEdit] = useState<{ key: string; draft: string; failed: boolean } | null>(null);
+  const editButton = useRef<HTMLButtonElement | null>(null);
+
+  const closeNicknameEdit = () => {
+    setNicknameEdit(null);
+    editButton.current?.focus();
+  };
 
   useEffect(() => {
     try {
@@ -82,6 +92,7 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
   return (
     <Tabs value={tabValue} onValueChange={value => {
       setTabValue(value);
+      setNicknameEdit(null);
       if (value === 'installed') void scanInstalledVersions();
     }}>
       <TabsList>
@@ -105,49 +116,100 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
           />
         ) : (
           <div className="rounded-lg bg-panel">
-            {installedVersions.map((version, index) => (
-              <div
-                key={versionKey(version)}
-                role="button"
-                tabIndex={0}
-                onClick={() => onSelectVersion(version)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onSelectVersion(version);
-                  }
-                }}
-                className={`flex w-full cursor-pointer items-center justify-between gap-3 px-5 py-5 text-left transition-colors duration-150 hover:bg-white/4 ${
-                  index > 0 ? 'border-t border-edge' : ''
-                }`}
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-base font-medium text-ink">{version.id}</span>
-                    <Asset id="icon-check" size={20} className="text-ok" />
-                  </div>
-                  {version.gameDir && <p className="mt-1 break-all text-sm text-ink-muted">{version.gameDir}</p>}
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <Badge tone={getVersionTypeTone(version.type)}>{version.type}</Badge>
-                    {version.loaderType && (
-                      <Badge>{`${version.loaderType} ${version.loaderVersion || ''}`}</Badge>
+            {installedVersions.map((version, index) => {
+              const key = versionKey(version);
+              const nickname = nicknames[key];
+              const edit = nicknameEdit?.key === key ? nicknameEdit : null;
+              const versionLabel = version.gameDir ? `${version.id} (${version.gameDir})` : version.id;
+              return (
+                <div key={key} className={index > 0 ? 'border-t border-edge' : ''}>
+                  <div className="flex items-center gap-3 px-5 hover:bg-white/4">
+                    <button
+                      type="button"
+                      aria-label={t('versions.selectLabel', { version: nickname ? `${nickname}, ${versionLabel}` : versionLabel })}
+                      onClick={() => onSelectVersion(version)}
+                      className="min-w-0 flex-1 cursor-pointer rounded-md py-5 text-left focus-visible:outline-2 focus-visible:outline-edge-strong"
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <span className="min-w-0 wrap-anywhere text-base font-medium text-ink">{nickname || version.id}</span>
+                        <span aria-hidden="true" className="shrink-0">
+                          <Asset id="icon-check" size={20} className="text-ok" />
+                        </span>
+                      </span>
+                      {nickname && <span className="mt-1 block wrap-anywhere text-sm text-ink-muted">{version.id}</span>}
+                      {version.gameDir && <span className="mt-1 block break-all text-sm text-ink-muted">{version.gameDir}</span>}
+                      <span className="mt-1.5 flex items-center gap-2">
+                        <Badge tone={getVersionTypeTone(version.type)}>{version.type}</Badge>
+                        {version.loaderType && (
+                          <Badge>{`${version.loaderType} ${version.loaderVersion || ''}`}</Badge>
+                        )}
+                      </span>
+                    </button>
+                    <IconButton
+                      className="shrink-0"
+                      label={t('versions.editNickname', { version: versionLabel })}
+                      aria-expanded={!!edit}
+                      onClick={e => {
+                        if (edit) {
+                          closeNicknameEdit();
+                        } else {
+                          editButton.current = e.currentTarget;
+                          setNicknameEdit({ key, draft: nickname ?? '', failed: false });
+                        }
+                      }}
+                    >
+                      <Pencil className="size-5" aria-hidden />
+                    </IconButton>
+                    {!diskIds.has(version.id) && (
+                      <IconButton
+                        className="shrink-0"
+                        label={t('versions.deleteLabel', { version: version.id })}
+                        tone="danger"
+                        onClick={() => {
+                          if (edit) setNicknameEdit(null);
+                          handleDelete(version.id);
+                        }}
+                      >
+                        <Trash2 className="size-5" aria-hidden />
+                      </IconButton>
                     )}
                   </div>
+                  {edit && (
+                    <form
+                      className="space-y-3 px-5 pb-5"
+                      onSubmit={e => {
+                        e.preventDefault();
+                        try {
+                          setNicknames(saveVersionNickname(version, edit.draft));
+                          closeNicknameEdit();
+                        } catch {
+                          setNicknameEdit({ ...edit, failed: true });
+                        }
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === 'Escape') closeNicknameEdit();
+                      }}
+                    >
+                      <TextField
+                        label={t('versions.nickname')}
+                        aria-describedby="version-nickname-hint"
+                        value={edit.draft}
+                        onChange={e => setNicknameEdit({ ...edit, draft: e.target.value, failed: false })}
+                        autoFocus
+                      />
+                      <p id="version-nickname-hint" className="text-sm text-ink-muted">{t('versions.nicknameHint')}</p>
+                      {edit.failed && <p role="alert" className="text-sm text-danger">{t('versions.nicknameSaveFailed')}</p>}
+                      <div className="flex justify-end gap-2">
+                        <Button type="button" size="sm" variant="secondary" onClick={closeNicknameEdit}>
+                          {t('common.cancel')}
+                        </Button>
+                        <Button type="submit" size="sm">{t('versions.saveNickname')}</Button>
+                      </div>
+                    </form>
+                  )}
                 </div>
-                {!diskIds.has(version.id) && (
-                  <IconButton
-                    label={t('versions.deleteLabel', { version: version.id })}
-                    tone="danger"
-                    onClick={e => {
-                      e.stopPropagation();
-                      handleDelete(version.id);
-                    }}
-                  >
-                    <Trash2 className="size-5" />
-                  </IconButton>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </TabsContent>

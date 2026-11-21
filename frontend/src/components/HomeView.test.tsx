@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import HomeView from './HomeView';
 import { StoredAccount } from '../accountStorage';
 import { InstalledVersion } from '../types';
+import { saveVersionNickname } from '../versionNicknames';
 import {
   GetJavaInstallations,
   GetInstalledVersions,
@@ -110,16 +111,18 @@ describe('HomeView', () => {
     expect(mockGetInstalledVersions).toHaveBeenCalledTimes(1);
   });
 
-  it('launches the selected version with the active account', async () => {
+  it('shows the selected version nickname and launches with the original ID and active account', async () => {
     mockGetInstalledVersions.mockResolvedValue({
       success: true,
       data: { versions: [{ id: '1.99', type: 'release', has_json: true, has_jar: true }] },
       error: '',
     });
     mockLaunchGame.mockResolvedValue({ success: true, data: { pid: 42 }, error: '' });
+    saveVersionNickname(version, 'Main world');
 
     renderHome(version);
 
+    expect(await screen.findByText('Main world')).toBeTruthy();
     const play = await waitFor(() => {
       const btn = screen.getByRole('button', { name: 'Play' });
       expect(btn.hasAttribute('disabled')).toBe(false);

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Asset, patternStyle } from '@ha/ui';
 import type { StoredAccount } from '../accountStorage';
 import { installedFromDisk, versionKey, type DiskVersion, type InstalledVersion } from '../types';
+import { readVersionNicknames } from '../versionNicknames';
 import { t } from '../i18n';
 import GetStartedChecklist from './GetStartedChecklist';
 import { Button } from '../ui/button';
@@ -92,6 +93,7 @@ export default function HomeView({
   onOpenSettings,
 }: HomeViewProps) {
   const [versions, setVersions] = useState<InstalledVersion[]>([]);
+  const [nicknames] = useState(readVersionNicknames);
   const [currentVersion, setCurrentVersion] = useState<InstalledVersion | null>(null);
   const [settings, setSettings] = useState<LauncherSettings>(DEFAULT_SETTINGS);
   const [launching, setLaunching] = useState(false);
@@ -341,10 +343,11 @@ export default function HomeView({
               value={currentVersion ? versionKey(currentVersion) : ''}
               onValueChange={handleVersionChange}
               placeholder={t('play.noVersions')}
-              options={versions.map(v => ({
-                value: versionKey(v),
-                label: v.gameDir ? `${v.id} (${v.gameDir})` : v.id,
-              }))}
+              options={versions.map(v => {
+                const key = versionKey(v);
+                const label = nicknames[key] || v.id;
+                return { value: key, label: v.gameDir ? `${label} (${v.gameDir})` : label };
+              })}
             />
           </Field>
 

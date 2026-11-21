@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { GetInstalledVersions } from '../../wailsjs/go/main/App';
 import VersionManager from './VersionManager';
 import type { InstalledVersion } from '../types';
@@ -96,5 +96,52 @@ describe('VersionManager', () => {
 
     openInstalledTab();
     expect(await screen.findByText('No versions installed')).toBeTruthy();
+  });
+
+  it('persists a nickname for only the edited game directory and clears it when blank', async () => {
+    mockGetInstalledVersions.mockResolvedValue({
+      success: true,
+      data: { versions: ['/games/main', '/games/other'].map(game_dir => ({
+        id: '1.20.4', type: 'release', has_json: true, has_jar: true, game_dir,
+      })) },
+      error: '',
+    });
+    const onSelectVersion = vi.fn();
+    const first = render(<VersionManager onSelectVersion={onSelectVersion} />);
+
+    openInstalledTab();
+    const editLabel = 'Edit nickname for 1.20.4 (/games/main)';
+    const editButton = await screen.findByRole('button', { name: editLabel });
+    fireEvent.click(editButton);
+    const input = screen.getByRole('textbox', { name: 'Nickname' });
+    expect(document.activeElement).toBe(input);
+    fireEvent.change(input, { target: { value: '  Main world  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save nickname' }));
+    expect(document.activeElement).toBe(editButton);
+    expect(onSelectVersion).not.toHaveBeenCalled();
+    first.unmount();
+
+    render(<VersionManager onSelectVersion={onSelectVersion} />);
+    openInstalledTab();
+    const renamed = await screen.findByRole('button', { name: 'Select Main world, 1.20.4 (/games/main)' });
+    expect(within(renamed).getByText('1.20.4')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Select 1.20.4 (/games/other)' })).toBeTruthy();
+    fireEvent.click(renamed);
+    expect(onSelectVersion).toHaveBeenCalledWith({
+      id: '1.20.4', type: 'release', installed: true, gameDir: '/games/main',
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: editLabel }));
+    const savedInput = screen.getByRole<HTMLInputElement>('textbox', { name: 'Nickname' });
+    expect(savedInput.value).toBe('Main world');
+    fireEvent.change(savedInput, { target: { value: 'Discard me' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByText('Main world')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: editLabel }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nickname' }), { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save nickname' }));
+    expect(screen.queryByText('Main world')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Select 1.20.4 (/games/main)' })).toBeTruthy();
   });
 });
