@@ -51,7 +51,7 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
   const [versions, setVersions] = useState<MCVersion[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('release');
   const [selectedVersion, setSelectedVersion] = useState<MCVersion | null>(null);
 
   // Step 2 state: loader choice + available loader versions.

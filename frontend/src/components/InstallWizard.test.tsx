@@ -41,7 +41,11 @@ const mockEventsOn = vi.mocked(EventsOn);
 function mockManifest() {
   mockGetVersions.mockResolvedValue({
     success: true,
-    data: { versions: [{ id: '1.99', type: 'release' }, { id: '1.98', type: 'release' }] },
+    data: { versions: [
+      { id: '26w01a', type: 'snapshot' },
+      { id: '1.99', type: 'release' },
+      { id: '1.98', type: 'release' },
+    ] },
     error: '',
   });
 }
@@ -61,6 +65,14 @@ describe('InstallWizard', () => {
     mockDownloadVersion.mockResolvedValue({ success: true, data: null, error: '' });
     mockInstallFabricLoader.mockResolvedValue({ success: true, data: { version_id: 'fabric-loader-0.15.0-1.99' }, error: '' });
     mockInstallForgeLoader.mockResolvedValue({ success: true, data: { version_id: '1.99-forge-47.2.0' }, error: '' });
+  });
+
+  it('shows only release versions by default', async () => {
+    render(<InstallWizard onInstalled={vi.fn()} />);
+
+    expect(await screen.findByText('1.99')).toBeTruthy();
+    expect(screen.getByText('1.98')).toBeTruthy();
+    expect(screen.queryByText('26w01a')).toBeNull();
   });
 
   it('walks the three steps and installs a vanilla version', async () => {
