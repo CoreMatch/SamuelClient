@@ -260,28 +260,42 @@ describe('HomeView', () => {
 
     renderHome();
 
+    fireEvent.click(screen.getByRole('button', { name: 'Launch Settings' }));
     expect(await screen.findByText('8192 MB')).toBeTruthy();
   });
 
-  it('persists setting changes through the backend', async () => {
-    renderHome();
+  it('keeps Play launch settings temporary and links to permanent Settings', async () => {
+    mockGetInstalledVersions.mockResolvedValue({
+      success: true,
+      data: { versions: [{ id: '1.99', type: 'release', has_json: true, has_jar: true }] },
+      error: '',
+    });
+    mockLaunchGame.mockResolvedValue({ success: true, data: { pid: 42 }, error: '' });
+    const onOpenSettings = vi.fn();
+    render(
+      <HomeView
+        selectedVersion={version}
+        onVersionSelect={vi.fn()}
+        currentAccount={account}
+        onOpenSettings={onOpenSettings}
+      />,
+    );
+
+    const settingsToggle = screen.getByRole('button', { name: 'Launch Settings' });
+    expect(settingsToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.getByText(/Temporary launch settings/).closest('#play-launch-settings')?.hasAttribute('hidden')).toBe(true);
+    fireEvent.click(settingsToggle);
+    expect(settingsToggle.getAttribute('aria-expanded')).toBe('true');
     await screen.findByText('4096 MB');
 
     fireEvent.change(screen.getByLabelText('Width'), { target: { value: '1280' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Open Settings' }));
+    expect(onOpenSettings).toHaveBeenCalledOnce();
+    expect(mockUpdateLauncherConfig).not.toHaveBeenCalled();
 
-    await waitFor(() => expect(mockUpdateLauncherConfig).toHaveBeenCalledTimes(1));
-    expect(mockUpdateLauncherConfig.mock.calls[0][0].game_width).toBe(1280);
-    expect(localStorage.getItem('launcher_settings')).toBeNull();
-  });
-
-  it('surfaces an error when persisting settings fails', async () => {
-    mockUpdateLauncherConfig.mockResolvedValue({ success: false, data: null, error: 'disk full' });
-
-    renderHome();
-    await screen.findByText('4096 MB');
-    fireEvent.change(screen.getByLabelText('Width'), { target: { value: '1280' } });
-
-    expect(await screen.findByText('Could not save launch settings: disk full')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+    await waitFor(() => expect(mockLaunchGame).toHaveBeenCalledOnce());
+    expect(mockLaunchGame.mock.calls[0][0].game_width).toBe(1280);
   });
 
   it('adopts legacy localStorage settings once', async () => {
@@ -289,6 +303,7 @@ describe('HomeView', () => {
 
     renderHome();
 
+    fireEvent.click(screen.getByRole('button', { name: 'Launch Settings' }));
     expect(await screen.findByText('2048 MB')).toBeTruthy();
     await waitFor(() => expect(mockUpdateLauncherConfig).toHaveBeenCalledTimes(1));
     expect(mockUpdateLauncherConfig.mock.calls[0][0].max_memory).toBe(2048);

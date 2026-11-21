@@ -29,6 +29,8 @@ const en = {
   'play.none': 'None',
   'play.hrpauth': 'HRPAuth',
   'play.launchSettings': 'Launch Settings',
+  'play.temporarySettingsNotice': 'Temporary launch settings: changes here are not saved. Use Settings to change your permanent defaults.',
+  'play.permanentSettings': 'Open Settings',
   'play.maxMemory': 'Maximum Memory',
   'play.jvmArgs': 'JVM Arguments',
   'play.width': 'Width',

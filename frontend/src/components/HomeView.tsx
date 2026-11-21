@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { Asset, patternStyle } from '@ha/ui';
 import type { StoredAccount } from '../accountStorage';
 import { installedFromDisk, versionKey, type DiskVersion, type InstalledVersion } from '../types';
@@ -97,6 +98,7 @@ export default function HomeView({
   const [currentVersion, setCurrentVersion] = useState<InstalledVersion | null>(null);
   const [settings, setSettings] = useState<LauncherSettings>(DEFAULT_SETTINGS);
   const [launching, setLaunching] = useState(false);
+  const [launchSettingsOpen, setLaunchSettingsOpen] = useState(false);
   const [error, setError] = useState('');
   const [liveLogs, setLiveLogs] = useState<LiveLogLine[]>([]);
   const [showLogs, setShowLogs] = useState(false);
@@ -244,7 +246,6 @@ export default function HomeView({
 
   const saveSettings = (newSettings: LauncherSettings) => {
     setSettings(newSettings);
-    void persistSettings(newSettings);
   };
 
   const handleVersionChange = (key: string) => {
@@ -396,9 +397,38 @@ export default function HomeView({
         </div>
 
         <div className="mt-8 border-t border-edge pt-8">
-          <h3 className="text-sm font-medium text-ink-muted">{t('play.launchSettings')}</h3>
+          <button
+            type="button"
+            aria-expanded={launchSettingsOpen}
+            aria-controls="play-launch-settings"
+            onClick={() => setLaunchSettingsOpen(open => !open)}
+            className="flex w-full items-center justify-between rounded-md text-left text-sm font-medium text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-edge-strong"
+          >
+            {t('play.launchSettings')}
+            <ChevronDown
+              aria-hidden="true"
+              className={`size-5 transition-transform ${launchSettingsOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
 
-          <div className="mt-5 flex flex-col gap-6">
+          <div
+            id="play-launch-settings"
+            hidden={!launchSettingsOpen}
+            className="mt-5 flex flex-col gap-6"
+          >
+            <Callout tone="info">
+              <span>{t('play.temporarySettingsNotice')}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="ml-1 h-auto px-1 py-0 underline"
+                onClick={onOpenSettings}
+              >
+                {t('play.permanentSettings')}
+              </Button>
+            </Callout>
+
             <div>
               <div className="mb-3 flex items-baseline justify-between">
                 <span className="text-sm text-ink-muted">{t('play.maxMemory')}</span>
