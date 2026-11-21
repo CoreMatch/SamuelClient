@@ -11,6 +11,8 @@ import {
 } from '../../wailsjs/go/main/App';
 import InstallWizard from './InstallWizard';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
+import { versionKey } from '../types';
+import { readVersionNicknames } from '../versionNicknames';
 
 // All Wails bindings are test doubles; the wizard must never reach a real
 // backend. The runtime event bus is stubbed out too.
@@ -59,6 +61,7 @@ async function selectVersionAndNext() {
 describe('InstallWizard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     mockManifest();
     mockGetFabricVersions.mockResolvedValue({ success: true, data: [{ loader: { version: '0.15.0' } }], error: '' });
     mockGetForgeVersions.mockResolvedValue({ success: true, data: [{ version: '47.2.0' }], error: '' });
@@ -77,6 +80,7 @@ describe('InstallWizard', () => {
 
   it('walks the three steps and installs a vanilla version', async () => {
     const onInstalled = vi.fn();
+    mockDownloadVersion.mockResolvedValue({ success: true, data: { game_dir: '/games/custom' }, error: '' });
     render(<InstallWizard onInstalled={onInstalled} />);
 
     // Step 1: version list.
@@ -88,12 +92,19 @@ describe('InstallWizard', () => {
 
     // Step 3: confirm and install.
     expect(screen.getByText('Minecraft 1.99 (vanilla).')).toBeTruthy();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Version nickname (optional)' }), {
+      target: { value: '  Main world  ' },
+    });
     fireEvent.click(screen.getByText('Install'));
 
     await waitFor(() => expect(mockDownloadVersion).toHaveBeenCalledWith('1.99', ''));
     expect(mockInstallFabricLoader).not.toHaveBeenCalled();
     expect(mockInstallForgeLoader).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByText(/Installed 1\.99/)).toBeTruthy());
+    expect(readVersionNicknames()[versionKey({
+      id: '1.99', type: 'release', installed: true, gameDir: '/games/custom',
+    })]).toBe('Main world');
+    expect(screen.getByText('Nickname saved: Main world.')).toBeTruthy();
     expect(onInstalled).toHaveBeenCalled();
   });
 
@@ -109,10 +120,16 @@ describe('InstallWizard', () => {
     fireEvent.click(screen.getAllByText('Next')[0]);
 
     expect(screen.getByText(/Minecraft 1\.99 with Fabric 0\.15\.0/)).toBeTruthy();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Version nickname (optional)' }), {
+      target: { value: 'Fabric profile' },
+    });
     fireEvent.click(screen.getByText('Install'));
 
     await waitFor(() => expect(mockInstallFabricLoader).toHaveBeenCalledWith('1.99', '0.15.0', '/games/custom'));
     await waitFor(() => expect(screen.getByText(/Installed fabric-loader-0\.15\.0-1\.99/)).toBeTruthy());
+    expect(readVersionNicknames()[versionKey({
+      id: 'fabric-loader-0.15.0-1.99', type: 'release', installed: true, gameDir: '/games/custom',
+    })]).toBe('Fabric profile');
   });
 
   it('shows a readable failure with retry when the download fails', async () => {

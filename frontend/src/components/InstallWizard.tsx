@@ -17,10 +17,11 @@ import type { InstallProgress } from '../useInstallProgress';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Select } from '../ui/select';
-import { Field } from '../ui/field';
+import { Field, TextField } from '../ui/field';
 import { Progress } from '../ui/progress';
 import { Callout } from '../ui/callout';
 import { RadioCards } from '../ui/radio-cards';
+import { saveVersionNickname } from '../versionNicknames';
 
 // InstallWizard implements the three-step install flow shared by HMCL/PCL2
 // (launcher research 03 §8.3): select version → select loader → confirm and
@@ -66,6 +67,8 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
   const [phase, setPhase] = useState<'idle' | 'installing' | 'success' | 'error' | 'cancelled'>('idle');
   const [installError, setInstallError] = useState('');
   const [installedLabel, setInstalledLabel] = useState('');
+  const [nickname, setNickname] = useState('');
+  const [nicknameSaveError, setNicknameSaveError] = useState(false);
   // download:progress subscription shared with the HomeView loader install.
   const { progress, clearProgress } = useInstallProgress();
   // activeInstallIdRef tracks the version id currently installing so the
@@ -163,6 +166,7 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
     clearProgress();
     setPhase('installing');
     setInstallError('');
+    setNicknameSaveError(false);
     cancelRequestedRef.current = false;
     try {
       activeInstallIdRef.current = selectedVersion.id;
@@ -172,6 +176,7 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
       }
       // Keep the loader alongside its vanilla install even if the default changes.
       const gameDir = download.data?.game_dir ?? '';
+      let installedVersionId = selectedVersion.id;
       if (loaderType !== 'vanilla') {
         // The loader reports progress under its own version id; drop the
         // finished vanilla entry so the bar doesn't sit at the vanilla 100%
@@ -183,15 +188,29 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
         const result = await InstallFabricLoader(selectedVersion.id, selectedLoaderVersion, gameDir);
         if (!result.success) throw new Error(result.error || 'Loader install failed');
         const data = result.data as { version_id?: string } | null;
-        setInstalledLabel(data?.version_id || expectedLoaderVersionId());
+        installedVersionId = data?.version_id || expectedLoaderVersionId();
+        setInstalledLabel(installedVersionId);
       } else if (loaderType === 'forge') {
         activeInstallIdRef.current = `${selectedVersion.id}-forge-${selectedLoaderVersion}`;
         const result = await InstallForgeLoader(selectedVersion.id, selectedLoaderVersion, gameDir);
         if (!result.success) throw new Error(result.error || 'Loader install failed');
         const data = result.data as { version_id?: string } | null;
-        setInstalledLabel(data?.version_id || expectedLoaderVersionId());
+        installedVersionId = data?.version_id || expectedLoaderVersionId();
+        setInstalledLabel(installedVersionId);
       } else {
         setInstalledLabel(selectedVersion.id);
+      }
+      if (nickname.trim()) {
+        try {
+          saveVersionNickname({
+            id: installedVersionId,
+            type: selectedVersion.type || 'release',
+            installed: true,
+            ...(gameDir ? { gameDir } : {}),
+          }, nickname);
+        } catch {
+          setNicknameSaveError(true);
+        }
       }
       setPhase('success');
       onInstalled();
@@ -225,6 +244,8 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
     setPhase('idle');
     setInstallError('');
     setInstalledLabel('');
+    setNickname('');
+    setNicknameSaveError(false);
     clearProgress();
   };
 
@@ -297,7 +318,10 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
                 <button
                   key={version.id}
                   type="button"
-                  onClick={() => setSelectedVersion(version)}
+                  onClick={() => {
+                    if (selectedVersion?.id !== version.id) setNickname('');
+                    setSelectedVersion(version);
+                  }}
                   aria-pressed={selectedVersion?.id === version.id}
                   className={`flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition-colors duration-150 hover:bg-white/4 ${
                     index > 0 ? 'border-t border-edge' : ''
@@ -404,6 +428,19 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
             </p>
           </div>
 
+          {phase !== 'success' && (
+            <div className="mt-5">
+              <TextField
+                label={t('wizard.nickname')}
+                value={nickname}
+                onChange={e => setNickname(e.target.value)}
+                placeholder={selectedVersion.id}
+                disabled={phase === 'installing'}
+              />
+              <p className="mt-2 text-sm text-ink-muted">{t('wizard.nicknameHint')}</p>
+            </div>
+          )}
+
           {phase === 'installing' && (
             <div className="mt-5">
               <div className="mb-2 flex items-center justify-between">
@@ -427,6 +464,16 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
           {phase === 'success' && (
             <div className="mt-5">
               <Callout tone="success">{t('wizard.installSuccess', { version: installedLabel })}</Callout>
+              {nickname.trim() && !nicknameSaveError && (
+                <p className="mt-3 text-sm text-ink-muted">
+                  {t('wizard.nicknameSaved', { nickname: nickname.trim() })}
+                </p>
+              )}
+              {nicknameSaveError && (
+                <div className="mt-3">
+                  <Callout tone="warning">{t('wizard.nicknameSaveFailed')}</Callout>
+                </div>
+              )}
             </div>
           )}
 
