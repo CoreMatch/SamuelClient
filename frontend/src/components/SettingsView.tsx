@@ -29,6 +29,8 @@ import { Callout } from '../ui/callout';
 import { Dialog, AlertDialog } from '../ui/dialog';
 import { Tooltip } from '../ui/tooltip';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
+import { Stepper } from '@ha/ui';
+import { recommendJavaMajor } from '../javaRuntimeRecommendation';
 
 interface JavaInstallation {
   id: number;
@@ -87,6 +89,8 @@ export default function SettingsView() {
   const [dialogError, setDialogError] = useState('');
   const [deleteJavaId, setDeleteJavaId] = useState<number | null>(null);
   const [downloadJavaOpen, setDownloadJavaOpen] = useState(false);
+  const [javaWizardStep, setJavaWizardStep] = useState(0);
+  const [expectedMinecraftVersion, setExpectedMinecraftVersion] = useState('');
   const [downloadJavaMajor, setDownloadJavaMajor] = useState(25);
   const [downloadJavaVersions, setDownloadJavaVersions] = useState<number[]>([8, 11, 17, 21, 25]);
   const [downloadJavaPath, setDownloadJavaPath] = useState('');
@@ -399,6 +403,8 @@ export default function SettingsView() {
   };
 
   const openJavaDownload = async () => {
+    setJavaWizardStep(0);
+    setExpectedMinecraftVersion('');
     setDownloadJavaMajor(25);
     setDownloadJavaPath('');
     setDownloadJavaError('');
@@ -465,6 +471,27 @@ export default function SettingsView() {
   const defaultJava = javaInstallations.find(j => j.is_default);
   const gameDirs = gameDirStatus?.dirs ?? [];
   const defaultGameDir = gameDirStatus?.path ?? config?.game_dir;
+  const javaRecommendation = recommendJavaMajor(expectedMinecraftVersion);
+  const javaRecommendationNotice = () => {
+    if (!expectedMinecraftVersion.trim()) {
+      return <p className="text-sm text-ink-muted">{t('settings.javaRecommendationOptional')}</p>;
+    }
+    if (!javaRecommendation) {
+      return <Callout tone="info">{t('settings.javaRecommendationUnknown')}</Callout>;
+    }
+    return (
+      <Callout tone="info">
+        <p>{t('settings.javaRecommendation', {
+          version: expectedMinecraftVersion.trim(),
+          major: javaRecommendation.major,
+        })}</p>
+        {javaRecommendation.note === 'java17LtsFor117' && (
+          <p className="mt-1">{t('settings.javaRecommendation117Note')}</p>
+        )}
+        <p className="mt-1">{t('settings.javaRecommendationInfoOnly')}</p>
+      </Callout>
+    );
+  };
 
   return (
     <div className="flex flex-col gap-8">
@@ -903,65 +930,101 @@ export default function SettingsView() {
         closeLabel={t('common.close')}
       >
         <div className="flex flex-col gap-5">
-          <p className="text-sm leading-relaxed text-ink-muted">
-            {t('settings.javaProviderHint')}
-          </p>
-          <div className="flex flex-col gap-2">
-            <label htmlFor="java-runtime-major" className="text-sm font-medium text-ink-muted">
-              {t('settings.javaRuntimeVersion')}
-            </label>
-            <select
-              id="java-runtime-major"
-              aria-label={t('settings.javaRuntimeVersion')}
-              value={downloadJavaMajor}
-              onChange={e => handleDownloadJavaMajorChange(Number(e.target.value))}
-              disabled={downloadingJava}
-              className="h-11 rounded-md border border-edge bg-raised px-4 text-base text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong disabled:opacity-40"
-            >
-              {downloadJavaVersions.map(major => (
-                <option key={major} value={major}>Java {major} (LTS)</option>
-              ))}
-            </select>
-          </div>
-          <TextField
-            label={t('settings.javaInstallPath')}
-            value={downloadJavaPath}
-            onChange={e => setDownloadJavaPath(e.target.value)}
-            disabled={downloadingJava}
-            placeholder="/path/to/launcher/jre/25"
+          <Stepper
+            steps={[t('settings.javaWizardGameStep'), t('settings.javaWizardRuntimeStep')]}
+            active={javaWizardStep}
           />
-          {downloadingJava && (
-            <div className="flex flex-col gap-2" role="status">
-              <div className="flex justify-between text-sm text-ink-muted">
-                <span>{t('settings.javaDownloading', { version: downloadJavaMajor })}</span>
-                <span>{javaProgress[`java-${downloadJavaMajor}`]?.pct == null
-                  ? ''
-                  : `${javaProgress[`java-${downloadJavaMajor}`].pct}%`}</span>
-              </div>
-              <Progress value={javaProgress[`java-${downloadJavaMajor}`]?.pct ?? null} />
-            </div>
-          )}
-          {downloadJavaError && <Callout tone="danger">{downloadJavaError}</Callout>}
-          <div className="mt-2 flex justify-end gap-3">
-            {downloadingJava ? (
-              <Button
-                variant="secondary"
-                onClick={() => CancelInstall(`java-${downloadJavaMajor}`)}
-              >
-                {t('common.cancel')}
-              </Button>
-            ) : (
-              <>
+          {javaWizardStep === 0 ? (
+            <>
+              <p className="text-sm leading-relaxed text-ink-muted">{t('settings.javaProviderHint')}</p>
+              <TextField
+                label={t('settings.expectedMinecraftVersion')}
+                value={expectedMinecraftVersion}
+                onChange={e => setExpectedMinecraftVersion(e.target.value)}
+                disabled={downloadingJava}
+                placeholder="1.21.4"
+              />
+              {javaRecommendationNotice()}
+              <div className="mt-2 flex justify-between gap-3">
                 <Button variant="secondary" onClick={() => setDownloadJavaOpen(false)}>
                   {t('common.cancel')}
                 </Button>
-                <Button onClick={handleDownloadJava} loading={downloadingJava}>
-                  <Download className="size-4" aria-hidden />
-                  {t('settings.installJava')}
-                </Button>
-              </>
-            )}
-          </div>
+                <div className="flex gap-3">
+                  <Button variant="secondary" onClick={() => setJavaWizardStep(1)}>
+                    {t('settings.skipRecommendation')}
+                  </Button>
+                  <Button onClick={() => setJavaWizardStep(1)}>
+                    {t('wizard.next')}
+                  </Button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {javaRecommendationNotice()}
+              <div className="flex flex-col gap-2">
+                <label htmlFor="java-runtime-major" className="text-sm font-medium text-ink-muted">
+                  {t('settings.javaRuntimeVersion')}
+                </label>
+                <select
+                  id="java-runtime-major"
+                  aria-label={t('settings.javaRuntimeVersion')}
+                  value={downloadJavaMajor}
+                  onChange={e => handleDownloadJavaMajorChange(Number(e.target.value))}
+                  disabled={downloadingJava}
+                  className="h-11 rounded-md border border-edge bg-raised px-4 text-base text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong disabled:opacity-40"
+                >
+                  {downloadJavaVersions.map(major => (
+                    <option key={major} value={major}>Java {major} (LTS)</option>
+                  ))}
+                </select>
+              </div>
+              <TextField
+                label={t('settings.javaInstallPath')}
+                value={downloadJavaPath}
+                onChange={e => setDownloadJavaPath(e.target.value)}
+                disabled={downloadingJava}
+                placeholder="/path/to/launcher/jre/25"
+              />
+              {downloadingJava && (
+                <div className="flex flex-col gap-2" role="status">
+                  <div className="flex justify-between text-sm text-ink-muted">
+                    <span>{t('settings.javaDownloading', { version: downloadJavaMajor })}</span>
+                    <span>{javaProgress[`java-${downloadJavaMajor}`]?.pct == null
+                      ? ''
+                      : `${javaProgress[`java-${downloadJavaMajor}`].pct}%`}</span>
+                  </div>
+                  <Progress value={javaProgress[`java-${downloadJavaMajor}`]?.pct ?? null} />
+                </div>
+              )}
+              {downloadJavaError && <Callout tone="danger">{downloadJavaError}</Callout>}
+              <div className="mt-2 flex justify-between gap-3">
+                {downloadingJava ? (
+                  <Button
+                    variant="secondary"
+                    onClick={() => CancelInstall(`java-${downloadJavaMajor}`)}
+                  >
+                    {t('common.cancel')}
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="secondary" onClick={() => setJavaWizardStep(0)}>
+                      {t('settings.javaWizardBack')}
+                    </Button>
+                    <div className="flex gap-3">
+                      <Button variant="secondary" onClick={() => setDownloadJavaOpen(false)}>
+                        {t('common.cancel')}
+                      </Button>
+                      <Button onClick={handleDownloadJava}>
+                        <Download className="size-4" aria-hidden />
+                        {t('settings.installJava')}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </Dialog>
 

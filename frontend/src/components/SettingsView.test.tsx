@@ -233,20 +233,58 @@ describe('SettingsView', () => {
     );
   });
 
-  it('downloads a selected Temurin runtime to the custom install folder', async () => {
+  it('shows Java advice without changing the selected runtime', async () => {
     renderView();
     await screen.findAllByText('JDK 17');
 
     fireEvent.click(screen.getByRole('button', { name: 'Download Java' }));
     const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Expected Minecraft version'), {
+      target: { value: '1.18.2' },
+    });
+    expect(await within(dialog).findByText(/Java 17 is a suggested runtime/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }));
+
     const destination = await within(dialog).findByLabelText('Installation folder');
     await waitFor(() => expect((destination as HTMLInputElement).value).toBe('/launcher/jre/25'));
-    fireEvent.change(within(dialog).getByLabelText('Java version'), { target: { value: '21' } });
+    const javaVersion = within(dialog).getByLabelText('Java version') as HTMLSelectElement;
+    expect(javaVersion.value).toBe('25');
+    fireEvent.change(javaVersion, { target: { value: '21' } });
     await waitFor(() => expect((destination as HTMLInputElement).value).toBe('/launcher/jre/21'));
     fireEvent.change(destination, { target: { value: '/custom/java/21' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Install Java' }));
 
     await waitFor(() => expect(mockInstallJavaRuntime).toHaveBeenCalledWith(21, '/custom/java/21'));
+  });
+
+  it('allows skipping the recommendation and installing directly', async () => {
+    renderView();
+    await screen.findAllByText('JDK 17');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Download Java' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Skip' }));
+    await within(dialog).findByLabelText('Installation folder');
+    await waitFor(() =>
+      expect((within(dialog).getByLabelText('Installation folder') as HTMLInputElement).value)
+        .toBe('/launcher/jre/25'),
+    );
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Install Java' }));
+    await waitFor(() => expect(mockInstallJavaRuntime).toHaveBeenCalledWith(25, '/launcher/jre/25'));
+  });
+
+  it('refreshes the default install path when the Java runtime changes', async () => {
+    renderView();
+    await screen.findAllByText('JDK 17');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Download Java' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }));
+    const destination = await within(dialog).findByLabelText('Installation folder');
+    await waitFor(() => expect((destination as HTMLInputElement).value).toBe('/launcher/jre/25'));
+    fireEvent.change(within(dialog).getByLabelText('Java version'), { target: { value: '21' } });
+    await waitFor(() => expect((destination as HTMLInputElement).value).toBe('/launcher/jre/21'));
     expect(mockGetJavaRuntimePath).toHaveBeenCalledWith(25);
     expect(mockGetJavaRuntimePath).toHaveBeenCalledWith(21);
   });
