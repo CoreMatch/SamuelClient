@@ -112,17 +112,20 @@ describe('HomeView', () => {
   });
 
   it('shows the selected version nickname and launches with the original ID and active account', async () => {
+    const installedVersion = { ...version, gameDir: '/games/main' };
     mockGetInstalledVersions.mockResolvedValue({
       success: true,
-      data: { versions: [{ id: '1.99', type: 'release', has_json: true, has_jar: true }] },
+      data: { versions: [{ id: '1.99', type: 'release', has_json: true, has_jar: true, game_dir: '/games/main' }] },
       error: '',
     });
     mockLaunchGame.mockResolvedValue({ success: true, data: { pid: 42 }, error: '' });
-    saveVersionNickname(version, 'Main world');
+    saveVersionNickname(installedVersion, 'Main world');
 
-    renderHome(version);
+    renderHome(installedVersion);
 
-    expect(await screen.findByText('Main world')).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: 'Minecraft Version' }).textContent).toBe('Main world');
+    });
     const play = await waitFor(() => {
       const btn = screen.getByRole('button', { name: 'Play' });
       expect(btn.hasAttribute('disabled')).toBe(false);
@@ -162,11 +165,13 @@ describe('HomeView', () => {
       error: '',
     });
     mockLaunchGame.mockResolvedValue({ success: true, data: { pid: 42 }, error: '' });
+    saveVersionNickname({ ...version, gameDir: '/games/second' }, 'Second copy');
     renderHome();
 
     await act(async () => {
-      await selectOption(0, '1.99 (/games/second)');
+      await selectOption(0, 'Second copy');
     });
+    expect(screen.getByRole('combobox', { name: 'Minecraft Version' }).textContent).toBe('Second copy');
     fireEvent.click(screen.getByRole('button', { name: 'Play' }));
 
     await waitFor(() => expect(mockLaunchGame).toHaveBeenCalledWith(expect.objectContaining({

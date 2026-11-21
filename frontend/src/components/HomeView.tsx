@@ -345,8 +345,7 @@ export default function HomeView({
               placeholder={t('play.noVersions')}
               options={versions.map(v => {
                 const key = versionKey(v);
-                const label = nicknames[key] || v.id;
-                return { value: key, label: v.gameDir ? `${label} (${v.gameDir})` : label };
+                return { value: key, label: nicknames[key] || v.id };
               })}
             />
           </Field>
