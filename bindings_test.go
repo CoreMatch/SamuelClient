@@ -61,6 +61,48 @@ func swapDataDir(t *testing.T, dir string) {
 	t.Cleanup(func() { database.DataDirFn = old })
 }
 
+func TestDownloadSettingsSelectCustomVersionEndpoint(t *testing.T) {
+	t.Cleanup(func() { _ = repository.NewSettingRepository().Delete("launcher.download") })
+	app := newTestApp()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/mirror/mc/game/version_manifest_v2.json":
+			io.WriteString(w, `{"versions":[{"id":"official-shape"}]}`)
+		case "/mirror/mc/game/version_manifest.json":
+			io.WriteString(w, `{"versions":[{"id":"bmcl-shape"}]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	for _, tc := range []struct{ shape, version string }{
+		{"official", "official-shape"},
+		{"bmclapi", "bmcl-shape"},
+	} {
+		if res := app.SetDownloadSettings("custom", tc.shape, srv.URL+"/mirror/", 3); !res.Success {
+			t.Fatal(res.Error)
+		}
+		cfg := newTestApp().GetDownloadSettings().Data.(services.DownloadSettings)
+		if cfg.Source != "custom" || cfg.CustomShape != tc.shape || cfg.Concurrency != 3 || cfg.CustomURL != srv.URL+"/mirror" {
+			t.Fatalf("persisted settings = %+v", cfg)
+		}
+		result := app.GetVersions()
+		manifest, ok := result.Data.(services.BMCLVersionManifestResponse)
+		if !result.Success || !ok || len(manifest.Versions) != 1 || manifest.Versions[0].ID != tc.version {
+			t.Fatalf("source shape %q returned %+v", tc.shape, result)
+		}
+	}
+	for _, invalid := range []struct {
+		url         string
+		concurrency int
+	}{{"file:///tmp/mirror", 8}, {"https://mirror.example", 33}, {"https://mirror.example/?q=x", 8}} {
+		if res := app.SetDownloadSettings("custom", "official", invalid.url, invalid.concurrency); res.Success {
+			t.Fatalf("invalid settings accepted: %+v", invalid)
+		}
+	}
+}
+
 func TestCancelInstall(t *testing.T) {
 	app := newTestApp()
 

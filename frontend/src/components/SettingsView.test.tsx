@@ -11,6 +11,8 @@ import {
   DeleteJavaInstallation,
   SetDefaultJavaInstallation,
   GetGameDirStatus,
+  GetDownloadSettings,
+  SetDownloadSettings,
   SetGameDir,
   ScanGameDirs,
 } from '../../wailsjs/go/main/App';
@@ -26,6 +28,8 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   DeleteJavaInstallation: vi.fn(),
   SetDefaultJavaInstallation: vi.fn(),
   GetGameDirStatus: vi.fn(),
+  GetDownloadSettings: vi.fn(),
+  SetDownloadSettings: vi.fn(),
   SetGameDir: vi.fn(),
   ScanGameDirs: vi.fn(),
 }));
@@ -103,6 +107,30 @@ describe('SettingsView', () => {
       ok({ path: '/games/mc/.minecraft', source: 'custom', exists: true }),
     );
     mockScanGameDirs.mockResolvedValue(ok({ dirs: [] }));
+    vi.mocked(GetDownloadSettings).mockResolvedValue(
+      ok({ source: 'bmclapi', custom_shape: 'bmclapi', custom_url: '', concurrency: 8 }),
+    );
+  });
+
+  it('saves a custom source and asset concurrency from the advanced drawer', async () => {
+    vi.mocked(SetDownloadSettings).mockResolvedValue(
+      ok({ source: 'custom', custom_shape: 'official', custom_url: 'https://mirror.example.com', concurrency: 12 }),
+    );
+    renderView();
+    const summary = await screen.findByText('Download Settings');
+    const drawer = summary.closest('details')!;
+    expect(drawer.open).toBe(false);
+    drawer.open = true;
+    const source = await within(drawer).findByLabelText('Download source');
+    expect(within(drawer).queryByLabelText('Custom API format')).toBeNull();
+    fireEvent.change(source, { target: { value: 'custom' } });
+    fireEvent.change(within(drawer).getByLabelText('Custom API format'), { target: { value: 'official' } });
+    fireEvent.change(within(drawer).getByLabelText('Source base URL'), { target: { value: 'https://mirror.example.com' } });
+    fireEvent.change(within(drawer).getByLabelText('Concurrent asset downloads'), { target: { value: '12' } });
+    expect(within(drawer).getByText(/not multithreaded downloading/)).toBeTruthy();
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Save download settings' }));
+    expect(SetDownloadSettings).toHaveBeenCalledWith('custom', 'official', 'https://mirror.example.com', 12);
+    expect((await within(drawer).findByRole('status')).textContent).toBe('Download settings saved for future downloads.');
   });
 
   it('renders the Java installations with their paths', async () => {

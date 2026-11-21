@@ -427,9 +427,10 @@ func (a *AuthService) ValidateHRPAuthToken(accessToken, clientToken string) *mod
 
 // BMCLAPIService handles BMCLAPI downloads
 type BMCLAPIService struct {
-	client  *http.Client
-	mirrors []string
-	baseURL string
+	client        *http.Client
+	baseURL       string
+	officialShape bool
+	assetWorkers  int
 }
 
 // userAgentTransport gives mirror requests a descriptive User-Agent. Some
@@ -454,8 +455,8 @@ func NewBMCLAPIService() *BMCLAPIService {
 			Timeout:   60 * time.Second,
 			Transport: userAgentTransport{base: http.DefaultTransport},
 		},
-		mirrors: []string{"https://bmclapi2.bangbang93.com", "https://bmclapi.ggsdream.com"},
-		baseURL: "https://bmclapi2.bangbang93.com",
+		baseURL:      defaultBMCLURL,
+		assetWorkers: assetDownloadWorkers,
 	}
 }
 
@@ -572,7 +573,7 @@ func (b *BMCLAPIService) getCtx(ctx context.Context, url string) (*http.Response
 // GetVersionList returns all available Minecraft versions
 // BMCLAPI endpoint: /mc/game/version_manifest.json
 func (b *BMCLAPIService) GetVersionList(ctx context.Context) *models.ApiResponse {
-	url := b.baseURL + "/mc/game/version_manifest.json"
+	url := b.versionListURL()
 
 	resp, err := b.getCtx(ctx, url)
 	if err != nil {
@@ -592,32 +593,11 @@ func (b *BMCLAPIService) GetVersionList(ctx context.Context) *models.ApiResponse
 	return &models.ApiResponse{Success: true, Data: manifest}
 }
 
-// toBMCLAPI rewrites an official Mojang resource URL to the equivalent
-// BMCLAPI mirror path. It covers both the legacy (launchermeta / launcher)
-// and the current (piston-meta / piston-data) hosts plus the assets and
-// maven hosts. See https://bmclapi.bangbang93.com/
-func (b *BMCLAPIService) toBMCLAPI(u string) string {
-	u = strings.ReplaceAll(u, "https://piston-meta.mojang.com/", b.baseURL+"/")
-	u = strings.ReplaceAll(u, "https://launchermeta.mojang.com/", b.baseURL+"/")
-	u = strings.ReplaceAll(u, "https://piston-data.mojang.com/", b.baseURL+"/")
-	u = strings.ReplaceAll(u, "https://launcher.mojang.com/", b.baseURL+"/")
-	u = strings.ReplaceAll(u, "https://resources.download.minecraft.net/", b.baseURL+"/assets/")
-	u = strings.ReplaceAll(u, "https://libraries.minecraft.net/", b.baseURL+"/maven/")
-	return u
-}
-
-// toBMCLAPIMaven rewrites a Mojang library URL to the BMCLAPI maven mirror.
-// It is a thin wrapper kept for clarity at call sites.
-func (b *BMCLAPIService) toBMCLAPIMaven(u string) string {
-	return strings.ReplaceAll(u, "https://libraries.minecraft.net/", b.baseURL+"/maven/")
-}
-
 // GetVersionManifest returns version JSON for a specific version
-// The version URL from manifest should be replaced with BMCLAPI domain
 func (b *BMCLAPIService) GetVersionManifest(ctx context.Context, versionURL string) *models.ApiResponse {
-	bmclURL := b.toBMCLAPI(versionURL)
+	downloadURL := b.rewriteGameURL(versionURL)
 
-	resp, err := b.getCtx(ctx, bmclURL)
+	resp, err := b.getCtx(ctx, downloadURL)
 	if err != nil {
 		return &models.ApiResponse{Success: false, Error: cancelled(ctx, err).Error()}
 	}
@@ -646,8 +626,7 @@ func (b *BMCLAPIService) GetVersionJAR(versionJSON *BMCLVersionJSON) *models.Api
 		return &models.ApiResponse{Success: false, Error: "No client download found"}
 	}
 
-	// Rewrite to BMCLAPI mirror (handles piston-data and legacy launcher)
-	url := b.toBMCLAPI(clientDownload.URL)
+	url := b.rewriteGameURL(clientDownload.URL)
 
 	return &models.ApiResponse{Success: true, Data: map[string]interface{}{
 		"url":  url,
@@ -754,8 +733,7 @@ func (b *BMCLAPIService) DownloadLibraries(ctx context.Context, libraries []BMCL
 		}
 
 		artifact := lib.Downloads.Artifact
-		// Rewrite official library URL to BMCLAPI maven mirror
-		url := b.toBMCLAPIMaven(artifact.URL)
+		url := b.rewriteGameURL(artifact.URL)
 
 		parts := strings.Split(lib.Name, ":")
 		if len(parts) != 3 {
@@ -816,7 +794,7 @@ func shouldDownloadLibrary(lib BMCLLibrary) bool {
 // GetFabricVersions returns available Fabric versions
 // BMCLAPI: https://meta.fabricmc.net -> https://bmclapi2.bangbang93.com/fabric-meta
 func (b *BMCLAPIService) GetFabricVersions(mcVersion string) *models.ApiResponse {
-	url := b.baseURL + "/fabric-meta/v2/versions/loader/" + mcVersion
+	url := b.fabricMetaBase() + "/versions/loader/" + mcVersion
 
 	resp, err := b.client.Get(url)
 	if err != nil {
@@ -839,7 +817,7 @@ func (b *BMCLAPIService) GetFabricVersions(mcVersion string) *models.ApiResponse
 // GetFabricInstaller downloads Fabric installer
 // BMCLAPI: https://meta.fabricmc.net -> https://bmclapi2.bangbang93.com/fabric-meta
 func (b *BMCLAPIService) GetFabricInstaller(ctx context.Context, mcVersion, loaderVersion, targetDir string) *models.ApiResponse {
-	url := fmt.Sprintf("%s/fabric-meta/v2/versions/loader/%s/%s/profile/jar", b.baseURL, mcVersion, loaderVersion)
+	url := fmt.Sprintf("%s/versions/loader/%s/%s/profile/jar", b.fabricMetaBase(), mcVersion, loaderVersion)
 
 	resp, err := b.getCtx(ctx, url)
 	if err != nil {
@@ -875,6 +853,9 @@ func (b *BMCLAPIService) GetFabricInstaller(ctx context.Context, mcVersion, load
 
 // GetForgeVersions returns available Forge versions for a Minecraft version
 func (b *BMCLAPIService) GetForgeVersions(mcVersion string) *models.ApiResponse {
+	if b.officialShape {
+		return b.officialForgeVersions(mcVersion)
+	}
 	url := b.baseURL + "/forge/minecraft/" + mcVersion
 
 	resp, err := b.client.Get(url)
@@ -899,7 +880,7 @@ func (b *BMCLAPIService) GetForgeVersions(mcVersion string) *models.ApiResponse 
 // BMCLAPI serves the installer through its maven mirror (the historical
 // /forge/minecraft/<mc>/<ver>/installer endpoint 404s; verified live).
 func (b *BMCLAPIService) DownloadForgeInstaller(ctx context.Context, mcVersion, forgeVersion, targetDir string) *models.ApiResponse {
-	url := fmt.Sprintf("%s/maven/net/minecraftforge/forge/%s-%s/forge-%s-%s-installer.jar", b.baseURL, mcVersion, forgeVersion, mcVersion, forgeVersion)
+	url := fmt.Sprintf("%s/net/minecraftforge/forge/%s-%s/forge-%s-%s-installer.jar", b.forgeMavenBase(), mcVersion, forgeVersion, mcVersion, forgeVersion)
 
 	resp, err := b.getCtx(ctx, url)
 	if err != nil {
@@ -951,7 +932,7 @@ func (b *BMCLAPIService) InstallFabricLoader(ctx context.Context, mcVersion, loa
 		return &models.ApiResponse{Success: false, Error: fmt.Sprintf("version %s is not installed; install the vanilla version first", mcVersion)}
 	}
 
-	profileURL := fmt.Sprintf("%s/fabric-meta/v2/versions/loader/%s/%s/profile/json", b.baseURL, mcVersion, loaderVersion)
+	profileURL := fmt.Sprintf("%s/versions/loader/%s/%s/profile/json", b.fabricMetaBase(), mcVersion, loaderVersion)
 	resp, err := b.getCtx(ctx, profileURL)
 	if err != nil {
 		return &models.ApiResponse{Success: false, Error: cancelled(ctx, err).Error()}
@@ -1041,10 +1022,14 @@ func (b *BMCLAPIService) fillMavenURLs(libraries []BMCLLibrary) {
 			artifact.URL = libraries[i].URL
 		}
 		if artifact.URL == "" {
-			artifact.URL = b.baseURL + "/maven/" + artifact.Path
+			base := "https://maven.fabricmc.net"
+			if !b.officialShape {
+				base = b.baseURL + "/maven"
+			}
+			artifact.URL = base + "/" + artifact.Path
 		} else if !strings.HasSuffix(artifact.URL, ".jar") {
 			base := strings.TrimRight(artifact.URL, "/")
-			if base == "https://maven.fabricmc.net" {
+			if !b.officialShape && base == "https://maven.fabricmc.net" {
 				base = b.baseURL + "/maven"
 			}
 			artifact.URL = base + "/" + artifact.Path
@@ -1314,7 +1299,7 @@ func (b *BMCLAPIService) DownloadNatives(ctx context.Context, libraries []BMCLLi
 			continue
 		}
 
-		url := b.toBMCLAPIMaven(artifact.URL)
+		url := b.rewriteGameURL(artifact.URL)
 
 		// Extract the native jar
 		resp, err := b.getCtx(ctx, url)

@@ -13,6 +13,7 @@ import {
   ScanGameDirs,
 } from '../../wailsjs/go/main/App';
 import { LoadingSkeleton } from './states';
+import DownloadSettings from './DownloadSettings';
 import { t } from '../i18n';
 import { Button, IconButton } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -721,6 +722,11 @@ export default function SettingsView() {
             </p>
           </div>
         </div>
+      </section>
+
+      <section className={sectionClasses}>
+        <h2 className="mb-5 text-xl font-semibold text-ink">{t('settings.advanced')}</h2>
+        <DownloadSettings />
       </section>
 
       {/* Add / edit Java dialog */}

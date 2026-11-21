@@ -109,7 +109,7 @@ func (b *BMCLAPIService) DownloadAssets(ctx context.Context, assetIndex *BMCLAss
 		Size int64  `json:"size"`
 	}
 	var objects map[string]object
-	assetIndexURL := b.toBMCLAPI(assetIndex.URL)
+	assetIndexURL := b.rewriteGameURL(assetIndex.URL)
 	if err := b.getAsset(ctx, assetIndexURL, func(body io.Reader) error {
 		var index struct {
 			Objects map[string]object `json:"objects"`
@@ -151,7 +151,7 @@ func (b *BMCLAPIService) DownloadAssets(ctx context.Context, assetIndex *BMCLAss
 			downloaded += obj.Size
 			continue
 		}
-		pending = append(pending, job{name, path, "/assets/" + subDir + "/" + obj.Hash, obj.Size})
+		pending = append(pending, job{name, path, "/" + subDir + "/" + obj.Hash, obj.Size})
 	}
 
 	workCtx, stop := context.WithCancelCause(ctx)
@@ -159,7 +159,7 @@ func (b *BMCLAPIService) DownloadAssets(ctx context.Context, assetIndex *BMCLAss
 	var next atomic.Uint64
 	var workers sync.WaitGroup
 	var progressMu sync.Mutex
-	for range min(assetDownloadWorkers, len(pending)) {
+	for range min(b.assetWorkers, len(pending)) {
 		workers.Go(func() {
 			for workCtx.Err() == nil {
 				i := next.Add(1) - 1
@@ -167,7 +167,7 @@ func (b *BMCLAPIService) DownloadAssets(ctx context.Context, assetIndex *BMCLAss
 					return
 				}
 				task := pending[i]
-				if err := b.downloadAssetObject(workCtx, b.baseURL+task.relativeURL, task.path, task.size); err != nil {
+				if err := b.downloadAssetObject(workCtx, b.assetURL(task.relativeURL), task.path, task.size); err != nil {
 					stop(fmt.Errorf("failed to download asset %s (%s): %w", task.name, task.relativeURL, err))
 					return
 				}

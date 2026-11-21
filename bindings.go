@@ -134,9 +134,27 @@ func (a *App) installResult(ctx context.Context, versionID string, result *model
 
 // ==================== Versions & loaders (read) ====================
 
-// GetVersions returns the BMCLAPI version manifest list.
+func (a *App) downloadService() *services.BMCLAPIService {
+	return a.bmclService.WithDownloadSettings(services.GetDownloadSettings())
+}
+
+func (a *App) GetDownloadSettings() *models.ApiResponse {
+	return &models.ApiResponse{Success: true, Data: services.GetDownloadSettings()}
+}
+
+func (a *App) SetDownloadSettings(source, customShape, customURL string, concurrency int) *models.ApiResponse {
+	cfg, err := services.SaveDownloadSettings(services.DownloadSettings{
+		Source: source, CustomShape: customShape, CustomURL: customURL, Concurrency: concurrency,
+	})
+	if err != nil {
+		return &models.ApiResponse{Error: err.Error()}
+	}
+	return &models.ApiResponse{Success: true, Data: cfg}
+}
+
+// GetVersions returns the version manifest list from the selected source.
 func (a *App) GetVersions() *models.ApiResponse {
-	return a.bmclService.GetVersionList(context.Background())
+	return a.downloadService().GetVersionList(context.Background())
 }
 
 // GetFabricVersions returns available Fabric loader versions for a Minecraft
@@ -145,7 +163,7 @@ func (a *App) GetFabricVersions(mcVersion string) *models.ApiResponse {
 	if mcVersion == "" {
 		return &models.ApiResponse{Success: false, Error: "mc version is required"}
 	}
-	return a.bmclService.GetFabricVersions(mcVersion)
+	return a.downloadService().GetFabricVersions(mcVersion)
 }
 
 // GetForgeVersions returns available Forge loader versions for a Minecraft
@@ -154,7 +172,7 @@ func (a *App) GetForgeVersions(mcVersion string) *models.ApiResponse {
 	if mcVersion == "" {
 		return &models.ApiResponse{Success: false, Error: "mc version is required"}
 	}
-	return a.bmclService.GetForgeVersions(mcVersion)
+	return a.downloadService().GetForgeVersions(mcVersion)
 }
 
 // ==================== Java installations (read) ====================
@@ -580,7 +598,7 @@ func (a *App) DownloadVersion(versionID, gameDir string) *models.ApiResponse {
 		})
 	}
 
-	return a.installResult(ctx, versionID, a.bmclService.InstallVersion(ctx, versionID, gameDir, progress))
+	return a.installResult(ctx, versionID, a.downloadService().InstallVersion(ctx, versionID, gameDir, progress))
 }
 
 // InstallFabricLoader installs the Fabric loader profile on top of an
@@ -613,7 +631,7 @@ func (a *App) InstallFabricLoader(mcVersion, loaderVersion, gameDir string) *mod
 		})
 	}
 
-	return a.installResult(ctx, versionID, a.bmclService.InstallFabricLoader(ctx, mcVersion, loaderVersion, gameDir, progress))
+	return a.installResult(ctx, versionID, a.downloadService().InstallFabricLoader(ctx, mcVersion, loaderVersion, gameDir, progress))
 }
 
 // InstallForgeLoader downloads the Forge installer and runs it headless
@@ -652,7 +670,7 @@ func (a *App) InstallForgeLoader(mcVersion, forgeVersion, gameDir string) *model
 	}
 
 	javaPath := a.launcherService.GetJavaPath()
-	return a.installResult(ctx, versionID, a.bmclService.InstallForgeLoader(ctx, mcVersion, forgeVersion, gameDir, javaPath, logCallback, progress))
+	return a.installResult(ctx, versionID, a.downloadService().InstallForgeLoader(ctx, mcVersion, forgeVersion, gameDir, javaPath, logCallback, progress))
 }
 
 // ==================== Launch (write, streaming) ====================
