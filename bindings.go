@@ -20,16 +20,15 @@ package main
 //   - "download:progress" — progress while DownloadVersion installs a
 //     version. Payload: {"version_id": string, "stage": "jar"|"library"|
 //     "native"|"asset"|"loader"|"java-download"|"java-extract"|
-//     "cancelled", "name": string,
-//     "downloaded": number, "total": number}. The "loader" stage is emitted
+//     "completed"|"failed"|"cancelled", "name": string,
+//     "downloaded": number, "total": number, "error"?: string}. The "loader" stage is emitted
 //     by InstallFabricLoader/InstallForgeLoader; total>0 means a real byte
 //     percentage is available, total<=0 means an indeterminate stage.
 //     downloaded/total are cumulative within a stage: downloaded grows toward
 //     the stage total as each artifact completes and only equals it when the
 //     stage is done (so the bar advances 0->100 instead of pinning at 100%
-//     after the first file). A terminal "cancelled" stage is emitted when
-//     CancelInstall aborts a run so the progress UI can finalize instead of
-//     stalling mid-bar.
+//     after the first file). Terminal stages let the app-wide task queue
+//     finalize each task across page changes.
 //   - "interop:handoff" — match handoff lifecycle (INTEROP-SPEC.md).
 //     Payload: {"status": "pending"|"dismissed"|"gone"|"invalid"|
 //     "version_mismatch"|"pull_timeout", "handoff": <payload when pending>,
@@ -115,22 +114,30 @@ func (a *App) CancelInstall(versionID string) *models.ApiResponse {
 	return &models.ApiResponse{Success: true, Data: map[string]interface{}{"cancelled": true}}
 }
 
-// installResult normalizes a service result after a cancellable install: when
-// the context was cancelled it reports the sentinel so the frontend can present
-// a clean "cancelled" outcome, and emits a terminal download:progress event so
-// any progress UI finalizes instead of stalling mid-bar.
+// installResult normalizes a service result after a cancellable install and
+// emits a terminal progress event for the app-wide task queue.
 func (a *App) installResult(ctx context.Context, versionID string, result *models.ApiResponse) *models.ApiResponse {
-	if ctx.Err() == nil {
-		return result
-	}
-	a.emit("download:progress", map[string]interface{}{
+	payload := map[string]interface{}{
 		"version_id": versionID,
-		"stage":      "cancelled",
+		"stage":      "completed",
 		"name":       "",
 		"downloaded": int64(0),
 		"total":      int64(0),
-	})
-	return &models.ApiResponse{Success: false, Error: services.ErrInstallCancelled.Error()}
+	}
+	if ctx.Err() != nil {
+		payload["stage"] = "cancelled"
+		a.emit("download:progress", payload)
+		return &models.ApiResponse{Success: false, Error: services.ErrInstallCancelled.Error()}
+	}
+	if result == nil {
+		result = &models.ApiResponse{Success: false, Error: "install returned no result"}
+	}
+	if !result.Success {
+		payload["stage"] = "failed"
+		payload["error"] = result.Error
+	}
+	a.emit("download:progress", payload)
+	return result
 }
 
 // ==================== Versions & loaders (read) ====================
@@ -871,9 +878,8 @@ func (a *App) InstallJavaRuntime(major int, destination string) *models.ApiRespo
 	result := a.AddJavaInstallation(installed.JavaPath, fmt.Sprintf("Temurin Java %d", major))
 	if !result.Success {
 		_ = os.RemoveAll(destination)
-		return result
 	}
-	return result
+	return a.installResult(ctx, versionID, result)
 }
 
 // AddJavaInstallation registers a Java executable after detecting its version.

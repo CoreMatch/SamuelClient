@@ -89,6 +89,18 @@ const en = {
   'install.step.native': 'Natives',
   'install.step.asset': 'Assets',
   'install.step.loader': 'Loader',
+  'queue.title': 'Download queue',
+  'queue.empty': 'No downloads yet.',
+  'queue.active': 'In progress',
+  'queue.completed': 'Completed',
+  'queue.failed': 'Failed',
+  'queue.cancelled': 'Cancelled',
+  'queue.stage.javaDownload': 'Downloading Java runtime',
+  'queue.stage.javaExtract': 'Installing Java runtime',
+  'queue.stage.working': 'Working',
+  'queue.cancelTask': 'Cancel download {task}',
+  'queue.dismissTask': 'Dismiss {task}',
+  'queue.progressFor': 'Progress for {task}',
 
   // First-run checklist
   'checklist.title': 'Get started',

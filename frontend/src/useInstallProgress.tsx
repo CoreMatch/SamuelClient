@@ -11,8 +11,8 @@ import { EventsOn } from '../wailsjs/runtime/runtime';
 //     downloaded/total are cumulative within a stage, so the bar advances
 //     0->100 and only reads 100% when the stage is actually finished.
 //   - total <= 0 -> indeterminate stage (pct stays null; the bar pulses)
-//   - terminal "cancelled" stage -> the entry is deleted so the bar
-//     finalizes instead of stalling mid-progress (no residual rows)
+//   - terminal stages -> the entry is deleted so a page-local progress bar
+//     finalizes; the app-wide task queue retains the terminal result.
 
 export interface InstallProgress {
   stage: string;
@@ -32,9 +32,8 @@ export function useInstallProgress() {
   useEffect(() => {
     const off = EventsOn('download:progress', (p: DownloadProgressPayload) => {
       if (!p || !p.version_id) return;
-      // A terminal "cancelled" stage clears the entry so the bar finalizes
-      // instead of stalling mid-progress.
-      if (p.stage === 'cancelled') {
+      // Terminal results belong in the app-wide queue, not a page-local bar.
+      if (p.stage === 'completed' || p.stage === 'failed' || p.stage === 'cancelled') {
         setProgress(prev => {
           const next = { ...prev };
           delete next[p.version_id as string];

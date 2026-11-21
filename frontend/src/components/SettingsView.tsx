@@ -135,7 +135,7 @@ export default function SettingsView() {
   }) => {
     if (!payload?.version_id?.startsWith('java-')) return;
     const key = payload.version_id;
-    if (payload.stage === 'cancelled') {
+    if (payload.stage === 'cancelled' || payload.stage === 'completed' || payload.stage === 'failed') {
       setJavaProgress(prev => {
         const next = { ...prev };
         delete next[key];

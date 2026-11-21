@@ -19,12 +19,16 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Callout } from './ui/callout';
 import { TooltipProvider } from './ui/tooltip';
+import DownloadQueue from './components/DownloadQueue';
+import { updateDownloadQueue } from './downloadQueue';
+import type { DownloadProgressEvent, DownloadTask } from './downloadQueue';
 import {
   GetPendingHandoff,
   DismissHandoff,
   GetInstalledVersions,
   LaunchGame,
   KeychainStatus,
+  CancelInstall,
 } from '../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
 
@@ -59,6 +63,7 @@ export default function App() {
   const [selectedVersion, setSelectedVersion] = useState<InstalledVersion | null>(readStoredVersion);
   const [currentAccount, setCurrentAccount] = useState<StoredAccount | null>(null);
   const [showLogin, setShowLogin] = useState(false);
+  const [downloadTasks, setDownloadTasks] = useState<DownloadTask[]>([]);
 
   // Match handoff state (INTEROP-SPEC): pending payload, readable
   // degradation notice, join progress and failure text.
@@ -105,6 +110,12 @@ export default function App() {
       })
       .catch(() => {});
   }, []);
+
+  // Keep the queue listener in the app shell so it remains mounted while
+  // page-level views are replaced during navigation.
+  useEffect(() => EventsOn('download:progress', (payload: DownloadProgressEvent) => {
+    setDownloadTasks(current => updateDownloadQueue(current, payload));
+  }), []);
 
   // Re-hydrate a pending handoff (survives reload) and follow backend
   // lifecycle events (INTEROP-SPEC §6/§7).
@@ -365,6 +376,12 @@ export default function App() {
               );
             })}
           </nav>
+
+          <DownloadQueue
+            tasks={downloadTasks}
+            onCancel={versionId => { void CancelInstall(versionId).catch(() => {}); }}
+            onDismiss={versionId => setDownloadTasks(current => current.filter(task => task.versionId !== versionId))}
+          />
 
           <div className="mt-auto p-4">
             {currentAccount ? (
