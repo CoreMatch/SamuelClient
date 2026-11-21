@@ -19,7 +19,8 @@ package main
 //     and ends when the process exits.
 //   - "download:progress" — progress while DownloadVersion installs a
 //     version. Payload: {"version_id": string, "stage": "jar"|"library"|
-//     "native"|"asset"|"loader"|"cancelled", "name": string,
+//     "native"|"asset"|"loader"|"java-download"|"java-extract"|
+//     "cancelled", "name": string,
 //     "downloaded": number, "total": number}. The "loader" stage is emitted
 //     by InstallFabricLoader/InstallForgeLoader; total>0 means a real byte
 //     percentage is available, total<=0 means an indeterminate stage.
@@ -828,6 +829,52 @@ func (a *App) UpdateLauncherConfig(cfg models.LauncherConfig) *models.ApiRespons
 }
 
 // ==================== Java installations (write) ====================
+
+// GetSupportedJavaRuntimeVersions lists the maintained Temurin LTS versions.
+func (a *App) GetSupportedJavaRuntimeVersions() *models.ApiResponse {
+	return &models.ApiResponse{Success: true, Data: services.SupportedJavaRuntimeMajors()}
+}
+
+// GetDefaultJavaRuntimePath returns the portable default destination for a
+// Java runtime major.
+func (a *App) GetDefaultJavaRuntimePath(major int) *models.ApiResponse {
+	path, err := services.DefaultJavaRuntimeDir(major)
+	if err != nil {
+		return &models.ApiResponse{Success: false, Error: err.Error()}
+	}
+	return &models.ApiResponse{Success: true, Data: path}
+}
+
+// InstallJavaRuntime downloads, extracts, and registers an Eclipse Temurin JRE.
+func (a *App) InstallJavaRuntime(major int, destination string) *models.ApiResponse {
+	versionID := fmt.Sprintf("java-%d", major)
+	ctx, entry := a.beginInstall(versionID)
+	defer a.finishInstall(versionID, entry)
+
+	installer := services.NewJavaRuntimeInstaller()
+	installed, err := installer.Install(ctx, major, destination, func(stage string, downloaded, total int64) {
+		a.emit("download:progress", map[string]interface{}{
+			"version_id": versionID,
+			"stage":      stage,
+			"name":       fmt.Sprintf("Temurin Java %d", major),
+			"downloaded": downloaded,
+			"total":      total,
+		})
+	})
+	if err != nil {
+		return a.installResult(ctx, versionID, &models.ApiResponse{Success: false, Error: err.Error()})
+	}
+	if ctx.Err() != nil {
+		_ = os.RemoveAll(destination)
+		return a.installResult(ctx, versionID, &models.ApiResponse{Success: false, Error: ctx.Err().Error()})
+	}
+	result := a.AddJavaInstallation(installed.JavaPath, fmt.Sprintf("Temurin Java %d", major))
+	if !result.Success {
+		_ = os.RemoveAll(destination)
+		return result
+	}
+	return result
+}
 
 // AddJavaInstallation registers a Java executable after detecting its version.
 func (a *App) AddJavaInstallation(path, friendlyName string) *models.ApiResponse {

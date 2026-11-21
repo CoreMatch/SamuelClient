@@ -10,6 +10,9 @@ import {
   UpdateJavaInstallation,
   DeleteJavaInstallation,
   SetDefaultJavaInstallation,
+  GetSupportedJavaRuntimeVersions,
+  GetDefaultJavaRuntimePath,
+  InstallJavaRuntime,
   GetGameDirStatus,
   GetDownloadSettings,
   SetDownloadSettings,
@@ -29,6 +32,10 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   UpdateJavaInstallation: vi.fn(),
   DeleteJavaInstallation: vi.fn(),
   SetDefaultJavaInstallation: vi.fn(),
+  GetSupportedJavaRuntimeVersions: vi.fn(),
+  GetDefaultJavaRuntimePath: vi.fn(),
+  InstallJavaRuntime: vi.fn(),
+  CancelInstall: vi.fn(),
   GetGameDirStatus: vi.fn(),
   GetDownloadSettings: vi.fn(),
   SetDownloadSettings: vi.fn(),
@@ -38,6 +45,10 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   ScanGameDirs: vi.fn(),
 }));
 
+vi.mock('../../wailsjs/runtime/runtime', () => ({
+  EventsOn: vi.fn(() => vi.fn()),
+}));
+
 const mockGetConfig = vi.mocked(GetLauncherConfig);
 const mockGetJava = vi.mocked(GetJavaInstallations);
 const mockUpdateConfig = vi.mocked(UpdateLauncherConfig);
@@ -45,6 +56,9 @@ const mockAddJava = vi.mocked(AddJavaInstallation);
 const mockUpdateJava = vi.mocked(UpdateJavaInstallation);
 const mockDeleteJava = vi.mocked(DeleteJavaInstallation);
 const mockSetDefault = vi.mocked(SetDefaultJavaInstallation);
+const mockGetJavaRuntimeVersions = vi.mocked(GetSupportedJavaRuntimeVersions);
+const mockGetJavaRuntimePath = vi.mocked(GetDefaultJavaRuntimePath);
+const mockInstallJavaRuntime = vi.mocked(InstallJavaRuntime);
 const mockGetGameDirStatus = vi.mocked(GetGameDirStatus);
 const mockSetGameDir = vi.mocked(SetGameDir);
 const mockAddGameDir = vi.mocked(AddGameDir);
@@ -105,6 +119,9 @@ describe('SettingsView', () => {
     mockGetConfig.mockResolvedValue(ok(launcherConfig));
     mockGetJava.mockResolvedValue(ok(javaRows));
     mockSetDefault.mockResolvedValue(ok(javaRows));
+    mockGetJavaRuntimeVersions.mockResolvedValue(ok([8, 11, 17, 21, 25]));
+    mockGetJavaRuntimePath.mockImplementation(async major => ok(`/launcher/jre/${major}`));
+    mockInstallJavaRuntime.mockResolvedValue(ok({}));
     mockDeleteJava.mockResolvedValue(ok(javaRows));
     mockAddJava.mockResolvedValue(ok(javaRows));
     mockUpdateJava.mockResolvedValue(ok(javaRows));
@@ -214,6 +231,24 @@ describe('SettingsView', () => {
     await waitFor(() =>
       expect(mockAddJava).toHaveBeenCalledWith('/usr/lib/jvm/java-25/bin/java', 'JDK 25'),
     );
+  });
+
+  it('downloads a selected Temurin runtime to the custom install folder', async () => {
+    renderView();
+    await screen.findAllByText('JDK 17');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Download Java' }));
+    const dialog = await screen.findByRole('dialog');
+    const destination = await within(dialog).findByLabelText('Installation folder');
+    await waitFor(() => expect((destination as HTMLInputElement).value).toBe('/launcher/jre/25'));
+    fireEvent.change(within(dialog).getByLabelText('Java version'), { target: { value: '21' } });
+    await waitFor(() => expect((destination as HTMLInputElement).value).toBe('/launcher/jre/21'));
+    fireEvent.change(destination, { target: { value: '/custom/java/21' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Install Java' }));
+
+    await waitFor(() => expect(mockInstallJavaRuntime).toHaveBeenCalledWith(21, '/custom/java/21'));
+    expect(mockGetJavaRuntimePath).toHaveBeenCalledWith(25);
+    expect(mockGetJavaRuntimePath).toHaveBeenCalledWith(21);
   });
 
   it('saves memory settings through the binding', async () => {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FolderOpen, Pencil, Plus, Save, Search, Star, Trash2, X } from 'lucide-react';
+import { Download, FolderOpen, Pencil, Plus, Save, Search, Star, Trash2, X } from 'lucide-react';
 import {
   GetLauncherConfig,
   GetJavaInstallations,
@@ -8,6 +8,10 @@ import {
   UpdateJavaInstallation,
   DeleteJavaInstallation,
   SetDefaultJavaInstallation,
+  GetSupportedJavaRuntimeVersions,
+  GetDefaultJavaRuntimePath,
+  InstallJavaRuntime,
+  CancelInstall,
   GetGameDirStatus,
   AddGameDir,
   RemoveGameDir,
@@ -20,10 +24,11 @@ import { t } from '../i18n';
 import { Button, IconButton } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { TextField } from '../ui/field';
-import { Slider } from '../ui/progress';
+import { Progress, Slider } from '../ui/progress';
 import { Callout } from '../ui/callout';
 import { Dialog, AlertDialog } from '../ui/dialog';
 import { Tooltip } from '../ui/tooltip';
+import { EventsOn } from '../../wailsjs/runtime/runtime';
 
 interface JavaInstallation {
   id: number;
@@ -81,6 +86,13 @@ export default function SettingsView() {
   const [newJavaName, setNewJavaName] = useState('');
   const [dialogError, setDialogError] = useState('');
   const [deleteJavaId, setDeleteJavaId] = useState<number | null>(null);
+  const [downloadJavaOpen, setDownloadJavaOpen] = useState(false);
+  const [downloadJavaMajor, setDownloadJavaMajor] = useState(25);
+  const [downloadJavaVersions, setDownloadJavaVersions] = useState<number[]>([8, 11, 17, 21, 25]);
+  const [downloadJavaPath, setDownloadJavaPath] = useState('');
+  const [downloadingJava, setDownloadingJava] = useState(false);
+  const [downloadJavaError, setDownloadJavaError] = useState('');
+  const [javaProgress, setJavaProgress] = useState<Record<string, { stage: string; pct: number | null }>>({});
 
   // Memory settings draft (the values shown in inputs/sliders before saving).
   // Kept separate from `config` so the user can tweak without losing the
@@ -110,6 +122,28 @@ export default function SettingsView() {
     fetchJavaInstallations();
     fetchGameDirStatus();
   }, []);
+
+  useEffect(() => EventsOn('download:progress', (payload: {
+    version_id?: string;
+    stage?: string;
+    downloaded?: number;
+    total?: number;
+  }) => {
+    if (!payload?.version_id?.startsWith('java-')) return;
+    const key = payload.version_id;
+    if (payload.stage === 'cancelled') {
+      setJavaProgress(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      return;
+    }
+    const pct = payload.total && payload.total > 0 && typeof payload.downloaded === 'number'
+      ? Math.min(100, Math.floor((payload.downloaded / payload.total) * 100))
+      : null;
+    setJavaProgress(prev => ({ ...prev, [key]: { stage: payload.stage ?? '', pct } }));
+  }), []);
 
   const fetchConfig = async () => {
     try {
@@ -364,6 +398,66 @@ export default function SettingsView() {
     setOpenDialog(true);
   };
 
+  const openJavaDownload = async () => {
+    setDownloadJavaMajor(25);
+    setDownloadJavaPath('');
+    setDownloadJavaError('');
+    setDownloadJavaOpen(true);
+    try {
+      const [versions, destination] = await Promise.all([
+        GetSupportedJavaRuntimeVersions(),
+        GetDefaultJavaRuntimePath(25),
+      ]);
+      if (versions.success && Array.isArray(versions.data)) {
+        setDownloadJavaVersions(versions.data);
+      }
+      if (destination.success && typeof destination.data === 'string') {
+        setDownloadJavaPath(destination.data);
+      } else if (destination.error) {
+        setDownloadJavaError(destination.error);
+      }
+    } catch {
+      setDownloadJavaError(t('settings.javaDefaultPathFailed'));
+    }
+  };
+
+  const handleDownloadJavaMajorChange = async (major: number) => {
+    setDownloadJavaMajor(major);
+    setDownloadJavaError('');
+    try {
+      const result = await GetDefaultJavaRuntimePath(major);
+      if (result.success && typeof result.data === 'string') {
+        setDownloadJavaPath(result.data);
+      } else {
+        setDownloadJavaError(result.error || t('settings.javaDefaultPathFailed'));
+      }
+    } catch {
+      setDownloadJavaError(t('settings.javaDefaultPathFailed'));
+    }
+  };
+
+  const handleDownloadJava = async () => {
+    if (!downloadJavaPath.trim()) {
+      setDownloadJavaError(t('settings.javaInstallPathRequired'));
+      return;
+    }
+    setDownloadingJava(true);
+    setDownloadJavaError('');
+    try {
+      const result = await InstallJavaRuntime(downloadJavaMajor, downloadJavaPath.trim());
+      if (result.success) {
+        await fetchJavaInstallations();
+        setDownloadJavaOpen(false);
+      } else {
+        setDownloadJavaError(result.error || t('settings.javaInstallFailed'));
+      }
+    } catch {
+      setDownloadJavaError(t('settings.javaInstallFailed'));
+    } finally {
+      setDownloadingJava(false);
+    }
+  };
+
   if (loading) {
     return <LoadingSkeleton rows={4} />;
   }
@@ -382,12 +476,18 @@ export default function SettingsView() {
 
       {/* Java installations */}
       <section className={sectionClasses}>
-        <div className="mb-5 flex items-center justify-between">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xl font-semibold text-ink">{t('settings.java')}</h2>
-          <Button onClick={openAddDialog}>
-            <Plus className="size-4" aria-hidden />
-            {t('settings.addJava')}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={openJavaDownload}>
+              <Download className="size-4" aria-hidden />
+              {t('settings.downloadJava')}
+            </Button>
+            <Button size="sm" onClick={openAddDialog}>
+              <Plus className="size-4" aria-hidden />
+              {t('settings.addJava')}
+            </Button>
+          </div>
         </div>
 
         {javaInstallations.length === 0 ? (
@@ -789,6 +889,78 @@ export default function SettingsView() {
             <Button onClick={editingJava ? handleUpdateJava : handleAddJava}>
               {editingJava ? t('settings.update') : t('settings.addJava')}
             </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Temurin runtime download */}
+      <Dialog
+        open={downloadJavaOpen}
+        onOpenChange={open => {
+          if (!downloadingJava) setDownloadJavaOpen(open);
+        }}
+        title={t('settings.downloadJavaTitle')}
+        closeLabel={t('common.close')}
+      >
+        <div className="flex flex-col gap-5">
+          <p className="text-sm leading-relaxed text-ink-muted">
+            {t('settings.javaProviderHint')}
+          </p>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="java-runtime-major" className="text-sm font-medium text-ink-muted">
+              {t('settings.javaRuntimeVersion')}
+            </label>
+            <select
+              id="java-runtime-major"
+              aria-label={t('settings.javaRuntimeVersion')}
+              value={downloadJavaMajor}
+              onChange={e => handleDownloadJavaMajorChange(Number(e.target.value))}
+              disabled={downloadingJava}
+              className="h-11 rounded-md border border-edge bg-raised px-4 text-base text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-edge-strong disabled:opacity-40"
+            >
+              {downloadJavaVersions.map(major => (
+                <option key={major} value={major}>Java {major} (LTS)</option>
+              ))}
+            </select>
+          </div>
+          <TextField
+            label={t('settings.javaInstallPath')}
+            value={downloadJavaPath}
+            onChange={e => setDownloadJavaPath(e.target.value)}
+            disabled={downloadingJava}
+            placeholder="/path/to/launcher/jre/25"
+          />
+          {downloadingJava && (
+            <div className="flex flex-col gap-2" role="status">
+              <div className="flex justify-between text-sm text-ink-muted">
+                <span>{t('settings.javaDownloading', { version: downloadJavaMajor })}</span>
+                <span>{javaProgress[`java-${downloadJavaMajor}`]?.pct == null
+                  ? ''
+                  : `${javaProgress[`java-${downloadJavaMajor}`].pct}%`}</span>
+              </div>
+              <Progress value={javaProgress[`java-${downloadJavaMajor}`]?.pct ?? null} />
+            </div>
+          )}
+          {downloadJavaError && <Callout tone="danger">{downloadJavaError}</Callout>}
+          <div className="mt-2 flex justify-end gap-3">
+            {downloadingJava ? (
+              <Button
+                variant="secondary"
+                onClick={() => CancelInstall(`java-${downloadJavaMajor}`)}
+              >
+                {t('common.cancel')}
+              </Button>
+            ) : (
+              <>
+                <Button variant="secondary" onClick={() => setDownloadJavaOpen(false)}>
+                  {t('common.cancel')}
+                </Button>
+                <Button onClick={handleDownloadJava} loading={downloadingJava}>
+                  <Download className="size-4" aria-hidden />
+                  {t('settings.installJava')}
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </Dialog>
