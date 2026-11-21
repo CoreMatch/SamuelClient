@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Asset } from '@ha/ui';
+import { GetInstalledVersions } from '../../wailsjs/go/main/App';
 import type { InstalledVersion } from '../types';
 import InstallWizard from './InstallWizard';
-import { EmptyState } from './states';
+import { EmptyState, ErrorState, LoadingSkeleton } from './states';
 import { t } from '../i18n';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { Badge } from '../ui/badge';
@@ -15,36 +16,63 @@ interface VersionManagerProps {
 
 const STORAGE_KEY = 'installed_versions';
 
-// VersionManager hosts the three-step install wizard (research 03 §8.3)
-// and the installed-version list. Installations run through the wizard;
-// this component owns the localStorage working copy of installed versions.
+interface DiskVersion {
+  id: string;
+  type: string;
+  has_json: boolean;
+  has_jar: boolean;
+}
+
 export default function VersionManager({ onSelectVersion }: VersionManagerProps) {
-  const [installedVersions, setInstalledVersions] = useState<InstalledVersion[]>([]);
+  const [localVersions, setLocalVersions] = useState<InstalledVersion[]>([]);
+  const [diskVersions, setDiskVersions] = useState<InstalledVersion[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [scanFailed, setScanFailed] = useState(false);
   const [tabValue, setTabValue] = useState('install');
 
-  const loadInstalledVersions = useCallback(() => {
+  useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        setInstalledVersions(JSON.parse(stored));
+        const versions = JSON.parse(stored);
+        if (Array.isArray(versions)) setLocalVersions(versions);
       }
     } catch (err) {
       console.error('Failed to load installed versions:', err);
     }
   }, []);
 
-  useEffect(() => {
-    loadInstalledVersions();
-  }, [loadInstalledVersions]);
+  const scanInstalledVersions = useCallback(async () => {
+    setLoading(true);
+    setScanFailed(false);
+    try {
+      const result = await GetInstalledVersions();
+      if (!result.success || !Array.isArray(result.data?.versions)) {
+        setScanFailed(true);
+        return;
+      }
+      setDiskVersions((result.data.versions as DiskVersion[])
+        .filter(version => version.has_json && version.has_jar)
+        .map(version => ({ id: version.id, type: version.type || 'release', installed: true })));
+    } catch {
+      setScanFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const localIds = new Set(localVersions.map(version => version.id));
+  const diskIds = new Set(diskVersions.map(version => version.id));
+  const installedVersions = [...localVersions, ...diskVersions.filter(version => !localIds.has(version.id))];
 
   const handleDelete = (versionId: string) => {
-    const updated = installedVersions.filter(v => v.id !== versionId);
+    const updated = localVersions.filter(v => v.id !== versionId);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     } catch (err) {
       console.error('Failed to save installed versions:', err);
     }
-    setInstalledVersions(updated);
+    setLocalVersions(updated);
   };
 
   // Version-type badge tones come from the shared semantic palette.
@@ -62,18 +90,23 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
   };
 
   return (
-    <Tabs value={tabValue} onValueChange={setTabValue}>
+    <Tabs value={tabValue} onValueChange={value => {
+      setTabValue(value);
+      if (value === 'installed') void scanInstalledVersions();
+    }}>
       <TabsList>
         <TabsTrigger value="install">{t('versions.tab.install')}</TabsTrigger>
         <TabsTrigger value="installed">{t('versions.tab.installed')}</TabsTrigger>
       </TabsList>
 
       <TabsContent value="install">
-        <InstallWizard onInstalled={loadInstalledVersions} />
+        <InstallWizard onInstalled={scanInstalledVersions} />
       </TabsContent>
 
       <TabsContent value="installed">
-        {installedVersions.length === 0 ? (
+        {loading && installedVersions.length === 0 ? <LoadingSkeleton /> : scanFailed && installedVersions.length === 0 ? (
+          <ErrorState data={t('versions.listData')} onRetry={scanInstalledVersions} />
+        ) : installedVersions.length === 0 ? (
           <EmptyState
             asset="state-no-installed-version"
             title={t('versions.emptyTitle')}
@@ -110,16 +143,18 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
                     )}
                   </div>
                 </div>
-                <IconButton
-                  label={t('versions.deleteLabel', { version: version.id })}
-                  tone="danger"
-                  onClick={e => {
-                    e.stopPropagation();
-                    handleDelete(version.id);
-                  }}
-                >
-                  <Trash2 className="size-5" />
-                </IconButton>
+                {!diskIds.has(version.id) && (
+                  <IconButton
+                    label={t('versions.deleteLabel', { version: version.id })}
+                    tone="danger"
+                    onClick={e => {
+                      e.stopPropagation();
+                      handleDelete(version.id);
+                    }}
+                  >
+                    <Trash2 className="size-5" />
+                  </IconButton>
+                )}
               </div>
             ))}
           </div>
