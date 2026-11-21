@@ -9,6 +9,8 @@ import {
   DeleteJavaInstallation,
   SetDefaultJavaInstallation,
   GetGameDirStatus,
+  AddGameDir,
+  RemoveGameDir,
   SetGameDir,
   ScanGameDirs,
 } from '../../wailsjs/go/main/App';
@@ -43,10 +45,14 @@ interface LauncherConfig {
   java_args?: string;
 }
 
-interface GameDirStatus {
+interface GameDirEntry {
   path: string;
   source: 'auto' | 'custom';
   exists: boolean;
+}
+
+interface GameDirStatus extends GameDirEntry {
+  dirs: GameDirEntry[];
 }
 
 interface GameDirCandidate {
@@ -89,8 +95,7 @@ export default function SettingsView() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [dirty, setDirty] = useState(false);
 
-  // Game directory: effective path + source (auto-detected vs user override),
-  // the on-demand disk scan results, and the manual-path editor.
+  // Saved game folders, the install destination, and pending additions.
   const [gameDirStatus, setGameDirStatus] = useState<GameDirStatus | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanResults, setScanResults] = useState<GameDirCandidate[] | null>(null);
@@ -133,19 +138,14 @@ export default function SettingsView() {
     }
   };
 
-  // applyGameDir persists a directory choice (empty = back to auto-detection)
-  // and refreshes both the status badge and the config used by the mods
-  // folder shortcut.
-  const applyGameDir = async (dir: string) => {
+  const applyGameDir = async (action: typeof SetGameDir, dir: string) => {
     setSavingDir(true);
     setDirError('');
     try {
-      const result = await SetGameDir(dir);
+      const result = await action(dir);
       if (result.success && result.data) {
         setGameDirStatus(result.data);
         setEditingDir(false);
-        setScanResults(null);
-        fetchConfig();
       } else {
         setDirError(result.error || t('settings.dirSaveFailed'));
       }
@@ -369,6 +369,8 @@ export default function SettingsView() {
   }
 
   const defaultJava = javaInstallations.find(j => j.is_default);
+  const gameDirs = gameDirStatus?.dirs ?? [];
+  const defaultGameDir = gameDirStatus?.path ?? config?.game_dir;
 
   return (
     <div className="flex flex-col gap-8">
@@ -454,39 +456,59 @@ export default function SettingsView() {
             )}
           </div>
           <div>
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-ink-muted">{t('settings.gameDir')}</p>
-              {gameDirStatus && (
-                <Badge tone={gameDirStatus.source === 'custom' ? 'info' : 'neutral'}>
-                  {gameDirStatus.source === 'custom' ? t('settings.gameDirCustom') : t('settings.gameDirAuto')}
-                </Badge>
-              )}
-            </div>
-            <p className="mt-2 break-all rounded bg-white/4 px-3 py-1.5 font-mono text-sm text-ink-muted">
-              {gameDirStatus?.path || config?.game_dir || t('settings.notConfigured')}
-            </p>
-            {gameDirStatus && !gameDirStatus.exists && (
-              <p className="mt-2 text-sm text-warn">{t('settings.gameDirMissing')}</p>
-            )}
+            <h3 className="text-sm font-medium text-ink-muted">{t('settings.gameDirs')}</h3>
+            <ul className="mt-2 flex flex-col gap-2">
+              {gameDirs.map(dir => (
+                <li key={dir.path} className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-raised px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="break-all font-mono text-sm text-ink">{dir.path}</p>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      <Badge tone={dir.source === 'auto' ? 'neutral' : 'info'}>
+                        {dir.source === 'auto' ? t('settings.gameDirAuto') : t('settings.gameDirCustom')}
+                      </Badge>
+                      {dir.path === defaultGameDir && <Badge tone="success">{t('settings.defaultInstallDir')}</Badge>}
+                    </div>
+                    {!dir.exists && (
+                      <p className="mt-1 text-sm text-warn">{t('settings.gameDirMissing')}</p>
+                    )}
+                  </div>
+                  {dir.path !== defaultGameDir && (
+                    <div className="flex items-center gap-2">
+                      <Button variant="secondary" onClick={() => applyGameDir(SetGameDir, dir.path)} disabled={savingDir}>
+                        {t('settings.setInstallDir')}
+                      </Button>
+                      {dir.source === 'custom' && (
+                        <IconButton
+                          label={t('settings.removeDir', { path: dir.path })}
+                          onClick={() => applyGameDir(RemoveGameDir, dir.path)}
+                          disabled={savingDir}
+                        >
+                          <Trash2 className="size-4" aria-hidden />
+                        </IconButton>
+                      )}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {dirError && <Callout tone="danger" onDismiss={() => setDirError('')}>{dirError}</Callout>}
             <div className="mt-3 flex flex-wrap gap-3">
               <Button variant="secondary" onClick={handleScanGameDirs} loading={scanning}>
                 {!scanning && <Search className="size-4" aria-hidden />}
                 {scanning ? t('settings.scanning') : t('settings.scanDirs')}
               </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setEditingDir(true);
-                  setDirDraft(gameDirStatus?.path ?? '');
-                  setDirError('');
-                }}
-              >
-                <Pencil className="size-4" aria-hidden />
-                {t('settings.specifyDir')}
-              </Button>
-              {gameDirStatus?.source === 'custom' && (
-                <Button variant="secondary" onClick={() => applyGameDir('')} disabled={savingDir}>
-                  {t('settings.resetDir')}
+              {!editingDir && (
+                <Button
+                  variant="secondary"
+                  disabled={savingDir}
+                  onClick={() => {
+                    setEditingDir(true);
+                    setDirDraft('');
+                    setDirError('');
+                  }}
+                >
+                  <Plus className="size-4" aria-hidden />
+                  {t('settings.addDir')}
                 </Button>
               )}
             </div>
@@ -498,15 +520,14 @@ export default function SettingsView() {
                   onChange={e => setDirDraft(e.target.value)}
                   placeholder="/home/user/.minecraft"
                 />
-                {dirError && <Callout tone="danger">{dirError}</Callout>}
                 <div className="flex gap-3">
                   <Button
-                    onClick={() => applyGameDir(dirDraft.trim())}
+                    onClick={() => applyGameDir(AddGameDir, dirDraft.trim())}
                     loading={savingDir}
-                    disabled={!dirDraft.trim()}
+                    disabled={savingDir || !dirDraft.trim()}
                   >
                     {!savingDir && <Save className="size-4" aria-hidden />}
-                    {t('settings.save')}
+                    {t('settings.addDir')}
                   </Button>
                   <Button variant="secondary" onClick={() => setEditingDir(false)}>
                     {t('common.cancel')}
@@ -526,26 +547,29 @@ export default function SettingsView() {
                 <p className="mt-3 text-sm text-ink-muted">{t('settings.scanEmpty')}</p>
               ) : (
                 <div className="mt-3 flex flex-col gap-2">
-                  {scanResults.map(candidate => (
-                    <div
-                      key={candidate.path}
-                      className="flex items-center justify-between gap-3 rounded-md bg-raised px-4 py-3"
-                    >
-                      <div className="min-w-0">
-                        <p className="break-all font-mono text-sm text-ink">{candidate.path}</p>
-                        <p className="mt-0.5 text-xs text-ink-faint">
-                          {t('settings.versionCount', { count: candidate.version_count })}
-                        </p>
-                      </div>
-                      <Button
-                        variant="secondary"
-                        onClick={() => applyGameDir(candidate.path)}
-                        disabled={savingDir || candidate.path === gameDirStatus?.path}
+                  {scanResults.map(candidate => {
+                    const added = gameDirs.some(dir => dir.path === candidate.path);
+                    return (
+                      <div
+                        key={candidate.path}
+                        className="flex items-center justify-between gap-3 rounded-md bg-raised px-4 py-3"
                       >
-                        {candidate.path === gameDirStatus?.path ? t('settings.inUse') : t('settings.useDir')}
-                      </Button>
-                    </div>
-                  ))}
+                        <div className="min-w-0">
+                          <p className="break-all font-mono text-sm text-ink">{candidate.path}</p>
+                          <p className="mt-0.5 text-xs text-ink-faint">
+                            {t('settings.versionCount', { count: candidate.version_count })}
+                          </p>
+                        </div>
+                        <Button
+                          variant="secondary"
+                          onClick={() => applyGameDir(AddGameDir, candidate.path)}
+                          disabled={savingDir || added}
+                        >
+                          {added ? t('settings.dirAdded') : t('settings.addFoundDir')}
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </div>
               ))}
           </div>
@@ -557,9 +581,9 @@ export default function SettingsView() {
         <h2 className="mb-5 text-xl font-semibold text-ink">{t('settings.folders')}</h2>
         <Button
           variant="secondary"
-          disabled={!config?.game_dir}
+          disabled={!defaultGameDir}
           onClick={() => {
-            const base = config?.game_dir;
+            const base = defaultGameDir;
             if (!base) return;
             // mods 目录 = 生效的游戏目录（用户设置优先，否则候选探测，见
             // Go 侧 ResolveGameDir）下的 mods/

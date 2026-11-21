@@ -88,6 +88,41 @@ func TestGameDirStatus(t *testing.T) {
 	}
 }
 
+func TestGameDirsPreserveLegacyDefaultAndPersistNewFolders(t *testing.T) {
+	clearLauncherSettings(t)
+	t.Cleanup(func() { clearLauncherSettings(t) })
+	root := t.TempDir()
+	swapDataDir(t, root)
+	legacy := makeGameDir(t, root, "legacy")
+	added := filepath.Join(root, "new")
+	if err := saveLauncherSetting(settingKeyGameDir, legacy, "string", "Legacy game directory"); err != nil {
+		t.Fatal(err)
+	}
+	svc := NewLauncherService()
+	for _, path := range []string{added, added + string(filepath.Separator)} {
+		if res := svc.AddGameDir(path); !res.Success {
+			t.Fatal(res.Error)
+		}
+	}
+	status := NewLauncherService().GameDirStatus()
+	if status.Path != legacy || len(status.Dirs) != 3 {
+		t.Fatalf("expected portable, legacy, and added folders with legacy default: %+v", status)
+	}
+	if res := svc.RemoveGameDir(legacy); res.Success {
+		t.Fatal("default folder should not be removable before switching")
+	}
+	if res := svc.SetGameDir(added); !res.Success {
+		t.Fatal(res.Error)
+	}
+	if res := svc.RemoveGameDir(legacy); !res.Success {
+		t.Fatal(res.Error)
+	}
+	status = NewLauncherService().GameDirStatus()
+	if status.Path != added || len(status.Dirs) != 2 {
+		t.Fatalf("expected the new default and built-in folder after removal: %+v", status)
+	}
+}
+
 func TestSetGameDirValidationAndClear(t *testing.T) {
 	clearLauncherSettings(t)
 	t.Cleanup(func() { clearLauncherSettings(t) })

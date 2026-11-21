@@ -1,20 +1,27 @@
 package services
 
-// Game directory resolution: the portable default, the persisted user
-// override, and an on-demand disk scan. Every code path that touches the game
-// directory (config display, version scan, install, launch) goes through
-// ResolveGameDir so a user-specified directory is honored consistently.
-
 import (
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"HRPMLW/internal/database"
 	"HRPMLW/internal/models"
 )
+
+const settingKeyGameDirs = "launcher.game_dirs"
+
+var gameDirsMu sync.Mutex
+
+type gameDirConfig struct {
+	Default string   `json:"default"`
+	Paths   []string `json:"paths"`
+}
 
 // GetMinecraftDir returns the default game directory: .minecraft inside the
 // launcher data directory (next to the executable), so downloads stay with
@@ -25,58 +32,195 @@ func (l *LauncherService) GetMinecraftDir() string {
 	return filepath.Join(database.DataDir(), ".minecraft")
 }
 
-// ResolveGameDir returns the effective game directory: the persisted user
-// override when set, otherwise the auto-detected default.
+// ResolveGameDir returns the default destination for new installations.
 func (l *LauncherService) ResolveGameDir() string {
 	settings, _ := loadLauncherSettings()
-	if dir := settings[settingKeyGameDir]; dir != "" {
-		return dir
-	}
-	return l.GetMinecraftDir()
+	return l.gameDirsFromSettings(settings).Default
 }
 
-// GameDirStatus describes the effective game directory for the settings UI.
-type GameDirStatus struct {
+func (l *LauncherService) gameDirsFromSettings(settings map[string]string) gameDirConfig {
+	portable := l.GetMinecraftDir()
+	cfg := gameDirConfig{}
+	if raw := settings[settingKeyGameDirs]; raw == "" || json.Unmarshal([]byte(raw), &cfg) != nil {
+		// Preserve the old single-folder selection on first use.
+		cfg = gameDirConfig{Default: settings[settingKeyGameDir]}
+	}
+	if cfg.Default == "" || sameGameDir(cfg.Default, portable) {
+		cfg.Default = portable
+	}
+	paths := []string{portable}
+	for _, path := range append(cfg.Paths, cfg.Default) {
+		if path != "" && !containsGameDir(paths, path) {
+			paths = append(paths, path)
+		}
+	}
+	cfg.Paths = paths
+	return cfg
+}
+
+func sameGameDir(a, b string) bool {
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
+}
+
+func containsGameDir(paths []string, dir string) bool {
+	for _, path := range paths {
+		if sameGameDir(path, dir) {
+			return true
+		}
+	}
+	return false
+}
+
+// GameDirs returns the registered roots in scan order, prioritizing the
+// default when a caller only has a version ID (such as a match handoff).
+func (l *LauncherService) GameDirs() []string {
+	settings, _ := loadLauncherSettings()
+	cfg := l.gameDirsFromSettings(settings)
+	paths := []string{cfg.Default}
+	for _, path := range cfg.Paths {
+		if !sameGameDir(path, cfg.Default) {
+			paths = append(paths, path)
+		}
+	}
+	return paths
+}
+
+type GameDirEntry struct {
 	Path   string `json:"path"`
-	Source string `json:"source"` // "custom" (user override) or "auto" (detected)
+	Source string `json:"source"` // "custom" or "auto" (portable default)
 	Exists bool   `json:"exists"`
 }
 
-// GameDirStatus reports the effective directory, whether it came from the
-// user override or auto-detection, and whether it exists on disk.
-func (l *LauncherService) GameDirStatus() GameDirStatus {
-	settings, _ := loadLauncherSettings()
-	source := "auto"
-	path := settings[settingKeyGameDir]
-	if path != "" {
-		source = "custom"
-	} else {
-		path = l.GetMinecraftDir()
-	}
-	fi, err := os.Stat(path)
-	return GameDirStatus{Path: path, Source: source, Exists: err == nil && fi.IsDir()}
+// GameDirStatus includes the install destination and every registered folder.
+type GameDirStatus struct {
+	Path   string `json:"path"`
+	Source string `json:"source"`
+	Exists bool   `json:"exists"`
+	Dirs   []GameDirEntry `json:"dirs"`
 }
 
-// SetGameDir persists a user-specified game directory override. An empty dir
-// clears the override so auto-detection applies again. A leading ~ is
-// expanded and relative paths are rejected. The directory does not need to
-// exist yet — installing a version creates it.
-func (l *LauncherService) SetGameDir(dir string) *models.ApiResponse {
-	dir = strings.TrimSpace(dir)
-	if dir != "" {
-		if dir == "~" || strings.HasPrefix(dir, "~/") || strings.HasPrefix(dir, `~\`) {
-			home, _ := os.UserHomeDir()
-			dir = filepath.Join(home, strings.TrimPrefix(dir, "~"))
+func (l *LauncherService) GameDirStatus() GameDirStatus {
+	settings, _ := loadLauncherSettings()
+	return l.gameDirStatus(l.gameDirsFromSettings(settings))
+}
+
+func (l *LauncherService) gameDirStatus(cfg gameDirConfig) GameDirStatus {
+	status := GameDirStatus{Path: cfg.Default}
+	for _, path := range cfg.Paths {
+		source := "custom"
+		if sameGameDir(path, l.GetMinecraftDir()) {
+			source = "auto"
 		}
-		if !filepath.IsAbs(dir) {
-			return &models.ApiResponse{Success: false, Error: "game directory must be an absolute path"}
+		fi, err := os.Stat(path)
+		entry := GameDirEntry{Path: path, Source: source, Exists: err == nil && fi.IsDir()}
+		status.Dirs = append(status.Dirs, entry)
+		if sameGameDir(path, cfg.Default) {
+			status.Source, status.Exists = source, entry.Exists
+			status.Path = path
 		}
-		dir = filepath.Clean(dir)
 	}
-	if err := saveLauncherSetting(settingKeyGameDir, dir, "string", "Game directory (.minecraft)"); err != nil {
+	return status
+}
+
+func normalizeGameDir(dir string) (string, error) {
+	dir = strings.TrimSpace(dir)
+	if dir == "~" || strings.HasPrefix(dir, "~/") || (runtime.GOOS == "windows" && strings.HasPrefix(dir, `~\`)) {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		dir = filepath.Join(home, strings.TrimPrefix(dir, "~"))
+	}
+	if !filepath.IsAbs(dir) {
+		return "", errors.New("game directory must be an absolute path")
+	}
+	dir = filepath.Clean(dir)
+	if fi, err := os.Stat(dir); err == nil && !fi.IsDir() {
+		return "", errors.New("game directory path points to a file")
+	}
+	return dir, nil
+}
+
+func (l *LauncherService) updateGameDirs(update func(*gameDirConfig) error) *models.ApiResponse {
+	gameDirsMu.Lock()
+	defer gameDirsMu.Unlock()
+	settings, err := loadLauncherSettings()
+	if err != nil {
 		return &models.ApiResponse{Success: false, Error: err.Error()}
 	}
-	return &models.ApiResponse{Success: true, Data: l.GameDirStatus()}
+	cfg := l.gameDirsFromSettings(settings)
+	if err := update(&cfg); err != nil {
+		return &models.ApiResponse{Success: false, Error: err.Error()}
+	}
+	// Do not pin the built-in path to this machine's launcher location.
+	stored := gameDirConfig{Default: cfg.Default, Paths: cfg.Paths[1:]}
+	if sameGameDir(stored.Default, l.GetMinecraftDir()) {
+		stored.Default = ""
+	}
+	raw, err := json.Marshal(stored)
+	if err == nil {
+		err = saveLauncherSetting(settingKeyGameDirs, string(raw), "string", "Registered game directories and default install destination")
+	}
+	if err != nil {
+		return &models.ApiResponse{Success: false, Error: err.Error()}
+	}
+	return &models.ApiResponse{Success: true, Data: l.gameDirStatus(cfg)}
+}
+
+// SetGameDir selects the default install destination, registering it if new.
+// An empty dir selects the portable folder without removing saved folders.
+func (l *LauncherService) SetGameDir(dir string) *models.ApiResponse {
+	return l.updateGameDirs(func(cfg *gameDirConfig) error {
+		if strings.TrimSpace(dir) == "" {
+			cfg.Default = l.GetMinecraftDir()
+			return nil
+		}
+		path, err := normalizeGameDir(dir)
+		if err != nil {
+			return err
+		}
+		for _, registered := range cfg.Paths {
+			if sameGameDir(registered, path) {
+				cfg.Default = registered
+				return nil
+			}
+		}
+		cfg.Default = path
+		cfg.Paths = append(cfg.Paths, path)
+		return nil
+	})
+}
+
+func (l *LauncherService) AddGameDir(dir string) *models.ApiResponse {
+	return l.updateGameDirs(func(cfg *gameDirConfig) error {
+		path, err := normalizeGameDir(dir)
+		if err != nil {
+			return err
+		}
+		if !containsGameDir(cfg.Paths, path) {
+			cfg.Paths = append(cfg.Paths, path)
+		}
+		return nil
+	})
+}
+
+// RemoveGameDir forgets a folder without touching its contents.
+func (l *LauncherService) RemoveGameDir(dir string) *models.ApiResponse {
+	return l.updateGameDirs(func(cfg *gameDirConfig) error {
+		if sameGameDir(dir, cfg.Default) || sameGameDir(dir, l.GetMinecraftDir()) {
+			return errors.New("cannot remove the default install folder or the built-in folder")
+		}
+		for i, path := range cfg.Paths {
+			if sameGameDir(path, dir) {
+				cfg.Paths = append(cfg.Paths[:i], cfg.Paths[i+1:]...)
+				break
+			}
+		}
+		return nil
+	})
 }
 
 // GameDirCandidate is one game directory found by ScanGameDirs.

@@ -150,6 +150,28 @@ describe('HomeView', () => {
     expect(await screen.findByText('java not found')).toBeTruthy();
   });
 
+  it('launches the selected copy when the same version is installed in two folders', async () => {
+    mockGetInstalledVersions.mockResolvedValue({
+      success: true,
+      data: { versions: ['/games/default', '/games/second'].map(game_dir => ({
+        id: '1.99', type: 'release', has_json: true, has_jar: true, game_dir,
+      })) },
+      error: '',
+    });
+    mockLaunchGame.mockResolvedValue({ success: true, data: { pid: 42 }, error: '' });
+    renderHome();
+
+    await act(async () => {
+      await selectOption(0, '1.99 (/games/second)');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+
+    await waitFor(() => expect(mockLaunchGame).toHaveBeenCalledWith(expect.objectContaining({
+      version_id: '1.99',
+      game_dir: '/games/second',
+    })));
+  });
+
   it('shows None for a vanilla version', async () => {
     mockGetInstalledVersions.mockResolvedValue({
       success: true,

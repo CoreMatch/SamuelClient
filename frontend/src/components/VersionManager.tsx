@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Asset } from '@ha/ui';
 import { GetInstalledVersions } from '../../wailsjs/go/main/App';
-import type { InstalledVersion } from '../types';
+import { installedFromDisk, versionKey, type DiskVersion, type InstalledVersion } from '../types';
 import InstallWizard from './InstallWizard';
 import { EmptyState, ErrorState, LoadingSkeleton } from './states';
 import { t } from '../i18n';
@@ -15,13 +15,6 @@ interface VersionManagerProps {
 }
 
 const STORAGE_KEY = 'installed_versions';
-
-interface DiskVersion {
-  id: string;
-  type: string;
-  has_json: boolean;
-  has_jar: boolean;
-}
 
 export default function VersionManager({ onSelectVersion }: VersionManagerProps) {
   const [localVersions, setLocalVersions] = useState<InstalledVersion[]>([]);
@@ -51,9 +44,7 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
         setScanFailed(true);
         return;
       }
-      setDiskVersions((result.data.versions as DiskVersion[])
-        .filter(version => version.has_json && version.has_jar)
-        .map(version => ({ id: version.id, type: version.type || 'release', installed: true })));
+      setDiskVersions(installedFromDisk(result.data.versions as DiskVersion[]));
     } catch {
       setScanFailed(true);
     } finally {
@@ -61,9 +52,8 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
     }
   }, []);
 
-  const localIds = new Set(localVersions.map(version => version.id));
   const diskIds = new Set(diskVersions.map(version => version.id));
-  const installedVersions = [...localVersions, ...diskVersions.filter(version => !localIds.has(version.id))];
+  const installedVersions = [...localVersions.filter(v => !v.gameDir && !diskIds.has(v.id)), ...diskVersions];
 
   const handleDelete = (versionId: string) => {
     const updated = localVersions.filter(v => v.id !== versionId);
@@ -117,7 +107,7 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
           <div className="rounded-lg bg-panel">
             {installedVersions.map((version, index) => (
               <div
-                key={version.id}
+                key={versionKey(version)}
                 role="button"
                 tabIndex={0}
                 onClick={() => onSelectVersion(version)}
@@ -136,6 +126,7 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
                     <span className="text-base font-medium text-ink">{version.id}</span>
                     <Asset id="icon-check" size={20} className="text-ok" />
                   </div>
+                  {version.gameDir && <p className="mt-1 break-all text-sm text-ink-muted">{version.gameDir}</p>}
                   <div className="mt-1.5 flex items-center gap-2">
                     <Badge tone={getVersionTypeTone(version.type)}>{version.type}</Badge>
                     {version.loaderType && (

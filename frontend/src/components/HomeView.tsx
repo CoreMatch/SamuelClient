@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Asset, patternStyle } from '@ha/ui';
 import type { StoredAccount } from '../accountStorage';
-import type { InstalledVersion } from '../types';
+import { installedFromDisk, versionKey, type DiskVersion, type InstalledVersion } from '../types';
 import { t } from '../i18n';
 import GetStartedChecklist from './GetStartedChecklist';
 import { Button } from '../ui/button';
@@ -34,13 +34,6 @@ function detectLoader(versionId: string): InstalledLoader | null {
 }
 
 // Shapes of the backend payloads consumed below (see bindings.go).
-interface BackendInstalledVersion {
-  id: string;
-  type: string;
-  has_json: boolean;
-  has_jar: boolean;
-}
-
 interface JavaInstallation {
   id: number;
   path: string;
@@ -99,7 +92,7 @@ export default function HomeView({
   onOpenSettings,
 }: HomeViewProps) {
   const [versions, setVersions] = useState<InstalledVersion[]>([]);
-  const [currentVersion, setCurrentVersion] = useState<InstalledVersion | null>(selectedVersion);
+  const [currentVersion, setCurrentVersion] = useState<InstalledVersion | null>(null);
   const [settings, setSettings] = useState<LauncherSettings>(DEFAULT_SETTINGS);
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState('');
@@ -161,31 +154,26 @@ export default function HomeView({
 
   const loadVersions = async () => {
     try {
-      // Prefer localStorage (lets the user mark versions as installed for modded setups),
-      // then fall back to a disk scan from the backend for any version that has a JSON+jar.
-      const stored = localStorage.getItem('installed_versions');
-      const local: InstalledVersion[] = stored ? JSON.parse(stored) : [];
+      let local: InstalledVersion[] = [];
+      try {
+        const stored = JSON.parse(localStorage.getItem('installed_versions') ?? '[]');
+        if (Array.isArray(stored)) local = stored;
+      } catch {
+        // A stale manual list should not prevent disk discovery.
+      }
 
       try {
         const result = await GetInstalledVersions();
         if (result.success && Array.isArray(result.data?.versions)) {
-          const backendVersions = result.data.versions as BackendInstalledVersion[];
-          const fromDisk: InstalledVersion[] = backendVersions
-            .filter(v => v.has_json && v.has_jar)
-            .map(v => ({
-              id: v.id,
-              type: v.type || 'release',
-              installed: true,
-            }));
-          // merge, keep localStorage order, dedupe by id
-          const seen = new Set(local.map(v => v.id));
-          applyVersions([...local, ...fromDisk.filter(v => !seen.has(v.id))]);
+          const fromDisk = installedFromDisk(result.data.versions as DiskVersion[]);
+          const diskIds = new Set(fromDisk.map(v => v.id));
+          applyVersions([...local.filter(v => !v.gameDir && !diskIds.has(v.id)), ...fromDisk]);
           return;
         }
       } catch (e) {
         console.error('Failed to query installed versions from backend:', e);
       }
-      applyVersions(local);
+      applyVersions(local.filter(v => !v.gameDir));
     } catch (err) {
       console.error('Failed to load versions:', err);
     }
@@ -193,11 +181,12 @@ export default function HomeView({
 
   const applyVersions = (list: InstalledVersion[]) => {
     setVersions(list);
-    // A restored selection that is no longer installed must not linger.
-    if (currentVersion && !list.some(v => v.id === currentVersion.id)) {
-      setCurrentVersion(null);
-      onVersionSelect(null);
-    }
+    if (!selectedVersion) return;
+    const restored = list.find(v => selectedVersion.gameDir
+      ? versionKey(v) === versionKey(selectedVersion)
+      : v.id === selectedVersion.id);
+    setCurrentVersion(restored ?? null);
+    if (!restored) onVersionSelect(null);
   };
 
   const loadSettings = async () => {
@@ -256,8 +245,8 @@ export default function HomeView({
     void persistSettings(newSettings);
   };
 
-  const handleVersionChange = (versionId: string) => {
-    const version = versions.find(v => v.id === versionId);
+  const handleVersionChange = (key: string) => {
+    const version = versions.find(v => versionKey(v) === key);
     setCurrentVersion(version || null);
   };
 
@@ -300,7 +289,7 @@ export default function HomeView({
         auth_type: currentAccount.authType,
         authlib_jar: '',
         authlib_meta: '',
-        game_dir: '',
+        game_dir: currentVersion.gameDir ?? '',
         java_path: selectedJava?.path ?? '',
         loader_type: loader?.type ?? '',
         loader_version: loader?.version ?? '',
@@ -349,10 +338,13 @@ export default function HomeView({
           <Field label={t('play.version')} htmlFor="play-version">
             <Select
               ariaLabel={t('play.version')}
-              value={currentVersion?.id || ''}
+              value={currentVersion ? versionKey(currentVersion) : ''}
               onValueChange={handleVersionChange}
               placeholder={t('play.noVersions')}
-              options={versions.map(v => ({ value: v.id, label: v.id }))}
+              options={versions.map(v => ({
+                value: versionKey(v),
+                label: v.gameDir ? `${v.id} (${v.gameDir})` : v.id,
+              }))}
             />
           </Field>
 

@@ -12,7 +12,7 @@ import {
   restoreLastUsedAccount,
   consumeOfflineRemovedNotice,
 } from './accountStorage';
-import { InstalledVersion, HandoffPayload } from './types';
+import type { DiskVersion, InstalledVersion, HandoffPayload } from './types';
 import { t } from './i18n';
 import type { I18nKey } from './i18n';
 import { Badge } from './ui/badge';
@@ -160,26 +160,23 @@ export default function App() {
     setJoiningMatch(true);
     setJoinError('');
     try {
-      interface BackendVersion {
-        id: string;
-        type: string;
-        has_json: boolean;
-        has_jar: boolean;
-      }
-      let complete: BackendVersion[] = [];
+      let complete: DiskVersion[] = [];
       try {
         const versionsResult = await GetInstalledVersions();
         if (versionsResult.success && Array.isArray(versionsResult.data?.versions)) {
-          complete = (versionsResult.data.versions as BackendVersion[]).filter(v => v.has_json && v.has_jar);
+          complete = (versionsResult.data.versions as DiskVersion[]).filter(v => v.has_json && v.has_jar);
         }
       } catch {
         // fall through: reported as "no version" below
       }
 
       const hint = handoff.match.join_target.game_version;
+      const selectedCopy = selectedVersion && complete.find(v =>
+        v.id === selectedVersion.id && (!selectedVersion.gameDir || v.game_dir === selectedVersion.gameDir));
       const chosen =
+        (hint && selectedCopy?.id === hint && selectedCopy) ||
         (hint && complete.find(v => v.id === hint)) ||
-        (selectedVersion && complete.find(v => v.id === selectedVersion.id)) ||
+        selectedCopy ||
         complete[0];
       if (!chosen) {
         setJoinError(t('handoff.noVersion'));
@@ -196,7 +193,7 @@ export default function App() {
         auth_type: account.authType,
         authlib_jar: '',
         authlib_meta: '',
-        game_dir: '',
+        game_dir: chosen.game_dir ?? '',
         java_path: '',
         loader_type: '',
         loader_version: '',

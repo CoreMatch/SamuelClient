@@ -4,8 +4,30 @@ export interface InstalledVersion {
   id: string;
   type: string;
   installed: boolean;
+  gameDir?: string;
   loaderType?: string;
   loaderVersion?: string;
+}
+
+export interface DiskVersion {
+  id: string;
+  type: string;
+  has_json: boolean;
+  has_jar: boolean;
+  game_dir?: string;
+}
+
+export function installedFromDisk(versions: DiskVersion[]): InstalledVersion[] {
+  return versions.filter(v => v.has_json && v.has_jar).map(v => ({
+    id: v.id,
+    type: v.type || 'release',
+    installed: true,
+    ...(v.game_dir ? { gameDir: v.game_dir } : {}),
+  }));
+}
+
+export function versionKey(version: InstalledVersion): string {
+  return JSON.stringify([version.id, version.gameDir ?? '']);
 }
 
 // HandoffPayload mirrors the INTEROP-SPEC v1 handoff document delivered by

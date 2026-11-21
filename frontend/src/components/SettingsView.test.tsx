@@ -14,6 +14,8 @@ import {
   GetDownloadSettings,
   SetDownloadSettings,
   SetGameDir,
+  AddGameDir,
+  RemoveGameDir,
   ScanGameDirs,
 } from '../../wailsjs/go/main/App';
 
@@ -31,6 +33,8 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   GetDownloadSettings: vi.fn(),
   SetDownloadSettings: vi.fn(),
   SetGameDir: vi.fn(),
+  AddGameDir: vi.fn(),
+  RemoveGameDir: vi.fn(),
   ScanGameDirs: vi.fn(),
 }));
 
@@ -43,6 +47,8 @@ const mockDeleteJava = vi.mocked(DeleteJavaInstallation);
 const mockSetDefault = vi.mocked(SetDefaultJavaInstallation);
 const mockGetGameDirStatus = vi.mocked(GetGameDirStatus);
 const mockSetGameDir = vi.mocked(SetGameDir);
+const mockAddGameDir = vi.mocked(AddGameDir);
+const mockRemoveGameDir = vi.mocked(RemoveGameDir);
 const mockScanGameDirs = vi.mocked(ScanGameDirs);
 
 const launcherConfig = {
@@ -80,6 +86,9 @@ function ok(data: unknown) {
   return { success: true, data, error: '' };
 }
 
+const builtIn = { path: '/home/player/.minecraft', source: 'auto', exists: true };
+const custom = { path: '/games/mc/.minecraft', source: 'custom', exists: true };
+
 // The app shell wraps every view in the tooltip provider (App.tsx); the
 // isolated view needs the same wrapper.
 function renderView() {
@@ -100,12 +109,10 @@ describe('SettingsView', () => {
     mockAddJava.mockResolvedValue(ok(javaRows));
     mockUpdateJava.mockResolvedValue(ok(javaRows));
     mockUpdateConfig.mockResolvedValue(ok({ ...launcherConfig, max_memory: 6144 }));
-    mockGetGameDirStatus.mockResolvedValue(
-      ok({ path: '/home/player/.minecraft', source: 'auto', exists: true }),
-    );
-    mockSetGameDir.mockResolvedValue(
-      ok({ path: '/games/mc/.minecraft', source: 'custom', exists: true }),
-    );
+    mockGetGameDirStatus.mockResolvedValue(ok({ ...builtIn, dirs: [builtIn] }));
+    mockAddGameDir.mockResolvedValue(ok({ ...builtIn, dirs: [builtIn, custom] }));
+    mockSetGameDir.mockResolvedValue(ok({ ...custom, dirs: [builtIn, custom] }));
+    mockRemoveGameDir.mockResolvedValue(ok({ ...builtIn, dirs: [builtIn] }));
     mockScanGameDirs.mockResolvedValue(ok({ dirs: [] }));
     vi.mocked(GetDownloadSettings).mockResolvedValue(
       ok({ source: 'bmclapi', custom_shape: 'bmclapi', custom_url: '', concurrency: 8 }),
@@ -248,8 +255,9 @@ describe('SettingsView', () => {
   });
 
   it('warns when the game directory does not exist', async () => {
+    const missing = { ...builtIn, path: '/missing/.minecraft', exists: false };
     mockGetGameDirStatus.mockResolvedValue(
-      ok({ path: '/missing/.minecraft', source: 'auto', exists: false }),
+      ok({ ...missing, dirs: [missing] }),
     );
     renderView();
 
@@ -258,7 +266,7 @@ describe('SettingsView', () => {
     ).toBeTruthy();
   });
 
-  it('scans the disk and applies a found directory', async () => {
+  it('scans the disk and adds a found directory', async () => {
     mockScanGameDirs.mockResolvedValue(
       ok({
         dirs: [
@@ -273,11 +281,10 @@ describe('SettingsView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Scan disk' }));
     expect(await screen.findByText('/games/mc/.minecraft')).toBeTruthy();
     expect(screen.getByText('2 versions')).toBeTruthy();
-    // The directory already in use is marked and cannot be re-applied.
-    expect(screen.getByRole('button', { name: 'In use' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Added' }).hasAttribute('disabled')).toBe(true);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Use' }));
-    await waitFor(() => expect(mockSetGameDir).toHaveBeenCalledWith('/games/mc/.minecraft'));
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(mockAddGameDir).toHaveBeenCalledWith(custom.path));
   });
 
   it('shows the empty notice when the scan finds nothing', async () => {
@@ -290,29 +297,36 @@ describe('SettingsView', () => {
     ).toBeTruthy();
   });
 
-  it('specifies a custom directory through the editor', async () => {
+  it('adds a typed path without replacing the default folder', async () => {
     renderView();
     await screen.findAllByText('JDK 17');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Specify directory' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add folder' }));
     fireEvent.change(screen.getByLabelText('Game Directory'), {
       target: { value: '  /games/mc/.minecraft  ' },
     });
-    // The editor's Save button renders before the memory section's Save.
-    const saveButtons = screen.getAllByRole('button', { name: 'Save' });
-    fireEvent.click(saveButtons[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add folder' }));
 
-    await waitFor(() => expect(mockSetGameDir).toHaveBeenCalledWith('/games/mc/.minecraft'));
+    expect(await screen.findByText(custom.path)).toBeTruthy();
+    expect(mockAddGameDir).toHaveBeenCalledWith(custom.path);
+    expect(within(screen.getByText(builtIn.path).closest('li')!).getByText('Default for new installs')).toBeTruthy();
   });
 
-  it('resets a custom directory to auto-detection', async () => {
-    mockGetGameDirStatus.mockResolvedValue(
-      ok({ path: '/games/mc/.minecraft', source: 'custom', exists: true }),
-    );
+  it('sets a saved directory as the install default', async () => {
+    mockGetGameDirStatus.mockResolvedValue(ok({ ...builtIn, dirs: [builtIn, custom] }));
     renderView();
 
     expect(await screen.findByText('Custom')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Use auto-detection' }));
-    await waitFor(() => expect(mockSetGameDir).toHaveBeenCalledWith(''));
+    fireEvent.click(screen.getByRole('button', { name: 'Set as install default' }));
+    await waitFor(() => expect(mockSetGameDir).toHaveBeenCalledWith(custom.path));
+    expect(within(screen.getByText(custom.path).closest('li')!).getByText('Default for new installs')).toBeTruthy();
+  });
+
+  it('removes a non-default path from the folder list', async () => {
+    mockGetGameDirStatus.mockResolvedValue(ok({ ...builtIn, dirs: [builtIn, custom] }));
+    renderView();
+    fireEvent.click(await screen.findByRole('button', { name: `Remove ${custom.path} from the folder list` }));
+    await waitFor(() => expect(screen.queryByText(custom.path)).toBeNull());
+    expect(mockRemoveGameDir).toHaveBeenCalledWith(custom.path);
   });
 });

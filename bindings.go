@@ -214,17 +214,22 @@ func (a *App) GetLauncherConfig() *models.ApiResponse {
 
 // ==================== Game directory (read / write) ====================
 
-// GetGameDirStatus reports the effective game directory for the settings UI.
-// Data is services.GameDirStatus: {"path": string, "source": "auto"|"custom",
-// "exists": bool}.
+// GetGameDirStatus reports the default install destination and saved folders.
 func (a *App) GetGameDirStatus() *models.ApiResponse {
 	return &models.ApiResponse{Success: true, Data: a.launcherService.GameDirStatus()}
 }
 
-// SetGameDir persists a user-specified game directory. An empty dir clears
-// the override and returns to auto-detection. Data is the new GameDirStatus.
+// SetGameDir changes the install destination. An empty dir selects the built-in folder.
 func (a *App) SetGameDir(dir string) *models.ApiResponse {
 	return a.launcherService.SetGameDir(dir)
+}
+
+func (a *App) AddGameDir(dir string) *models.ApiResponse {
+	return a.launcherService.AddGameDir(dir)
+}
+
+func (a *App) RemoveGameDir(dir string) *models.ApiResponse {
+	return a.launcherService.RemoveGameDir(dir)
 }
 
 // ScanGameDirs walks common disk locations (home directory, plus drive roots
@@ -291,22 +296,28 @@ type InstalledVersion struct {
 	Type    string `json:"type"`
 	HasJSON bool   `json:"has_json"`
 	HasJAR  bool   `json:"has_jar"`
+	GameDir string `json:"game_dir"`
 }
 
-// GetInstalledVersions scans the effective game directory's versions/ folder
-// (user override first, auto-detected default otherwise) and reports every
-// directory that contains a version JSON, so the UI can populate its version
-// dropdown from disk.
+// GetInstalledVersions scans each registered game directory. Versions with the
+// same ID in different roots remain separate entries.
 func (a *App) GetInstalledVersions() *models.ApiResponse {
-	gameDir := a.launcherService.ResolveGameDir()
+	out := []InstalledVersion{}
+	for _, gameDir := range a.launcherService.GameDirs() {
+		out = append(out, scanInstalledVersions(gameDir)...)
+	}
+	return &models.ApiResponse{
+		Success: true,
+		Data:    map[string]interface{}{"versions": out},
+	}
+}
+
+func scanInstalledVersions(gameDir string) []InstalledVersion {
 	versionsDir := filepath.Join(gameDir, "versions")
 
 	entries, err := os.ReadDir(versionsDir)
 	if err != nil {
-		return &models.ApiResponse{
-			Success: true,
-			Data:    map[string]interface{}{"versions": []InstalledVersion{}},
-		}
+		return nil
 	}
 
 	out := []InstalledVersion{}
@@ -350,13 +361,10 @@ func (a *App) GetInstalledVersions() *models.ApiResponse {
 				hasJAR = true
 			}
 		}
-		out = append(out, InstalledVersion{ID: id, Type: vType, HasJSON: hasJSON, HasJAR: hasJAR})
+		out = append(out, InstalledVersion{ID: id, Type: vType, HasJSON: hasJSON, HasJAR: hasJAR, GameDir: gameDir})
 	}
 
-	return &models.ApiResponse{
-		Success: true,
-		Data:    map[string]interface{}{"versions": out},
-	}
+	return out
 }
 
 // ==================== Auth (write / sensitive) ====================

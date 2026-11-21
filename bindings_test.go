@@ -156,7 +156,7 @@ func clearLauncherSettings(t *testing.T) {
 	for _, key := range []string{
 		"launcher.max_memory", "launcher.min_memory", "launcher.java_args",
 		"launcher.game_width", "launcher.game_height", "launcher.game_dir",
-		"launcher.authlib_jar",
+		"launcher.authlib_jar", "launcher.game_dirs",
 	} {
 		_ = repo.Delete(key)
 	}
@@ -1083,8 +1083,7 @@ func TestGameDirBindings(t *testing.T) {
 		t.Fatalf("GetGameDirStatus = %+v, want custom %q", result.Data, dir)
 	}
 
-	// GetInstalledVersions must scan the override directory, not the
-	// platform default.
+	// The custom directory participates in installed version discovery.
 	vdir := filepath.Join(dir, "versions", "1.99")
 	if err := os.MkdirAll(vdir, 0755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -1100,7 +1099,7 @@ func TestGameDirBindings(t *testing.T) {
 		t.Fatalf("GetInstalledVersions failed: %s", result.Error)
 	}
 	versions := result.Data.(map[string]interface{})["versions"].([]InstalledVersion)
-	if len(versions) != 1 || versions[0].ID != "1.99" {
+	if len(versions) != 1 || versions[0].ID != "1.99" || versions[0].GameDir != dir {
 		t.Fatalf("versions = %+v, want the override dir's 1.99", versions)
 	}
 
@@ -1111,6 +1110,48 @@ func TestGameDirBindings(t *testing.T) {
 	}
 	if status, ok := result.Data.(services.GameDirStatus); !ok || status.Source != "auto" {
 		t.Fatalf("after clear status = %+v, want auto", result.Data)
+	}
+}
+
+func TestGetInstalledVersionsKeepsCopiesFromMultipleFolders(t *testing.T) {
+	clearLauncherSettings(t)
+	t.Cleanup(func() { clearLauncherSettings(t) })
+	app := newTestApp()
+	first, second := t.TempDir(), t.TempDir()
+	for _, dir := range []string{first, second, filepath.Join(t.TempDir(), "not-created")} {
+		if res := app.AddGameDir(dir); !res.Success {
+			t.Fatal(res.Error)
+		}
+	}
+	const id = "1.99"
+	for _, dir := range []string{first, second} {
+		versionDir := filepath.Join(dir, "versions", id)
+		if err := os.MkdirAll(versionDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		for ext, data := range map[string]string{".json": `{}`, ".jar": "jar"} {
+			if err := os.WriteFile(filepath.Join(versionDir, id+ext), []byte(data), 0644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if res := app.SetGameDir(second); !res.Success {
+		t.Fatal(res.Error)
+	}
+	result := app.GetInstalledVersions()
+	versions := result.Data.(map[string]interface{})["versions"].([]InstalledVersion)
+	if !result.Success || len(versions) != 2 || versions[0].GameDir != second || versions[1].GameDir != first {
+		t.Fatalf("expected both copies, with the install default first: %+v", result)
+	}
+	if res := app.RemoveGameDir(first); !res.Success {
+		t.Fatal(res.Error)
+	}
+	versions = app.GetInstalledVersions().Data.(map[string]interface{})["versions"].([]InstalledVersion)
+	if len(versions) != 1 || versions[0].GameDir != second {
+		t.Fatalf("expected only the registered copy: %+v", versions)
+	}
+	if _, err := os.Stat(filepath.Join(first, "versions", id, id+".jar")); err != nil {
+		t.Fatalf("removing a folder must not delete its files: %v", err)
 	}
 }
 

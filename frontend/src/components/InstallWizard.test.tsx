@@ -97,7 +97,8 @@ describe('InstallWizard', () => {
     expect(onInstalled).toHaveBeenCalled();
   });
 
-  it('installs Fabric through the loader step', async () => {
+  it('installs Fabric into the same folder as the vanilla download', async () => {
+    mockDownloadVersion.mockResolvedValue({ success: true, data: { game_dir: '/games/custom' }, error: '' });
     render(<InstallWizard onInstalled={vi.fn()} />);
     await selectVersionAndNext();
 
@@ -110,7 +111,7 @@ describe('InstallWizard', () => {
     expect(screen.getByText(/Minecraft 1\.99 with Fabric 0\.15\.0/)).toBeTruthy();
     fireEvent.click(screen.getByText('Install'));
 
-    await waitFor(() => expect(mockInstallFabricLoader).toHaveBeenCalledWith('1.99', '0.15.0', ''));
+    await waitFor(() => expect(mockInstallFabricLoader).toHaveBeenCalledWith('1.99', '0.15.0', '/games/custom'));
     await waitFor(() => expect(screen.getByText(/Installed fabric-loader-0\.15\.0-1\.99/)).toBeTruthy());
   });
 

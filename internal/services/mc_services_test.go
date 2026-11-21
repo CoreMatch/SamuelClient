@@ -1327,7 +1327,7 @@ func clearLauncherSettings(t *testing.T) {
 	for _, key := range []string{
 		"launcher.max_memory", "launcher.min_memory", "launcher.java_args",
 		"launcher.game_width", "launcher.game_height", "launcher.game_dir",
-		"launcher.authlib_jar",
+		"launcher.authlib_jar", settingKeyGameDirs,
 	} {
 		_ = repo.Delete(key)
 	}

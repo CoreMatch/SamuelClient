@@ -170,6 +170,8 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
       if (!download.success) {
         throw new Error(download.error || 'Download failed');
       }
+      // Keep the loader alongside its vanilla install even if the default changes.
+      const gameDir = download.data?.game_dir ?? '';
       if (loaderType !== 'vanilla') {
         // The loader reports progress under its own version id; drop the
         // finished vanilla entry so the bar doesn't sit at the vanilla 100%
@@ -178,13 +180,13 @@ export default function InstallWizard({ onInstalled }: InstallWizardProps) {
       }
       if (loaderType === 'fabric') {
         activeInstallIdRef.current = `fabric-loader-${selectedLoaderVersion}-${selectedVersion.id}`;
-        const result = await InstallFabricLoader(selectedVersion.id, selectedLoaderVersion, '');
+        const result = await InstallFabricLoader(selectedVersion.id, selectedLoaderVersion, gameDir);
         if (!result.success) throw new Error(result.error || 'Loader install failed');
         const data = result.data as { version_id?: string } | null;
         setInstalledLabel(data?.version_id || expectedLoaderVersionId());
       } else if (loaderType === 'forge') {
         activeInstallIdRef.current = `${selectedVersion.id}-forge-${selectedLoaderVersion}`;
-        const result = await InstallForgeLoader(selectedVersion.id, selectedLoaderVersion, '');
+        const result = await InstallForgeLoader(selectedVersion.id, selectedLoaderVersion, gameDir);
         if (!result.success) throw new Error(result.error || 'Loader install failed');
         const data = result.data as { version_id?: string } | null;
         setInstalledLabel(data?.version_id || expectedLoaderVersionId());

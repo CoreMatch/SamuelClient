@@ -1554,6 +1554,7 @@ func (b *BMCLAPIService) InstallVersion(ctx context.Context, versionID, gameDir 
 		Success: true,
 		Data: map[string]interface{}{
 			"version_id":    versionID,
+			"game_dir":      gameDir,
 			"version_dir":   versionDir,
 			"version_json":  versionJSONPath,
 			"version_jar":   jarPath,
@@ -1638,7 +1639,7 @@ func (l *LauncherService) GetLauncherConfig() models.LauncherConfig {
 	width := parseIntSetting(settings[settingKeyGameWidth], 854)
 	height := parseIntSetting(settings[settingKeyGameHeight], 480)
 
-	gameDir := l.ResolveGameDir()
+	gameDir := l.gameDirsFromSettings(settings).Default
 
 	javaArgs := settings[settingKeyJavaArgs]
 
@@ -1655,8 +1656,8 @@ func (l *LauncherService) GetLauncherConfig() models.LauncherConfig {
 }
 
 // SaveLauncherConfig persists the user-editable subset of the launcher
-// configuration. JavaPath is auto-detected on every launch and GameDir is
-// managed through SetGameDir; both are intentionally not overwritten here.
+// configuration. JavaPath is auto-detected on every launch. A nonempty
+// GameDir changes the default install destination.
 //
 // The values are written to the `settings` table under the keys defined
 // above. Invalid (non-numeric) memory/size values are rejected before
@@ -1689,8 +1690,8 @@ func (l *LauncherService) SaveLauncherConfig(cfg models.LauncherConfig) *models.
 		return &models.ApiResponse{Success: false, Error: err.Error()}
 	}
 	if cfg.GameDir != "" {
-		if err := saveLauncherSetting(settingKeyGameDir, cfg.GameDir, "string", "Game directory (.minecraft)"); err != nil {
-			return &models.ApiResponse{Success: false, Error: err.Error()}
+		if result := l.SetGameDir(cfg.GameDir); !result.Success {
+			return result
 		}
 	}
 	if cfg.AuthlibJar != "" {
