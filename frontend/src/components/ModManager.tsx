@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw, Search } from 'lucide-react';
 import { AddMod, DeleteMod, ListMods, SetModEnabled } from '../../wailsjs/go/main/App';
 import { t } from '../i18n';
 import { Badge } from '../ui/badge';
@@ -7,6 +7,7 @@ import { Button } from '../ui/button';
 import { Callout } from '../ui/callout';
 import { AlertDialog } from '../ui/dialog';
 import { Select } from '../ui/select';
+import ModrinthBrowser from './ModrinthBrowser';
 
 interface ModFile {
   name: string;
@@ -51,6 +52,7 @@ function ModList({ gameDir, busy, setBusy }: {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [onlineProvider, setOnlineProvider] = useState<'modrinth' | 'curseforge' | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -92,7 +94,18 @@ function ModList({ gameDir, busy, setBusy }: {
           <RefreshCw className="size-4" aria-hidden />
           {t('mods.refresh')}
         </Button>
+        {(['modrinth', 'curseforge'] as const).map(provider => (
+          <Button key={provider} variant="secondary" disabled={busy} aria-expanded={onlineProvider === provider}
+            onClick={() => setOnlineProvider(current => current === provider ? null : provider)}>
+            <Search className="size-4" aria-hidden />
+            {t('onlineMods.platformTitle', { platform: provider === 'modrinth' ? 'Modrinth' : 'CurseForge' })}
+          </Button>
+        ))}
       </div>
+      {onlineProvider && (
+        <ModrinthBrowser key={onlineProvider} provider={onlineProvider} gameDir={gameDir} busy={busy} setBusy={setBusy}
+          onInstalled={async () => setMods(await readMods(gameDir))} />
+      )}
       {error && <Callout tone="danger" onDismiss={() => setError('')}>{error}</Callout>}
       {loading && <p role="status" className="text-sm text-ink-muted">{t('mods.loading')}</p>}
       {mods?.length === 0 && <p className="text-sm text-ink-muted">{t('mods.empty')}</p>}

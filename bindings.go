@@ -813,6 +813,113 @@ func (a *App) DeleteMod(gameDir, name string) *models.ApiResponse {
 	})
 }
 
+func modrinthTargets(gameDir string) []services.ModrinthTarget {
+	targets := []services.ModrinthTarget{}
+	for _, v := range scanInstalledVersions(gameDir) {
+		if !v.HasJSON || !v.HasJAR || v.InheritsFrom == "" {
+			continue
+		}
+		var loader string
+		switch {
+		case strings.HasPrefix(v.ID, "fabric-loader-"):
+			loader = "fabric"
+		case strings.HasPrefix(v.ID, v.InheritsFrom+"-forge"):
+			loader = "forge"
+		default:
+			continue
+		}
+		targets = append(targets, services.ModrinthTarget{ProfileID: v.ID, GameVersion: v.InheritsFrom, Loader: loader})
+	}
+	return targets
+}
+
+func (a *App) GetModrinthTargets(gameDir string) *models.ApiResponse {
+	return a.withModGameDir(gameDir, func() (any, error) {
+		return modrinthTargets(gameDir), nil
+	})
+}
+
+func (a *App) withModrinthTarget(gameDir, profileID string, run func(context.Context, services.ModrinthTarget) (any, error)) *models.ApiResponse {
+	return a.withModGameDir(gameDir, func() (any, error) {
+		for _, target := range modrinthTargets(gameDir) {
+			if target.ProfileID == profileID {
+				parent := a.ctx
+				if parent == nil {
+					parent = context.Background()
+				}
+				ctx, cancel := context.WithTimeout(parent, 5*time.Minute)
+				defer cancel()
+				return run(ctx, target)
+			}
+		}
+		return nil, fmt.Errorf("select an installed Fabric or Forge profile from this game folder")
+	})
+}
+
+func (a *App) SearchModrinth(gameDir, profileID, query string, offset int) *models.ApiResponse {
+	return a.withModrinthTarget(gameDir, profileID, func(ctx context.Context, target services.ModrinthTarget) (any, error) {
+		return services.NewModrinthService().Search(ctx, target, query, offset)
+	})
+}
+
+func (a *App) GetModrinthVersions(gameDir, profileID, projectID string) *models.ApiResponse {
+	return a.withModrinthTarget(gameDir, profileID, func(ctx context.Context, target services.ModrinthTarget) (any, error) {
+		versions, err := services.NewModrinthService().Versions(ctx, target, projectID)
+		out := make([]map[string]string, 0, len(versions))
+		for _, v := range versions {
+			out = append(out, map[string]string{"id": v.ID, "version_number": v.Number, "version_type": v.Channel})
+		}
+		return out, err
+	})
+}
+
+func (a *App) PreviewModrinthInstall(gameDir, profileID, projectID, versionID string) *models.ApiResponse {
+	return a.withModrinthTarget(gameDir, profileID, func(ctx context.Context, target services.ModrinthTarget) (any, error) {
+		return services.NewModrinthService().Plan(ctx, target, projectID, versionID)
+	})
+}
+
+func (a *App) InstallModrinthMod(gameDir, profileID, projectID, versionID, fingerprint string) *models.ApiResponse {
+	return a.withModrinthTarget(gameDir, profileID, func(ctx context.Context, target services.ModrinthTarget) (any, error) {
+		return nil, services.NewModrinthService().Install(ctx, gameDir, target, projectID, versionID, fingerprint)
+	})
+}
+
+func curseForgeService() *services.CurseForgeService {
+	return services.NewCurseForgeService(os.Getenv("SAMUEL_CURSEFORGE_API_KEY"))
+}
+
+func (a *App) GetCurseForgeTargets(gameDir string) *models.ApiResponse {
+	if strings.TrimSpace(os.Getenv("SAMUEL_CURSEFORGE_API_KEY")) == "" {
+		return &models.ApiResponse{Error: "CurseForge is not configured. Set SAMUEL_CURSEFORGE_API_KEY before launching SamuelClient, or download from the official website."}
+	}
+	return a.GetModrinthTargets(gameDir)
+}
+
+func (a *App) SearchCurseForge(gameDir, profileID, query string, offset int) *models.ApiResponse {
+	return a.withModrinthTarget(gameDir, profileID, func(ctx context.Context, target services.ModrinthTarget) (any, error) {
+		return curseForgeService().Search(ctx, target, query, offset)
+	})
+}
+
+func (a *App) GetCurseForgeVersions(gameDir, profileID, projectID string) *models.ApiResponse {
+	return a.withModrinthTarget(gameDir, profileID, func(ctx context.Context, target services.ModrinthTarget) (any, error) {
+		return curseForgeService().Versions(ctx, target, projectID)
+	})
+}
+
+func (a *App) PreviewCurseForgeInstall(gameDir, profileID, projectID, versionID string) *models.ApiResponse {
+	return a.withModrinthTarget(gameDir, profileID, func(ctx context.Context, target services.ModrinthTarget) (any, error) {
+		return curseForgeService().Plan(ctx, target, projectID, versionID)
+	})
+}
+
+func (a *App) InstallCurseForgeMod(gameDir, profileID, projectID, versionID, fingerprint string) *models.ApiResponse {
+	return a.withModrinthTarget(gameDir, profileID, func(ctx context.Context, target services.ModrinthTarget) (any, error) {
+		return nil, curseForgeService().Install(ctx, gameDir, target, projectID, versionID, fingerprint)
+	})
+}
+
 // ==================== Launch (write, streaming) ====================
 
 // LaunchGameRequest mirrors the previous POST /api/v1/launcher/launch body so

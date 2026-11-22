@@ -6,7 +6,7 @@ A cross-platform Minecraft launcher built with [Wails](https://wails.io/) (Go + 
 
 - **Account management** — offline and HRPAuth login flows, with token refresh and validation
 - **Version management** — browse and download vanilla Minecraft versions, plus Fabric and Forge mod loaders
-- **Mod management** — under Settings > Folders > Manage Mods, list, import, or delete local `.jar` files in a registered game folder. Disable a mod by appending `.bak` and re-enable it by removing that suffix.
+- **Mod management** — under Settings > Folders > Manage Mods, import local `.jar` files or search Modrinth and CurseForge for an installed Fabric or Forge profile. Review required dependencies before installation. Profiles in the same game folder share `mods/`. Disable a mod by appending `.bak` and re-enable it by removing that suffix.
 - **Java management** — track installed Java runtimes and set a default per profile
 - **Persistent storage** — embedded [SQLite](https://www.sqlite.org/) database for settings and Java installations
 - **Cross-platform** — Windows, macOS, and Linux builds via Wails
@@ -111,6 +111,8 @@ no frontend-facing HTTP listener). All bound methods return one uniform response
 |------|----------|
 | Versions (read) | `GetVersions`, `GetFabricVersions`, `GetForgeVersions`, `GetInstalledVersions` |
 | Mods | `ListMods`, `AddMod`, `SetModEnabled`, `DeleteMod` |
+| Modrinth | `GetModrinthTargets`, `SearchModrinth`, `GetModrinthVersions`, `PreviewModrinthInstall`, `InstallModrinthMod` |
+| CurseForge | `GetCurseForgeTargets`, `SearchCurseForge`, `GetCurseForgeVersions`, `PreviewCurseForgeInstall`, `InstallCurseForgeMod` |
 | Java (read) | `GetJavaInstallations` |
 | Config (read) | `GetLauncherConfig` |
 | Match handoff (read) | `GetPendingHandoff`, `GetInteropStatus` |
@@ -167,6 +169,8 @@ The UI is a single-page React app written in TypeScript and built with Vite. Sty
 - **Versions** — browse, download, and select Minecraft versions (three-step install wizard)
 - **Accounts** — add and switch between offline and HRPAuth accounts
 - **Settings** — application preferences (Java runtimes, paths, memory, mods folder)
+
+For CurseForge, launch SamuelClient with an authorized `SAMUEL_CURSEFORGE_API_KEY` in its process environment. Do not commit the key or bundle it with the app. With no key, the CurseForge panel links to the official website. Files that CurseForge does not make available for third-party downloads must be downloaded manually and imported with **Add Mod**.
 
 Run frontend-only checks:
 
