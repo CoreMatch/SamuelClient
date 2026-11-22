@@ -54,6 +54,7 @@ describe('App download queue', () => {
   it('keeps live download progress visible when switching pages', async () => {
     render(<App />);
     expect(await screen.findByText('Home page')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Download queue' })).toBeNull();
     const onProgress = eventListeners.get('download:progress');
     expect(onProgress).toBeTypeOf('function');
 

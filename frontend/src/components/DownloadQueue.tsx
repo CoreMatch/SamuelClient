@@ -47,6 +47,8 @@ function taskStatusLabel(task: DownloadTask): I18nKey {
 }
 
 export default function DownloadQueue({ tasks, onCancel, onDismiss }: DownloadQueueProps) {
+  if (tasks.length === 0) return null;
+
   const activeCount = tasks.filter(task => task.status === 'active').length;
 
   return (
@@ -63,9 +65,7 @@ export default function DownloadQueue({ tasks, onCancel, onDismiss }: DownloadQu
       </header>
 
       <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pb-2">
-        {tasks.length === 0 ? (
-          <p className="px-1 text-xs leading-relaxed text-ink-faint">{t('queue.empty')}</p>
-        ) : tasks.map(task => (
+        {tasks.map(task => (
           <article
             key={task.versionId}
             aria-label={`${task.versionId}: ${t(taskStatusLabel(task))}`}

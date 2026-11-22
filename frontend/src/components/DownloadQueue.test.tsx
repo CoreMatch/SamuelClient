@@ -16,6 +16,12 @@ const activeTask: DownloadTask = {
 };
 
 describe('DownloadQueue', () => {
+  it('hides the queue when there are no tasks', () => {
+    const { container } = render(<DownloadQueue tasks={[]} onCancel={vi.fn()} onDismiss={vi.fn()} />);
+
+    expect(container.firstChild).toBeNull();
+  });
+
   it('shows progress and allows cancelling an active download', () => {
     const onCancel = vi.fn();
     render(<DownloadQueue tasks={[activeTask]} onCancel={onCancel} onDismiss={vi.fn()} />);
