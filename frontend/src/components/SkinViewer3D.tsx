@@ -13,11 +13,21 @@ interface SkinViewer3DProps {
 
 const SIDE_BACK_ROTATION = Math.PI * 0.72;
 
+// #region debug-point B-D:transport
+const previewTrace = (hypothesisId: string, stage: string, data: object = {}) => { void fetch('http://127.0.0.1:7777/event', { method: 'POST', body: JSON.stringify({ sessionId: 'profile-preview-unavailable', runId: import.meta.env.VITE_PROFILE_DEBUG_RUN || 'pre-fix', hypothesisId, location: 'SkinViewer3D.tsx', msg: `[DEBUG] ${stage}`, data }) }).catch(() => {}); };
+// #endregion
+
 async function loadImageFromUrl(url: string): Promise<{
   image: HTMLImageElement;
   revoke: () => void;
 }> {
+  // #region debug-point C:download
+  previewTrace('C', 'download started', { scheme: url.split(':')[0] });
+  // #endregion
   const response = await fetch(url, { cache: 'no-store' });
+  // #region debug-point C:response
+  previewTrace('C', 'download response', { status: response.status, mime: response.headers?.get('content-type') });
+  // #endregion
   if (!response.ok) throw new Error(`Texture request failed (${response.status})`);
 
   const objectUrl = URL.createObjectURL(await response.blob());
@@ -28,6 +38,9 @@ async function loadImageFromUrl(url: string): Promise<{
       revoke: () => URL.revokeObjectURL(objectUrl),
     });
     image.onerror = () => {
+      // #region debug-point D:decode
+      previewTrace('D', 'image decode failed');
+      // #endregion
       URL.revokeObjectURL(objectUrl);
       reject(new Error('Texture image could not be decoded'));
     };
@@ -93,6 +106,9 @@ export default function SkinViewer3D({
       viewer.autoRotateSpeed = 0.5;
       viewer.playerWrapper.rotation.y = SIDE_BACK_ROTATION;
       viewerRef.current = viewer;
+      // #region debug-point B:renderer-ready
+      previewTrace('B', 'renderer initialized');
+      // #endregion
       setViewerError(false);
 
       return () => {
@@ -100,6 +116,9 @@ export default function SkinViewer3D({
         viewerRef.current = null;
       };
     } catch (error) {
+      // #region debug-point B:renderer-error
+      previewTrace('B', 'renderer initialization failed', { error: String(error) });
+      // #endregion
       console.warn('Could not initialize the 3D profile preview:', error);
       setViewerError(true);
     }
@@ -125,7 +144,13 @@ export default function SkinViewer3D({
         }
         revoke = loaded.revoke;
         viewer.loadSkin(loaded.image);
+        // #region debug-point D:skin-ready
+        previewTrace('D', 'skin applied', { width: loaded.image.naturalWidth, height: loaded.image.naturalHeight });
+        // #endregion
       } catch (error) {
+        // #region debug-point C-D:skin-error
+        previewTrace('C,D', 'skin failed', { error: String(error) });
+        // #endregion
         if (!disposed) {
           viewer.loadSkin(null);
           console.warn('Could not load the profile skin:', error);
@@ -163,7 +188,13 @@ export default function SkinViewer3D({
         revoke = loaded.revoke;
         viewer.loadCape(normalizeCapeTexture(loaded.image), { backEquipment: 'cape' });
         viewer.playerObject.backEquipment = 'cape';
+        // #region debug-point D:cape-ready
+        previewTrace('D', 'cape applied', { width: loaded.image.naturalWidth, height: loaded.image.naturalHeight });
+        // #endregion
       } catch (error) {
+        // #region debug-point C-D:cape-error
+        previewTrace('C,D', 'cape failed', { error: String(error) });
+        // #endregion
         if (!disposed) {
           viewer.loadCape(null);
           console.warn('Could not load the profile cape:', error);
