@@ -7,6 +7,7 @@ export interface InstalledVersion {
   gameDir?: string;
   loaderType?: string;
   loaderVersion?: string;
+  inheritsFrom?: string;
 }
 
 export interface DiskVersion {
@@ -15,6 +16,7 @@ export interface DiskVersion {
   has_json: boolean;
   has_jar: boolean;
   game_dir?: string;
+  inherits_from?: string;
 }
 
 export function installedFromDisk(versions: DiskVersion[]): InstalledVersion[] {
@@ -23,6 +25,7 @@ export function installedFromDisk(versions: DiskVersion[]): InstalledVersion[] {
     type: v.type || 'release',
     installed: true,
     ...(v.game_dir ? { gameDir: v.game_dir } : {}),
+    ...(v.inherits_from ? { inheritsFrom: v.inherits_from } : {}),
   }));
 }
 

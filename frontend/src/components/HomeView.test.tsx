@@ -10,6 +10,11 @@ import {
   GetLauncherConfig,
   UpdateLauncherConfig,
   LaunchGame,
+  GetFabricVersions,
+  GetForgeVersions,
+  InstallFabricLoader,
+  InstallForgeLoader,
+  RemoveLoaderProfile,
 } from '../../wailsjs/go/main/App';
 
 // All backend bindings are replaced with test doubles; HomeView must never
@@ -20,6 +25,11 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   GetLauncherConfig: vi.fn(),
   UpdateLauncherConfig: vi.fn(),
   LaunchGame: vi.fn(),
+  GetFabricVersions: vi.fn(),
+  GetForgeVersions: vi.fn(),
+  InstallFabricLoader: vi.fn(),
+  InstallForgeLoader: vi.fn(),
+  RemoveLoaderProfile: vi.fn(),
 }));
 vi.mock('../../wailsjs/runtime/runtime', () => ({
   EventsOn: vi.fn(),
@@ -31,6 +41,11 @@ const mockGetJavaInstallations = vi.mocked(GetJavaInstallations);
 const mockGetLauncherConfig = vi.mocked(GetLauncherConfig);
 const mockUpdateLauncherConfig = vi.mocked(UpdateLauncherConfig);
 const mockLaunchGame = vi.mocked(LaunchGame);
+const mockGetFabricVersions = vi.mocked(GetFabricVersions);
+const mockGetForgeVersions = vi.mocked(GetForgeVersions);
+const mockInstallFabricLoader = vi.mocked(InstallFabricLoader);
+const mockInstallForgeLoader = vi.mocked(InstallForgeLoader);
+const mockRemoveLoaderProfile = vi.mocked(RemoveLoaderProfile);
 
 const account: StoredAccount = {
   id: 'a1',
@@ -66,6 +81,11 @@ function emptyLists() {
   mockGetJavaInstallations.mockResolvedValue({ success: true, data: [], error: '' });
   mockGetLauncherConfig.mockResolvedValue({ success: true, data: defaultConfig, error: '' });
   mockUpdateLauncherConfig.mockResolvedValue({ success: true, data: defaultConfig, error: '' });
+  mockGetFabricVersions.mockResolvedValue({ success: true, data: [], error: '' });
+  mockGetForgeVersions.mockResolvedValue({ success: true, data: [], error: '' });
+  mockInstallFabricLoader.mockResolvedValue({ success: true, data: { version_id: 'fabric-loader-0.15.0-1.99' }, error: '' });
+  mockInstallForgeLoader.mockResolvedValue({ success: true, data: { version_id: '1.99-forge-47.2.0' }, error: '' });
+  mockRemoveLoaderProfile.mockResolvedValue({ success: true, data: {}, error: '' });
 }
 
 // Opens the nth Radix select (combobox role) via keyboard and picks the
@@ -230,6 +250,75 @@ describe('HomeView', () => {
     expect(screen.getByText('Forge 49.0.3')).toBeTruthy();
   });
 
+  it('adds Fabric to an already installed Minecraft version', async () => {
+    const gameDir = '/games/installed';
+    mockGetInstalledVersions
+      .mockResolvedValueOnce({
+        success: true,
+        data: { versions: [{ id: '1.99', type: 'release', has_json: true, has_jar: true, game_dir: gameDir }] },
+        error: '',
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          versions: [
+            { id: '1.99', type: 'release', has_json: true, has_jar: true, game_dir: gameDir },
+            { id: 'fabric-loader-0.15.0-1.99', type: 'release', has_json: true, has_jar: true, game_dir: gameDir, inherits_from: '1.99' },
+          ],
+        },
+        error: '',
+      });
+    mockGetFabricVersions.mockResolvedValue({
+      success: true,
+      data: [{ loader: { version: '0.15.0' } }],
+      error: '',
+    });
+
+    renderHome();
+    await act(async () => {
+      await selectOption(0, '1.99');
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Add loader' }));
+
+    await waitFor(() => {
+      expect(mockInstallFabricLoader).toHaveBeenCalledWith('1.99', '0.15.0', gameDir);
+      expect(screen.getByText('Fabric 0.15.0')).toBeTruthy();
+    });
+  });
+
+  it('removes a selected loader profile while keeping its base game selected', async () => {
+    const gameDir = '/games/installed';
+    mockGetInstalledVersions
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          versions: [
+            { id: '1.99', type: 'release', has_json: true, has_jar: true, game_dir: gameDir },
+            { id: 'fabric-loader-0.15.0-1.99', type: 'release', has_json: true, has_jar: true, game_dir: gameDir, inherits_from: '1.99' },
+          ],
+        },
+        error: '',
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: { versions: [{ id: '1.99', type: 'release', has_json: true, has_jar: true, game_dir: gameDir }] },
+        error: '',
+      });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderHome();
+    await act(async () => {
+      await selectOption(0, 'fabric-loader-0.15.0-1.99');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Remove this loader' }));
+
+    await waitFor(() => {
+      expect(mockRemoveLoaderProfile).toHaveBeenCalledWith('fabric-loader-0.15.0-1.99', gameDir);
+      expect(screen.getByText('None')).toBeTruthy();
+    });
+    confirm.mockRestore();
+  });
+
   it('launches with the loader derived from the selected version', async () => {
     mockLaunchGame.mockResolvedValue({ success: true, data: { pid: 7 }, error: '' });
     mockGetInstalledVersions.mockResolvedValue({
@@ -337,7 +426,7 @@ describe('HomeView', () => {
     renderHome(version);
     await screen.findByText('Java 8 (1.8)');
     await act(async () => {
-      await selectOption(1, 'Java 17 (17)');
+      await selectOption(3, 'Java 17 (17)');
     });
 
     fireEvent.click(await screen.findByRole('button', { name: 'Play' }));

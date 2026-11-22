@@ -985,8 +985,8 @@ func TestGetInstalledVersionsLoaderInheritsParentJar(t *testing.T) {
 		byID[v.ID] = v
 	}
 	loaderGot, ok := byID["fabric-loader-0.15.0-1.99"]
-	if !ok || !loaderGot.HasJSON || !loaderGot.HasJAR {
-		t.Errorf("loader version = %+v (present=%v), want has_json+has_jar via parent", loaderGot, ok)
+	if !ok || !loaderGot.HasJSON || !loaderGot.HasJAR || loaderGot.InheritsFrom != "1.99" {
+		t.Errorf("loader version = %+v (present=%v), want parent jar and inherits_from 1.99", loaderGot, ok)
 	}
 }
 

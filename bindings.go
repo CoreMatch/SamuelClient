@@ -329,11 +329,12 @@ func (a *App) GetInteropStatus() *models.ApiResponse {
 // InstalledVersion describes a version present on disk under
 // <gameDir>/versions.
 type InstalledVersion struct {
-	ID      string `json:"id"`
-	Type    string `json:"type"`
-	HasJSON bool   `json:"has_json"`
-	HasJAR  bool   `json:"has_jar"`
-	GameDir string `json:"game_dir"`
+	ID           string `json:"id"`
+	Type         string `json:"type"`
+	HasJSON      bool   `json:"has_json"`
+	HasJAR       bool   `json:"has_jar"`
+	GameDir      string `json:"game_dir"`
+	InheritsFrom string `json:"inherits_from,omitempty"`
 }
 
 // GetInstalledVersions scans each registered game directory. Versions with the
@@ -398,7 +399,10 @@ func scanInstalledVersions(gameDir string) []InstalledVersion {
 				hasJAR = true
 			}
 		}
-		out = append(out, InstalledVersion{ID: id, Type: vType, HasJSON: hasJSON, HasJAR: hasJAR, GameDir: gameDir})
+		out = append(out, InstalledVersion{
+			ID: id, Type: vType, HasJSON: hasJSON, HasJAR: hasJAR,
+			GameDir: gameDir, InheritsFrom: inheritsFrom,
+		})
 	}
 
 	return out
@@ -750,6 +754,15 @@ func (a *App) InstallForgeLoader(mcVersion, forgeVersion, gameDir string) *model
 	return a.installResult(ctx, versionID, retryInstall(ctx, func() *models.ApiResponse {
 		return service.InstallForgeLoader(ctx, mcVersion, forgeVersion, gameDir, javaPath, logCallback, progress)
 	}))
+}
+
+// RemoveLoaderProfile drops one installed Fabric or Forge profile without
+// touching its inherited Minecraft version or shared libraries.
+func (a *App) RemoveLoaderProfile(versionID, gameDir string) *models.ApiResponse {
+	if gameDir == "" {
+		gameDir = a.launcherService.ResolveGameDir()
+	}
+	return services.RemoveLoaderProfile(gameDir, versionID)
 }
 
 // ==================== Launch (write, streaming) ====================
