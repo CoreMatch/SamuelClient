@@ -29,13 +29,18 @@ func (a *AuthService) GetHRPAuthTextures(yggdrasilAccessToken string) *models.Ap
 	if yggdrasilAccessToken == "" {
 		return &models.ApiResponse{Success: false, Error: "Yggdrasil access token is required"}
 	}
-	req, err := http.NewRequest(http.MethodPost, strings.TrimSuffix(HRPAuthBaseURL, "/")+"/texture/get", nil)
+	baseURL := strings.TrimSuffix(HRPAuthBaseURL, "/")
+	req, err := http.NewRequest(http.MethodPost, baseURL+"/texture/get", nil)
 	if err != nil {
 		return &models.ApiResponse{Success: false, Error: err.Error()}
 	}
 	req.Header.Set("Authorization", "Bearer "+yggdrasilAccessToken)
 	req.Header.Set("Accept", "application/json")
-	return a.doTextureRequest(req)
+	result := a.doTextureRequest(req)
+	if data, ok := result.Data.(map[string]interface{}); result.Success && ok {
+		data["textureDownloadBaseUrl"] = baseURL + "/textures/"
+	}
+	return result
 }
 
 // UploadHRPAuthTexture uploads and activates a PNG texture for a profile.

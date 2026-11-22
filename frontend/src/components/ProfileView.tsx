@@ -28,6 +28,11 @@ interface PlayerProfile {
   textures?: Partial<Record<TextureType, ProfileTexture>>;
 }
 
+interface ProfileTextureData {
+  profiles?: PlayerProfile[];
+  textureDownloadBaseUrl?: string;
+}
+
 interface ProfileViewProps {
   account: StoredAccount | null;
   onSignIn: () => void;
@@ -52,6 +57,7 @@ export default function ProfileView({ account, onSignIn, onSignOut }: ProfileVie
   const yggdrasilAccessToken = account?.accessToken ?? '';
   const playerUUID = account?.uuid ?? '';
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
+  const [textureDownloadBaseUrl, setTextureDownloadBaseUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingError, setLoadingError] = useState('');
   const [error, setError] = useState('');
@@ -79,9 +85,10 @@ export default function ProfileView({ account, onSignIn, onSignOut }: ProfileVie
           setLoadingError(result.error || t('profile.loadFailed'));
           return;
         }
-        const data = result.data as { profiles?: PlayerProfile[] };
+        const data = result.data as ProfileTextureData;
         const nextProfile = data.profiles?.find(item => item.id === playerUUID) ?? data.profiles?.[0] ?? null;
         setProfile(nextProfile);
+        setTextureDownloadBaseUrl(data.textureDownloadBaseUrl ?? '');
       })
       .catch(() => {
         if (!cancelled) setLoadingError(t('profile.loadFailed'));
@@ -127,9 +134,10 @@ export default function ProfileView({ account, onSignIn, onSignOut }: ProfileVie
         setError(result.error || t('profile.loadFailed'));
         return;
       }
-      const data = result.data as { profiles?: PlayerProfile[] };
+      const data = result.data as ProfileTextureData;
       const nextProfile = data.profiles?.find(item => item.id === playerUUID) ?? data.profiles?.[0] ?? null;
       setProfile(nextProfile);
+      setTextureDownloadBaseUrl(data.textureDownloadBaseUrl ?? '');
     } catch {
       setError(t('profile.loadFailed'));
     } finally {
@@ -210,6 +218,14 @@ export default function ProfileView({ account, onSignIn, onSignOut }: ProfileVie
   const activeProfile = profile ?? { id: account.uuid, name: account.username };
   const previewSkin = previews.skin || profile?.textures?.skin?.url;
   const previewCape = previews.cape || profile?.textures?.cape?.url;
+  const fallbackUrl = (type: TextureType) => {
+    const hash = profile?.textures?.[type]?.hash;
+    if (!previews[type] && textureDownloadBaseUrl && hash && /^[a-f0-9]{64}$/i.test(hash)) {
+      return textureDownloadBaseUrl + hash.toLowerCase();
+    }
+  };
+  const fallbackSkin = fallbackUrl('skin');
+  const fallbackCape = fallbackUrl('cape');
   const textureCard = (type: TextureType) => {
     const file = files[type];
     const uploading = busy === type && !!file;
@@ -297,7 +313,7 @@ export default function ProfileView({ account, onSignIn, onSignOut }: ProfileVie
               </div>
             </dl>
           </div>
-          {previewSkin || previewCape ? (
+          {previewSkin || previewCape || fallbackSkin || fallbackCape ? (
             <Suspense fallback={(
               <div className="grid min-h-[300px] place-items-center rounded-md bg-raised text-sm text-ink-muted">
                 {t('profile.previewLoading')}
@@ -306,6 +322,8 @@ export default function ProfileView({ account, onSignIn, onSignOut }: ProfileVie
               <SkinViewer3D
                 skinUrl={previewSkin}
                 capeUrl={previewCape}
+                skinFallbackUrl={fallbackSkin}
+                capeFallbackUrl={fallbackCape}
               />
             </Suspense>
           ) : (

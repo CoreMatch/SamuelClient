@@ -31,6 +31,9 @@ func TestGetHRPAuthTexturesUsesYggdrasilSessionToken(t *testing.T) {
 	if !ok || data["profiles"] == nil {
 		t.Fatalf("Data = %#v, want profiles", result.Data)
 	}
+	if got := data["textureDownloadBaseUrl"]; got != server.URL+"/textures/" {
+		t.Errorf("textureDownloadBaseUrl = %v, want %s/textures/", got, server.URL)
+	}
 }
 
 func TestUploadHRPAuthTexture(t *testing.T) {

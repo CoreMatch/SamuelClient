@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { SkinViewer } from 'skinview3d';
+import { t } from '../i18n';
 
 interface SkinViewer3DProps {
   skinUrl?: string | null;
   capeUrl?: string | null;
+  skinFallbackUrl?: string;
+  capeFallbackUrl?: string;
   width?: number;
   height?: number;
 }
@@ -51,15 +54,30 @@ function normalizeCapeTexture(image: HTMLImageElement): HTMLImageElement | HTMLC
   return canvas;
 }
 
+async function loadTexture(url: string | null | undefined, fallbackUrl?: string) {
+  if (!url && fallbackUrl) return loadImageFromUrl(fallbackUrl);
+  if (!url) throw new Error('Texture URL is missing');
+  try {
+    return await loadImageFromUrl(url);
+  } catch (error) {
+    if (!fallbackUrl || fallbackUrl === url) throw error;
+    return loadImageFromUrl(fallbackUrl);
+  }
+}
+
 export default function SkinViewer3D({
   skinUrl,
   capeUrl,
+  skinFallbackUrl,
+  capeFallbackUrl,
   width = 260,
   height = 360,
 }: SkinViewer3DProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<SkinViewer | null>(null);
   const [viewerError, setViewerError] = useState(false);
+  const [skinError, setSkinError] = useState(false);
+  const [capeError, setCapeError] = useState(false);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -81,32 +99,38 @@ export default function SkinViewer3D({
         viewer.dispose();
         viewerRef.current = null;
       };
-    } catch {
+    } catch (error) {
+      console.warn('Could not initialize the 3D profile preview:', error);
       setViewerError(true);
     }
   }, [width, height]);
 
   useEffect(() => {
+    setSkinError(false);
     const viewer = viewerRef.current;
     if (!viewer) return;
     let disposed = false;
     let revoke: (() => void) | null = null;
 
     const applySkin = async () => {
-      if (!skinUrl) {
+      if (!skinUrl && !skinFallbackUrl) {
         viewer.loadSkin(null);
         return;
       }
       try {
-        const loaded = await loadImageFromUrl(skinUrl);
+        const loaded = await loadTexture(skinUrl, skinFallbackUrl);
         if (disposed) {
           loaded.revoke();
           return;
         }
         revoke = loaded.revoke;
         viewer.loadSkin(loaded.image);
-      } catch {
-        if (!disposed) setViewerError(true);
+      } catch (error) {
+        if (!disposed) {
+          viewer.loadSkin(null);
+          console.warn('Could not load the profile skin:', error);
+          setSkinError(true);
+        }
       }
     };
 
@@ -115,22 +139,23 @@ export default function SkinViewer3D({
       disposed = true;
       revoke?.();
     };
-  }, [skinUrl]);
+  }, [skinUrl, skinFallbackUrl, width, height]);
 
   useEffect(() => {
+    setCapeError(false);
     const viewer = viewerRef.current;
     if (!viewer) return;
     let disposed = false;
     let revoke: (() => void) | null = null;
 
     const applyCape = async () => {
-      if (!capeUrl) {
+      if (!capeUrl && !capeFallbackUrl) {
         viewer.loadCape(null);
         viewer.playerObject.backEquipment = null;
         return;
       }
       try {
-        const loaded = await loadImageFromUrl(capeUrl);
+        const loaded = await loadTexture(capeUrl, capeFallbackUrl);
         if (disposed) {
           loaded.revoke();
           return;
@@ -138,8 +163,12 @@ export default function SkinViewer3D({
         revoke = loaded.revoke;
         viewer.loadCape(normalizeCapeTexture(loaded.image), { backEquipment: 'cape' });
         viewer.playerObject.backEquipment = 'cape';
-      } catch {
-        if (!disposed) setViewerError(true);
+      } catch (error) {
+        if (!disposed) {
+          viewer.loadCape(null);
+          console.warn('Could not load the profile cape:', error);
+          setCapeError(true);
+        }
       }
     };
 
@@ -148,14 +177,19 @@ export default function SkinViewer3D({
       disposed = true;
       revoke?.();
     };
-  }, [capeUrl]);
+  }, [capeUrl, capeFallbackUrl, width, height]);
 
   return (
     <div className="relative flex min-h-[300px] items-center justify-center overflow-hidden rounded-md bg-panel">
-      {viewerError && (
-        <span className="absolute inset-x-3 bottom-3 z-10 rounded bg-panel/90 p-2 text-center text-xs text-ink-muted">
-          3D preview unavailable
-        </span>
+      {(viewerError || skinError || capeError) && (
+        <div role="status" className="absolute inset-x-3 bottom-3 z-10 rounded bg-panel/90 p-2 text-center text-xs text-ink-muted">
+          {viewerError ? t('profile.previewRendererFailed') : (
+            <>
+              {skinError && <p>{t('profile.previewSkinFailed')}</p>}
+              {capeError && <p>{t('profile.previewCapeFailed')}</p>}
+            </>
+          )}
+        </div>
       )}
       <canvas
         ref={canvasRef}
