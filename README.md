@@ -87,6 +87,20 @@ wails build
 
 The output binary is written to `build/bin/` (`SamuelClient` / `SamuelClient.exe`). Cross-compilation is supported via `wails build -platform windows/amd64` etc. — see the [Wails CLI reference](https://wails.io/docs/reference/cli#build).
 
+Release builds should embed their release tag so the automatic updater can
+compare versions:
+
+```bash
+wails build -ldflags "-X main.version=v1.2.3"
+```
+
+On startup, versioned builds check the latest stable GitHub release. The current
+version is read from the embedded tag or standard published executable
+filename. If a newer release has a matching executable asset, SamuelClient
+verifies its SHA-256, installs it, and restarts. Development builds skip update checks.
+Release assets must end in `-linux-amd64` or `-windows-amd64.exe`; other
+platforms are skipped until matching assets are published.
+
 ## Backend interface
 
 The frontend talks to the backend exclusively through Wails bindings (there is

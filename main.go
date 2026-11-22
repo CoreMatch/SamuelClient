@@ -2,9 +2,11 @@ package main
 
 import (
 	"embed"
+	"fmt"
 	"os"
 
 	"HRPMLW/internal/interop"
+	"HRPMLW/internal/updater"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -12,10 +14,21 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+// version is set for release builds with -ldflags "-X main.version=vX.Y.Z".
+var version = "dev"
+
 //go:embed all:frontend/dist
 var assets embed.FS
 
 func main() {
+	if updater.IsApplyHelperArgs(os.Args) {
+		if err := updater.RunApplyHelper(os.Args); err != nil {
+			fmt.Fprintln(os.Stderr, "[updater]", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	// Create an instance of the app structure
 	app := NewApp()
 
