@@ -20,6 +20,7 @@ import {
 } from '../../wailsjs/go/main/App';
 import { LoadingSkeleton } from './states';
 import DownloadSettings from './DownloadSettings';
+import ModManager from './ModManager';
 import { t } from '../i18n';
 import { Button, IconButton } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -120,6 +121,7 @@ export default function SettingsView() {
   const [dirDraft, setDirDraft] = useState('');
   const [dirError, setDirError] = useState('');
   const [savingDir, setSavingDir] = useState(false);
+  const [modsOpen, setModsOpen] = useState(false);
 
   useEffect(() => {
     fetchConfig();
@@ -706,22 +708,32 @@ export default function SettingsView() {
       {/* Folders */}
       <section className={sectionClasses}>
         <h2 className="mb-5 text-xl font-semibold text-ink">{t('settings.folders')}</h2>
-        <Button
-          variant="secondary"
-          disabled={!defaultGameDir}
-          onClick={() => {
-            const base = defaultGameDir;
-            if (!base) return;
-            // mods 目录 = 生效的游戏目录（用户设置优先，否则候选探测，见
-            // Go 侧 ResolveGameDir）下的 mods/
-            const modsDir = `${base.replace(/[\\/]+$/, '')}/mods`.replace(/\\/g, '/');
-            const fileUrl = modsDir.startsWith('/') ? `file://${modsDir}` : `file:///${modsDir}`;
-            window.open(encodeURI(fileUrl), '_blank');
-          }}
-        >
-          <FolderOpen className="size-5" aria-hidden />
-          {t('settings.modsFolder')}
-        </Button>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            variant="secondary"
+            disabled={!defaultGameDir}
+            aria-expanded={modsOpen}
+            onClick={() => setModsOpen(open => !open)}
+          >
+            {t('mods.manage')}
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={!defaultGameDir}
+            onClick={() => {
+              if (!defaultGameDir) return;
+              const modsDir = `${defaultGameDir.replace(/[\\/]+$/, '')}/mods`.replace(/\\/g, '/');
+              const fileUrl = modsDir.startsWith('/') ? `file://${modsDir}` : `file:///${modsDir}`;
+              window.open(encodeURI(fileUrl), '_blank');
+            }}
+          >
+            <FolderOpen className="size-5" aria-hidden />
+            {t('settings.modsFolder')}
+          </Button>
+        </div>
+        {modsOpen && defaultGameDir && (
+          <ModManager gameDirs={gameDirs.map(dir => dir.path)} defaultGameDir={defaultGameDir} />
+        )}
       </section>
 
       {/* Memory & JVM */}

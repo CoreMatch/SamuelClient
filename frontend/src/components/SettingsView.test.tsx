@@ -20,6 +20,10 @@ import {
   AddGameDir,
   RemoveGameDir,
   ScanGameDirs,
+  AddMod,
+  DeleteMod,
+  ListMods,
+  SetModEnabled,
 } from '../../wailsjs/go/main/App';
 
 // The Wails bindings are replaced with test doubles; the settings view must
@@ -43,6 +47,10 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   AddGameDir: vi.fn(),
   RemoveGameDir: vi.fn(),
   ScanGameDirs: vi.fn(),
+  AddMod: vi.fn(),
+  DeleteMod: vi.fn(),
+  ListMods: vi.fn(),
+  SetModEnabled: vi.fn(),
 }));
 
 vi.mock('../../wailsjs/runtime/runtime', () => ({
@@ -134,6 +142,41 @@ describe('SettingsView', () => {
     vi.mocked(GetDownloadSettings).mockResolvedValue(
       ok({ source: 'bmclapi', custom_shape: 'bmclapi', custom_url: '', concurrency: 8 }),
     );
+  });
+
+  it('imports, disables, restores, and deletes a mod from the selected game folder', async () => {
+    mockGetGameDirStatus.mockResolvedValue(ok({ ...custom, dirs: [builtIn, custom] }));
+    const active = { name: 'example.jar', enabled: true };
+    const disabled = { name: 'example.jar.bak', enabled: false };
+    vi.mocked(ListMods)
+      .mockResolvedValueOnce(ok([]))
+      .mockResolvedValueOnce(ok([active]))
+      .mockResolvedValueOnce(ok([disabled]))
+      .mockResolvedValueOnce(ok([active]))
+      .mockResolvedValueOnce(ok([]));
+    vi.mocked(AddMod).mockResolvedValue(ok(true));
+    vi.mocked(SetModEnabled).mockResolvedValue(ok(null));
+    vi.mocked(DeleteMod).mockResolvedValue(ok(null));
+
+    renderView();
+    await screen.findByText(custom.path);
+    fireEvent.click(screen.getByRole('button', { name: 'Manage Mods' }));
+    await screen.findByText('No mods in this game folder.');
+    expect(ListMods).toHaveBeenCalledWith(custom.path);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Mod' }));
+    expect(AddMod).toHaveBeenCalledWith(custom.path);
+    fireEvent.click(await screen.findByRole('button', { name: 'Disable example.jar' }));
+    expect(SetModEnabled).toHaveBeenCalledWith(custom.path, active.name, false);
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable example.jar.bak' }));
+    expect(SetModEnabled).toHaveBeenLastCalledWith(custom.path, disabled.name, true);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete example.jar' }));
+    expect(DeleteMod).not.toHaveBeenCalled();
+    const confirmation = screen.getByRole('alertdialog', { name: 'Delete Mod' });
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Delete' }));
+    expect(DeleteMod).toHaveBeenCalledWith(custom.path, active.name);
+    await screen.findByText('No mods in this game folder.');
   });
 
   it('saves a custom source and asset concurrency from the advanced drawer', async () => {

@@ -47,6 +47,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -763,6 +764,53 @@ func (a *App) RemoveLoaderProfile(versionID, gameDir string) *models.ApiResponse
 		gameDir = a.launcherService.ResolveGameDir()
 	}
 	return services.RemoveLoaderProfile(gameDir, versionID)
+}
+
+// ==================== Mods ====================
+
+func (a *App) withModGameDir(gameDir string, run func() (interface{}, error)) *models.ApiResponse {
+	if gameDir == "" || !slices.Contains(a.launcherService.GameDirs(), gameDir) {
+		return &models.ApiResponse{Error: "select a registered game folder"}
+	}
+	data, err := run()
+	if err != nil {
+		return &models.ApiResponse{Error: err.Error()}
+	}
+	return &models.ApiResponse{Success: true, Data: data}
+}
+
+func (a *App) ListMods(gameDir string) *models.ApiResponse {
+	return a.withModGameDir(gameDir, func() (interface{}, error) {
+		return services.ListMods(gameDir)
+	})
+}
+
+func (a *App) AddMod(gameDir string) *models.ApiResponse {
+	return a.withModGameDir(gameDir, func() (interface{}, error) {
+		if a.ctx == nil {
+			return nil, fmt.Errorf("file picker is unavailable")
+		}
+		source, err := wailsruntime.OpenFileDialog(a.ctx, wailsruntime.OpenDialogOptions{
+			Title:   "Select a mod",
+			Filters: []wailsruntime.FileFilter{{DisplayName: "Minecraft mods (*.jar)", Pattern: "*.jar;*.JAR"}},
+		})
+		if err != nil || source == "" {
+			return false, err
+		}
+		return true, services.AddMod(gameDir, source)
+	})
+}
+
+func (a *App) SetModEnabled(gameDir, name string, enabled bool) *models.ApiResponse {
+	return a.withModGameDir(gameDir, func() (interface{}, error) {
+		return nil, services.SetModEnabled(gameDir, name, enabled)
+	})
+}
+
+func (a *App) DeleteMod(gameDir, name string) *models.ApiResponse {
+	return a.withModGameDir(gameDir, func() (interface{}, error) {
+		return nil, services.DeleteMod(gameDir, name)
+	})
 }
 
 // ==================== Launch (write, streaming) ====================

@@ -6,7 +6,7 @@ A cross-platform Minecraft launcher built with [Wails](https://wails.io/) (Go + 
 
 - **Account management** — offline and HRPAuth login flows, with token refresh and validation
 - **Version management** — browse and download vanilla Minecraft versions, plus Fabric and Forge mod loaders
-- **Mod management** — open the `mods` folder for the active profile directly from the UI
+- **Mod management** — under Settings > Folders > Manage Mods, list, import, or delete local `.jar` files in a registered game folder. Disable a mod by appending `.bak` and re-enable it by removing that suffix.
 - **Java management** — track installed Java runtimes and set a default per profile
 - **Persistent storage** — embedded [SQLite](https://www.sqlite.org/) database for settings and Java installations
 - **Cross-platform** — Windows, macOS, and Linux builds via Wails
@@ -110,6 +110,7 @@ no frontend-facing HTTP listener). All bound methods return one uniform response
 | Area | Bindings |
 |------|----------|
 | Versions (read) | `GetVersions`, `GetFabricVersions`, `GetForgeVersions`, `GetInstalledVersions` |
+| Mods | `ListMods`, `AddMod`, `SetModEnabled`, `DeleteMod` |
 | Java (read) | `GetJavaInstallations` |
 | Config (read) | `GetLauncherConfig` |
 | Match handoff (read) | `GetPendingHandoff`, `GetInteropStatus` |
