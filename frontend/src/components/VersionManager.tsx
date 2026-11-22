@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Layers, Pencil, Trash2 } from 'lucide-react';
 import { Asset } from '@ha/ui';
 import { GetInstalledVersions } from '../../wailsjs/go/main/App';
 import { installedFromDisk, versionKey, type DiskVersion, type InstalledVersion } from '../types';
 import InstallWizard from './InstallWizard';
+import VersionLoaderManager from './VersionLoaderManager';
 import { EmptyState, ErrorState, LoadingSkeleton } from './states';
 import { t } from '../i18n';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
@@ -26,6 +27,7 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
   const [tabValue, setTabValue] = useState('install');
   const [nicknames, setNicknames] = useState(readVersionNicknames);
   const [nicknameEdit, setNicknameEdit] = useState<{ key: string; draft: string; failed: boolean } | null>(null);
+  const [loaderManagerKey, setLoaderManagerKey] = useState<string | null>(null);
   const editButton = useRef<HTMLButtonElement | null>(null);
 
   const closeNicknameEdit = () => {
@@ -145,6 +147,21 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
                         )}
                       </span>
                     </button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="shrink-0"
+                      aria-label={t('versions.manageLoaders', { version: versionLabel })}
+                      aria-expanded={loaderManagerKey === key}
+                      onClick={() => {
+                        setNicknameEdit(null);
+                        setLoaderManagerKey(current => current === key ? null : key);
+                      }}
+                    >
+                      <Layers className="size-5" aria-hidden />
+                      {t('versions.manageLoadersShort')}
+                    </Button>
                     <IconButton
                       className="shrink-0"
                       label={t('versions.editNickname', { version: versionLabel })}
@@ -206,6 +223,9 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
                         <Button type="submit" size="sm">{t('versions.saveNickname')}</Button>
                       </div>
                     </form>
+                  )}
+                  {loaderManagerKey === key && (
+                    <VersionLoaderManager version={version} onChanged={scanInstalledVersions} />
                   )}
                 </div>
               );

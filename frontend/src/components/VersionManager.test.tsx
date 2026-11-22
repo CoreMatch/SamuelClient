@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { GetInstalledVersions } from '../../wailsjs/go/main/App';
+import {
+  GetInstalledVersions,
+  GetFabricVersions,
+  GetForgeVersions,
+  InstallFabricLoader,
+  InstallForgeLoader,
+  RemoveLoaderProfile,
+} from '../../wailsjs/go/main/App';
 import VersionManager from './VersionManager';
 import type { InstalledVersion } from '../types';
 
@@ -14,9 +21,19 @@ vi.mock('./InstallWizard', () => ({
 
 vi.mock('../../wailsjs/go/main/App', () => ({
   GetInstalledVersions: vi.fn(),
+  GetFabricVersions: vi.fn(),
+  GetForgeVersions: vi.fn(),
+  InstallFabricLoader: vi.fn(),
+  InstallForgeLoader: vi.fn(),
+  RemoveLoaderProfile: vi.fn(),
 }));
 
 const mockGetInstalledVersions = vi.mocked(GetInstalledVersions);
+const mockGetFabricVersions = vi.mocked(GetFabricVersions);
+const mockGetForgeVersions = vi.mocked(GetForgeVersions);
+const mockInstallFabricLoader = vi.mocked(InstallFabricLoader);
+const mockInstallForgeLoader = vi.mocked(InstallForgeLoader);
+const mockRemoveLoaderProfile = vi.mocked(RemoveLoaderProfile);
 const STORAGE_KEY = 'installed_versions';
 
 const versions: InstalledVersion[] = [
@@ -29,11 +46,32 @@ function openInstalledTab(): void {
   fireEvent.mouseDown(screen.getByRole('tab', { name: 'Installed' }));
 }
 
+async function selectOption(index: number, name: string): Promise<void> {
+  fireEvent.keyDown(screen.getAllByRole('combobox')[index], { key: 'Enter' });
+  const option = await screen.findByRole('option', { name });
+  fireEvent.pointerUp(option);
+  fireEvent.click(option);
+}
+
 describe('VersionManager', () => {
   beforeEach(() => {
     localStorage.clear();
     mockGetInstalledVersions.mockReset();
     mockGetInstalledVersions.mockResolvedValue({ success: true, data: { versions: [] }, error: '' });
+    mockGetFabricVersions.mockReset();
+    mockGetFabricVersions.mockResolvedValue({ success: true, data: [], error: '' });
+    mockGetForgeVersions.mockReset();
+    mockGetForgeVersions.mockResolvedValue({ success: true, data: [], error: '' });
+    mockInstallFabricLoader.mockReset();
+    mockInstallFabricLoader.mockResolvedValue({
+      success: true, data: { version_id: 'fabric-loader-0.15.0-1.20.4' }, error: '',
+    });
+    mockInstallForgeLoader.mockReset();
+    mockInstallForgeLoader.mockResolvedValue({
+      success: true, data: { version_id: '1.20.4-forge49.0.3' }, error: '',
+    });
+    mockRemoveLoaderProfile.mockReset();
+    mockRemoveLoaderProfile.mockResolvedValue({ success: true, data: {}, error: '' });
   });
 
   it('finds installed versions on disk without a local list', async () => {
@@ -76,6 +114,91 @@ describe('VersionManager', () => {
     // Click the id text; the event bubbles to the row's select handler.
     fireEvent.click(moddedId);
     expect(onSelectVersion).toHaveBeenCalledWith(versions[1]);
+  });
+
+  it('adds a loader to an installed game from the Installed tab', async () => {
+    const gameDir = '/games/main';
+    mockGetInstalledVersions
+      .mockResolvedValueOnce({
+        success: true,
+        data: { versions: [
+          { id: '1.20.4', type: 'release', has_json: true, has_jar: true, game_dir: gameDir },
+        ] },
+        error: '',
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: { versions: [
+          { id: '1.20.4', type: 'release', has_json: true, has_jar: true, game_dir: gameDir },
+          {
+            id: 'fabric-loader-0.15.0-1.20.4', type: 'release', has_json: true, has_jar: true,
+            game_dir: gameDir, inherits_from: '1.20.4',
+          },
+        ] },
+        error: '',
+      });
+    mockGetFabricVersions.mockResolvedValue({
+      success: true, data: [{ loader: { version: '0.15.0' } }], error: '',
+    });
+
+    render(<VersionManager onSelectVersion={vi.fn()} />);
+    openInstalledTab();
+    fireEvent.click(await screen.findByRole('button', {
+      name: 'Manage loaders for 1.20.4 (/games/main)',
+    }));
+    await waitFor(() => {
+      expect(screen.getAllByRole('combobox')[1].hasAttribute('disabled')).toBe(false);
+    });
+    await selectOption(1, '0.15.0');
+    fireEvent.click(screen.getByRole('button', { name: 'Add loader' }));
+
+    await waitFor(() => {
+      expect(mockInstallFabricLoader).toHaveBeenCalledWith('1.20.4', '0.15.0', gameDir);
+      expect(screen.getByRole('button', {
+        name: 'Manage loaders for fabric-loader-0.15.0-1.20.4 (/games/main)',
+      })).toBeTruthy();
+      expect(screen.getByText('fabric 0.15.0')).toBeTruthy();
+    });
+  });
+
+  it('removes a selected loader profile from the Installed tab', async () => {
+    const gameDir = '/games/main';
+    mockGetInstalledVersions.mockResolvedValue({
+      success: true,
+      data: { versions: [
+        { id: '1.20.4', type: 'release', has_json: true, has_jar: true, game_dir: gameDir },
+        {
+          id: 'fabric-loader-0.15.0-1.20.4', type: 'release', has_json: true, has_jar: true,
+          game_dir: gameDir, inherits_from: '1.20.4',
+        },
+      ] },
+      error: '',
+    });
+    mockRemoveLoaderProfile.mockImplementation(async () => {
+      mockGetInstalledVersions.mockResolvedValue({
+        success: true,
+        data: { versions: [
+          { id: '1.20.4', type: 'release', has_json: true, has_jar: true, game_dir: gameDir },
+        ] },
+        error: '',
+      });
+      return { success: true, data: {}, error: '' };
+    });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<VersionManager onSelectVersion={vi.fn()} />);
+    openInstalledTab();
+    fireEvent.click(await screen.findByRole('button', {
+      name: 'Manage loaders for fabric-loader-0.15.0-1.20.4 (/games/main)',
+    }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove this loader' }));
+
+    await waitFor(() => {
+      expect(mockRemoveLoaderProfile).toHaveBeenCalledWith('fabric-loader-0.15.0-1.20.4', gameDir);
+      expect(screen.queryByText('fabric-loader-0.15.0-1.20.4')).toBeNull();
+      expect(screen.getByText('1.20.4')).toBeTruthy();
+    });
+    confirm.mockRestore();
   });
 
   it('removes a version from the list and from localStorage', async () => {

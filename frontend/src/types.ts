@@ -20,13 +20,19 @@ export interface DiskVersion {
 }
 
 export function installedFromDisk(versions: DiskVersion[]): InstalledVersion[] {
-  return versions.filter(v => v.has_json && v.has_jar).map(v => ({
-    id: v.id,
-    type: v.type || 'release',
-    installed: true,
-    ...(v.game_dir ? { gameDir: v.game_dir } : {}),
-    ...(v.inherits_from ? { inheritsFrom: v.inherits_from } : {}),
-  }));
+  return versions.filter(v => v.has_json && v.has_jar).map(v => {
+    const fabric = v.id.match(/^fabric-loader-(.+)-([^-]+)$/);
+    const forge = v.id.match(/^(.+)-forge-?(.+)$/);
+    return {
+      id: v.id,
+      type: v.type || 'release',
+      installed: true,
+      ...(v.game_dir ? { gameDir: v.game_dir } : {}),
+      ...(v.inherits_from ? { inheritsFrom: v.inherits_from } : {}),
+      ...(fabric ? { loaderType: 'fabric', loaderVersion: fabric[1] } : {}),
+      ...(forge ? { loaderType: 'forge', loaderVersion: forge[2] } : {}),
+    };
+  });
 }
 
 export function versionKey(version: InstalledVersion): string {

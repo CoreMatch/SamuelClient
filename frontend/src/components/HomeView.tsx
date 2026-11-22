@@ -18,11 +18,6 @@ import {
   GetLauncherConfig,
   UpdateLauncherConfig,
   LaunchGame,
-  GetFabricVersions,
-  GetForgeVersions,
-  InstallFabricLoader,
-  InstallForgeLoader,
-  RemoveLoaderProfile,
 } from '../../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 
@@ -38,14 +33,6 @@ function detectLoader(versionId: string): InstalledLoader | null {
   const forge = versionId.match(/^(.+)-forge-?(.+)$/);
   if (forge) return { type: 'forge', version: forge[2] };
   return null;
-}
-
-function getMinecraftVersion(version: InstalledVersion): string {
-  if (version.inheritsFrom) return version.inheritsFrom;
-  const fabric = version.id.match(/^fabric-loader-(.+)-(.+)$/);
-  if (fabric) return fabric[2];
-  const forge = version.id.match(/^(.+)-forge-?(.+)$/);
-  return forge ? forge[1] : version.id;
 }
 
 // Shapes of the backend payloads consumed below (see bindings.go).
@@ -117,13 +104,6 @@ export default function HomeView({
   const [showLogs, setShowLogs] = useState(false);
   const [javaInstallations, setJavaInstallations] = useState<JavaInstallation[]>([]);
   const [selectedJava, setSelectedJava] = useState<JavaInstallation | null>(null);
-  const [loaderType, setLoaderType] = useState<'fabric' | 'forge'>('fabric');
-  const [fabricVersions, setFabricVersions] = useState<string[]>([]);
-  const [forgeVersions, setForgeVersions] = useState<string[]>([]);
-  const [fabricVersion, setFabricVersion] = useState('');
-  const [forgeVersion, setForgeVersion] = useState('');
-  const [loaderCatalogLoading, setLoaderCatalogLoading] = useState(false);
-  const [loaderBusy, setLoaderBusy] = useState(false);
   // First-run checklist state: the game has launched at least once.
   const [hasLaunched, setHasLaunched] = useState(() => localStorage.getItem('has_launched_game') === '1');
 
@@ -175,41 +155,6 @@ export default function HomeView({
       onVersionSelect(currentVersion);
     }
   }, [currentVersion, onVersionSelect]);
-
-  const loaderMinecraftVersion = currentVersion ? getMinecraftVersion(currentVersion) : '';
-
-  useEffect(() => {
-    if (!loaderMinecraftVersion) {
-      setFabricVersions([]);
-      setForgeVersions([]);
-      return;
-    }
-    let cancelled = false;
-    setLoaderCatalogLoading(true);
-    Promise.all([
-      GetFabricVersions(loaderMinecraftVersion),
-      GetForgeVersions(loaderMinecraftVersion),
-    ]).then(([fabricResult, forgeResult]) => {
-      if (cancelled) return;
-      const fabric = fabricResult.success && Array.isArray(fabricResult.data)
-        ? (fabricResult.data as { loader: { version: string } }[]).map(item => item.loader.version)
-        : [];
-      const forge = forgeResult.success && Array.isArray(forgeResult.data)
-        ? (forgeResult.data as { version: string }[]).map(item => item.version)
-        : [];
-      setFabricVersions(fabric);
-      setForgeVersions(forge);
-      setFabricVersion(current => fabric.includes(current) ? current : fabric[0] || '');
-      setForgeVersion(current => forge.includes(current) ? current : forge[0] || '');
-    }).catch(() => {
-      if (!cancelled) setError(t('common.loadError', { data: t('wizard.loaderVersionsData') }));
-    }).finally(() => {
-      if (!cancelled) setLoaderCatalogLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [loaderMinecraftVersion]);
 
   const loadVersions = async () => {
     try {
@@ -308,64 +253,6 @@ export default function HomeView({
     setCurrentVersion(version || null);
   };
 
-  const refreshVersionsAfterLoaderChange = async (preferredVersionID: string) => {
-    const result = await GetInstalledVersions();
-    if (!result.success || !Array.isArray(result.data?.versions)) {
-      throw new Error(result.error || 'Failed to refresh installed versions');
-    }
-    const fromDisk = installedFromDisk(result.data.versions as DiskVersion[]);
-    const diskIds = new Set(fromDisk.map(version => version.id));
-    let local: InstalledVersion[] = [];
-    try {
-      const stored = JSON.parse(localStorage.getItem('installed_versions') ?? '[]');
-      if (Array.isArray(stored)) local = stored;
-    } catch {
-      // Keep disk discovery authoritative if the legacy list is malformed.
-    }
-    const next = [...local.filter(version => !version.gameDir && !diskIds.has(version.id)), ...fromDisk];
-    setVersions(next);
-    const preferred = next.find(version =>
-      version.id === preferredVersionID &&
-      (!currentVersion?.gameDir || version.gameDir === currentVersion.gameDir),
-    );
-    if (preferred) setCurrentVersion(preferred);
-  };
-
-  const handleAddLoader = async () => {
-    if (!currentVersion) return;
-    setLoaderBusy(true);
-    setError('');
-    try {
-      const result = loaderType === 'fabric'
-        ? await InstallFabricLoader(loaderMinecraftVersion, fabricVersion, currentVersion.gameDir ?? '')
-        : await InstallForgeLoader(loaderMinecraftVersion, forgeVersion, currentVersion.gameDir ?? '');
-      if (!result.success) throw new Error(result.error || 'Loader installation failed');
-      const data = result.data as { version_id?: string } | undefined;
-      await refreshVersionsAfterLoaderChange(data?.version_id || '');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Loader installation failed');
-    } finally {
-      setLoaderBusy(false);
-    }
-  };
-
-  const handleRemoveLoader = async () => {
-    if (!currentVersion || !installedLoader) return;
-    const loaderLabel = `${installedLoader.type === 'fabric' ? 'Fabric' : 'Forge'} ${installedLoader.version}`;
-    if (!window.confirm(t('play.removeLoaderConfirm', { loader: loaderLabel }))) return;
-    setLoaderBusy(true);
-    setError('');
-    try {
-      const result = await RemoveLoaderProfile(currentVersion.id, currentVersion.gameDir ?? '');
-      if (!result.success) throw new Error(result.error || 'Loader removal failed');
-      await refreshVersionsAfterLoaderChange(loaderMinecraftVersion);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Loader removal failed');
-    } finally {
-      setLoaderBusy(false);
-    }
-  };
-
   const handleSettingChange = (key: keyof LauncherSettings, value: number | string) => {
     saveSettings({
       ...settings,
@@ -433,8 +320,6 @@ export default function HomeView({
   };
 
   const installedLoader = currentVersion ? detectLoader(currentVersion.id) : null;
-  const availableLoaderVersions = loaderType === 'fabric' ? fabricVersions : forgeVersions;
-  const selectedLoaderVersion = loaderType === 'fabric' ? fabricVersion : forgeVersion;
 
   return (
     <div className="flex flex-col gap-8">
@@ -475,60 +360,6 @@ export default function HomeView({
                 : t('play.none')}
             </div>
           </Field>
-
-          {currentVersion && (
-            <div className="flex flex-col gap-4 rounded-md border border-edge bg-raised p-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label={t('play.loaderToAdd')} htmlFor="play-loader-type">
-                  <Select
-                    ariaLabel={t('play.loaderToAdd')}
-                    value={loaderType}
-                    onValueChange={value => setLoaderType(value as 'fabric' | 'forge')}
-                    options={[
-                      { value: 'fabric', label: 'Fabric' },
-                      { value: 'forge', label: 'Forge' },
-                    ]}
-                    disabled={loaderBusy}
-                  />
-                </Field>
-                <Field label={t('play.loaderVersion')} htmlFor="play-loader-version">
-                  <Select
-                    ariaLabel={t('play.loaderVersion')}
-                    value={selectedLoaderVersion}
-                    onValueChange={loaderType === 'fabric' ? setFabricVersion : setForgeVersion}
-                    placeholder={loaderCatalogLoading ? t('play.loaderCatalogLoading') : t('play.loaderCatalogEmpty')}
-                    options={availableLoaderVersions.map(version => ({ value: version, label: version }))}
-                    disabled={loaderCatalogLoading || loaderBusy || availableLoaderVersions.length === 0}
-                  />
-                </Field>
-              </div>
-              {availableLoaderVersions.length === 0 && !loaderCatalogLoading && (
-                <p className="text-sm text-ink-muted">{t('play.loaderCatalogEmpty')}</p>
-              )}
-              <div className="flex flex-wrap justify-end gap-3">
-                {installedLoader && (
-                  <Button
-                    type="button"
-                    variant="danger"
-                    onClick={handleRemoveLoader}
-                    disabled={loaderBusy}
-                  >
-                    {t('play.removeLoader')}
-                  </Button>
-                )}
-                <Button
-                  type="button"
-                  onClick={handleAddLoader}
-                  loading={loaderBusy}
-                  disabled={loaderCatalogLoading || !selectedLoaderVersion}
-                >
-                  {t(loaderBusy
-                    ? 'play.installingLoader'
-                    : installedLoader ? 'play.addAnotherLoader' : 'play.addLoader')}
-                </Button>
-              </div>
-            </div>
-          )}
 
           <Field label={t('play.java')} htmlFor="play-java">
             <Select

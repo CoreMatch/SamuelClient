@@ -44,3 +44,4 @@ Each entry is one page in ADR style:
 | [0008](0008-ha-only-auth-prep.md) | HA-only Auth Prep: Offline Entry Removed, Tokens in the OS Keychain, Product Disclaimer | accepted |
 | [0009](0009-bundled-authlib-injector.md) | authlib-injector Agent Bundled in the Binary | accepted |
 | [0010](0010-portable-data-dir-and-token-fallback.md) | Portable Data Directory and Automatic Keychain-to-File Token Fallback | accepted |
+| [0011](0011-installed-page-loader-management.md) | Manage Game Loaders from Installed Versions | accepted |
