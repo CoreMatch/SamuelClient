@@ -758,6 +758,20 @@ func TestGetInstalledVersionsBinding(t *testing.T) {
 	}
 }
 
+func TestScanInstalledVersionsKeepsRepairableModpackWithoutVersions(t *testing.T) {
+	dir := t.TempDir()
+	const id = "fabric-loader-0.16.0-1.20.1"
+	marker := `{"name":"Example pack","version_id":"` + id + `","managed":true}`
+	if err := os.WriteFile(filepath.Join(dir, ".samuel-modpack.json"), []byte(marker), 0644); err != nil {
+		t.Fatal(err)
+	}
+	versions := scanInstalledVersions(dir)
+	if len(versions) != 1 || versions[0].ID != id || versions[0].ModpackName != "Example pack" ||
+		!versions[0].Repairable || versions[0].HasJSON || versions[0].HasJAR {
+		t.Fatalf("expected the missing profile to remain selectable for repair, got %+v", versions)
+	}
+}
+
 func TestGetInstalledVersionsEmptyWhenNoDir(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 

@@ -60,6 +60,13 @@ func testPackManifest() modpackIndex {
 
 type testPackInstaller struct{}
 
+func testPackJava(_ context.Context, major int, _ PackProgress) (string, error) {
+	if major != 17 {
+		return "", fmt.Errorf("unexpected Java version %d", major)
+	}
+	return "test-java", nil
+}
+
 func (testPackInstaller) InstallVersion(_ context.Context, game, dir string, _ func(string, string, int64, int64)) *models.ApiResponse {
 	return testWritePackProfile(dir, game, "")
 }
@@ -135,7 +142,7 @@ func TestModpackInstallPublishesOnlyCompleteInstance(t *testing.T) {
 			parent := t.TempDir()
 			registered := ""
 			result, err := service.InstallModpack(ctx, source, preview.Fingerprint, []string{"mods/option.jar"}, parent,
-				testPackInstaller{}, nil, func(dir string) error {
+				testPackInstaller{}, testPackJava, func(dir string) error {
 					registered = dir
 					if scenario == "register" {
 						return fmt.Errorf("registration failed")
@@ -170,6 +177,43 @@ func TestModpackInstallPublishesOnlyCompleteInstance(t *testing.T) {
 				if _, err := os.Stat(filepath.Join(registered, name)); !os.IsNotExist(err) {
 					t.Fatalf("unexpected file %s: %v", name, err)
 				}
+			}
+			pack, _ := ReadModpackInstance(registered)
+			if err := os.Remove(filepath.Join(registered, "versions/1.20.1/1.20.1.jar")); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Remove(filepath.Join(registered, "mods/client.jar")); err != nil {
+				t.Fatal(err)
+			}
+			optional := filepath.Join(registered, "mods/option.jar")
+			if err := os.Rename(optional, optional+".bak"); err != nil {
+				t.Fatal(err)
+			}
+			config := filepath.Join(registered, "config/example.txt")
+			if err := os.WriteFile(config, []byte("changed by player"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			quiet := func(string, string, int64, int64) {}
+			java, err := service.PrepareModpackLaunch(ctx, registered, pack, testPackInstaller{}, testPackJava, quiet, nil)
+			if err != nil || java != "test-java" {
+				t.Fatalf("prepare: %q, %v", java, err)
+			}
+			for name, expected := range map[string]string{
+				"versions/1.20.1/1.20.1.jar": "client", "mods/client.jar": "good",
+				"mods/option.jar.bak": "optional", "config/example.txt": "changed by player",
+			} {
+				got, err := os.ReadFile(filepath.Join(registered, name))
+				if err != nil || string(got) != expected {
+					t.Fatalf("%s after repair = %q, %v", name, got, err)
+				}
+			}
+			if _, err := os.Stat(optional); !os.IsNotExist(err) {
+				t.Fatalf("disabled mod restored: %v", err)
+			}
+			_, err = service.PrepareModpackLaunch(ctx, registered, pack, testPackInstaller{}, testPackJava,
+				func(stage, _ string, _, _ int64) { t.Errorf("complete instance unexpectedly starts %s", stage) }, nil)
+			if err != nil {
+				t.Fatal(err)
 			}
 		})
 	}

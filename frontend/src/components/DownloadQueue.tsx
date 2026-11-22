@@ -34,6 +34,8 @@ function taskStageLabel(stage: string): I18nKey {
       return 'packs.stage.files';
     case 'pack-overrides':
       return 'packs.stage.overrides';
+    case 'pack-repair':
+      return 'packs.stage.repair';
     default:
       return 'queue.stage.working';
   }

@@ -177,8 +177,12 @@ or choose a local `.mrpack`. Review the pack's Minecraft and loader versions and
 select any optional client files before installing. The launcher installs the
 required game and pack files under its data directory in `instances/` and adds
 the completed instance to **Installed**, without changing your default game
-directory. Use a compatible existing Java runtime to play; Forge also needs one
-for installation. Modrinth packs using vanilla, Fabric or Forge are supported.
+directory. The launcher reuses a compatible Java runtime or installs one
+automatically. For newly imported packs, Play checks for missing game and pack
+files and restores them before launching, without overwriting existing files
+or re-enabling disabled mods. Packs imported before the repair inventory was
+introduced still get automatic Java selection but do not have file repair.
+Modrinth packs using vanilla, Fabric or Forge are supported.
 NeoForge, Quilt and CurseForge modpacks are not supported by this importer.
 
 For CurseForge, launch SamuelClient with an authorized `SAMUEL_CURSEFORGE_API_KEY` in its process environment. Do not commit the key or bundle it with the app. With no key, the CurseForge panel links to the official website. Files that CurseForge does not make available for third-party downloads must be downloaded manually and imported with **Add Mod**.

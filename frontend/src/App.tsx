@@ -13,7 +13,7 @@ import {
   consumeOfflineRemovedNotice,
   clearStoredAccounts,
 } from './accountStorage';
-import type { DiskVersion, InstalledVersion, HandoffPayload } from './types';
+import { isPlayableVersion, type DiskVersion, type InstalledVersion, type HandoffPayload } from './types';
 import { t } from './i18n';
 import type { I18nKey } from './i18n';
 import { Badge } from './ui/badge';
@@ -176,7 +176,7 @@ export default function App() {
       try {
         const versionsResult = await GetInstalledVersions();
         if (versionsResult.success && Array.isArray(versionsResult.data?.versions)) {
-          complete = (versionsResult.data.versions as DiskVersion[]).filter(v => v.has_json && v.has_jar);
+          complete = (versionsResult.data.versions as DiskVersion[]).filter(isPlayableVersion);
         }
       } catch {
         // fall through: reported as "no version" below
