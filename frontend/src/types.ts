@@ -8,6 +8,7 @@ export interface InstalledVersion {
   loaderType?: string;
   loaderVersion?: string;
   inheritsFrom?: string;
+  modpackName?: string;
 }
 
 export interface DiskVersion {
@@ -17,6 +18,7 @@ export interface DiskVersion {
   has_jar: boolean;
   game_dir?: string;
   inherits_from?: string;
+  modpack_name?: string;
 }
 
 export function installedFromDisk(versions: DiskVersion[]): InstalledVersion[] {
@@ -29,6 +31,7 @@ export function installedFromDisk(versions: DiskVersion[]): InstalledVersion[] {
       installed: true,
       ...(v.game_dir ? { gameDir: v.game_dir } : {}),
       ...(v.inherits_from ? { inheritsFrom: v.inherits_from } : {}),
+      ...(v.modpack_name ? { modpackName: v.modpack_name } : {}),
       ...(fabric ? { loaderType: 'fabric', loaderVersion: fabric[1] } : {}),
       ...(forge ? { loaderType: 'forge', loaderVersion: forge[2] } : {}),
     };

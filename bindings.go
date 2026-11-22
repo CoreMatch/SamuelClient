@@ -336,6 +336,7 @@ type InstalledVersion struct {
 	HasJAR       bool   `json:"has_jar"`
 	GameDir      string `json:"game_dir"`
 	InheritsFrom string `json:"inherits_from,omitempty"`
+	ModpackName  string `json:"modpack_name,omitempty"`
 }
 
 // GetInstalledVersions scans each registered game directory. Versions with the
@@ -360,8 +361,9 @@ func scanInstalledVersions(gameDir string) []InstalledVersion {
 	}
 
 	out := []InstalledVersion{}
+	pack, isPack := services.ReadModpackInstance(gameDir)
 	for _, e := range entries {
-		if !e.IsDir() {
+		if !e.IsDir() || (isPack && e.Name() != pack.VersionID) {
 			continue
 		}
 		id := e.Name()
@@ -402,7 +404,7 @@ func scanInstalledVersions(gameDir string) []InstalledVersion {
 		}
 		out = append(out, InstalledVersion{
 			ID: id, Type: vType, HasJSON: hasJSON, HasJAR: hasJAR,
-			GameDir: gameDir, InheritsFrom: inheritsFrom,
+			GameDir: gameDir, InheritsFrom: inheritsFrom, ModpackName: pack.Name,
 		})
 	}
 

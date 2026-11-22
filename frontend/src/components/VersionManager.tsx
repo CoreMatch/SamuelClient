@@ -4,6 +4,7 @@ import { Asset } from '@ha/ui';
 import { GetInstalledVersions } from '../../wailsjs/go/main/App';
 import { installedFromDisk, versionKey, type DiskVersion, type InstalledVersion } from '../types';
 import InstallWizard from './InstallWizard';
+import ModpackBrowser from './ModpackBrowser';
 import VersionLoaderManager from './VersionLoaderManager';
 import { EmptyState, ErrorState, LoadingSkeleton } from './states';
 import { t } from '../i18n';
@@ -99,11 +100,16 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
     }}>
       <TabsList>
         <TabsTrigger value="install">{t('versions.tab.install')}</TabsTrigger>
+        <TabsTrigger value="modpacks">{t('packs.tab')}</TabsTrigger>
         <TabsTrigger value="installed">{t('versions.tab.installed')}</TabsTrigger>
       </TabsList>
 
       <TabsContent value="install">
         <InstallWizard onInstalled={scanInstalledVersions} />
+      </TabsContent>
+
+      <TabsContent value="modpacks">
+        <ModpackBrowser onInstalled={scanInstalledVersions} onSelectVersion={onSelectVersion} />
       </TabsContent>
 
       <TabsContent value="installed">
@@ -122,7 +128,8 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
               const key = versionKey(version);
               const nickname = nicknames[key];
               const edit = nicknameEdit?.key === key ? nicknameEdit : null;
-              const versionLabel = version.gameDir ? `${version.id} (${version.gameDir})` : version.id;
+              const name = version.modpackName || version.id;
+              const versionLabel = version.gameDir ? `${name} (${version.gameDir})` : name;
               return (
                 <div key={key} className={index > 0 ? 'border-t border-edge' : ''}>
                   <div className="flex items-center gap-3 px-5 hover:bg-white/4">
@@ -133,12 +140,12 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
                       className="min-w-0 flex-1 cursor-pointer rounded-md py-5 text-left focus-visible:outline-2 focus-visible:outline-edge-strong"
                     >
                       <span className="flex items-center gap-2.5">
-                        <span className="min-w-0 wrap-anywhere text-base font-medium text-ink">{nickname || version.id}</span>
+                        <span className="min-w-0 wrap-anywhere text-base font-medium text-ink">{nickname || name}</span>
                         <span aria-hidden="true" className="shrink-0">
                           <Asset id="icon-check" size={20} className="text-ok" />
                         </span>
                       </span>
-                      {nickname && <span className="mt-1 block wrap-anywhere text-sm text-ink-muted">{version.id}</span>}
+                      {(nickname || version.modpackName) && <span className="mt-1 block wrap-anywhere text-sm text-ink-muted">{version.id}</span>}
                       {version.gameDir && <span className="mt-1 block break-all text-sm text-ink-muted">{version.gameDir}</span>}
                       <span className="mt-1.5 flex items-center gap-2">
                         <Badge tone={getVersionTypeTone(version.type)}>{version.type}</Badge>
@@ -147,7 +154,7 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
                         )}
                       </span>
                     </button>
-                    <Button
+                    {!version.modpackName && <Button
                       type="button"
                       size="sm"
                       variant="secondary"
@@ -161,7 +168,7 @@ export default function VersionManager({ onSelectVersion }: VersionManagerProps)
                     >
                       <Layers className="size-5" aria-hidden />
                       {t('versions.manageLoadersShort')}
-                    </Button>
+                    </Button>}
                     <IconButton
                       className="shrink-0"
                       label={t('versions.editNickname', { version: versionLabel })}

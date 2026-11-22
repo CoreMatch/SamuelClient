@@ -519,10 +519,11 @@ type BMCLDownload struct {
 }
 
 type BMCLJavaVersion struct {
-	Component string `json:"component"`
-	SHA1      string `json:"sha1"`
-	Size      int64  `json:"size"`
-	URL       string `json:"url"`
+	MajorVersion int    `json:"majorVersion,omitempty"`
+	Component    string `json:"component"`
+	SHA1         string `json:"sha1"`
+	Size         int64  `json:"size"`
+	URL          string `json:"url"`
 }
 
 type BMCLLibrary struct {

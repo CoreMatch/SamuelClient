@@ -28,6 +28,12 @@ function taskStageLabel(stage: string): I18nKey {
       return 'queue.stage.javaDownload';
     case 'java-extract':
       return 'queue.stage.javaExtract';
+    case 'pack-archive':
+      return 'packs.stage.archive';
+    case 'pack-files':
+      return 'packs.stage.files';
+    case 'pack-overrides':
+      return 'packs.stage.overrides';
     default:
       return 'queue.stage.working';
   }
@@ -73,7 +79,7 @@ export default function DownloadQueue({ tasks, onCancel, onDismiss }: DownloadQu
           >
             <div className="flex items-start gap-1">
               <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink" title={task.versionId}>
-                {task.versionId}
+                {task.versionId.startsWith('modpack-') ? t('packs.tab') : task.versionId}
               </span>
               {task.status === 'active' ? (
                 <IconButton

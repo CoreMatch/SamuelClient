@@ -5,6 +5,7 @@ import type { StoredAccount } from '../accountStorage';
 import { installedFromDisk, versionKey, type DiskVersion, type InstalledVersion } from '../types';
 import { readVersionNicknames } from '../versionNicknames';
 import { t } from '../i18n';
+import { recommendJavaMajor } from '../javaRuntimeRecommendation';
 import GetStartedChecklist from './GetStartedChecklist';
 import { Button } from '../ui/button';
 import { Select } from '../ui/select';
@@ -320,6 +321,10 @@ export default function HomeView({
   };
 
   const installedLoader = currentVersion ? detectLoader(currentVersion.id) : null;
+  const packJava = currentVersion?.modpackName
+    ? recommendJavaMajor(currentVersion.inheritsFrom ?? currentVersion.id)?.major
+    : undefined;
+  const selectedJavaMajor = Number(selectedJava?.version.match(/^(?:1\.)?(\d+)/)?.[1]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -345,7 +350,7 @@ export default function HomeView({
               placeholder={t('play.noVersions')}
               options={versions.map(v => {
                 const key = versionKey(v);
-                return { value: key, label: nicknames[key] || v.id };
+                return { value: key, label: nicknames[key] || v.modpackName || v.id };
               })}
             />
           </Field>
@@ -380,6 +385,11 @@ export default function HomeView({
                 label: `${j.friendly_name || `Java ${j.version}`} (${j.version})`,
               }))}
             />
+            {packJava != null && selectedJavaMajor > 0 && packJava !== selectedJavaMajor && (
+              <p className="text-sm text-ink-muted">
+                {t('packs.javaMismatch', { recommended: packJava, selected: selectedJavaMajor })}
+              </p>
+            )}
           </Field>
         </div>
 
