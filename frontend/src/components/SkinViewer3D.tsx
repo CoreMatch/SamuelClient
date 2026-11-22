@@ -4,7 +4,6 @@ import { SkinViewer } from 'skinview3d';
 interface SkinViewer3DProps {
   skinUrl?: string | null;
   capeUrl?: string | null;
-  skinModel?: 'default' | 'slim';
   width?: number;
   height?: number;
 }
@@ -55,7 +54,6 @@ function normalizeCapeTexture(image: HTMLImageElement): HTMLImageElement | HTMLC
 export default function SkinViewer3D({
   skinUrl,
   capeUrl,
-  skinModel = 'default',
   width = 260,
   height = 360,
 }: SkinViewer3DProps) {
@@ -106,7 +104,7 @@ export default function SkinViewer3D({
           return;
         }
         revoke = loaded.revoke;
-        viewer.loadSkin(loaded.image, { model: skinModel });
+        viewer.loadSkin(loaded.image);
       } catch {
         if (!disposed) setViewerError(true);
       }
@@ -117,7 +115,7 @@ export default function SkinViewer3D({
       disposed = true;
       revoke?.();
     };
-  }, [skinUrl, skinModel]);
+  }, [skinUrl]);
 
   useEffect(() => {
     const viewer = viewerRef.current;

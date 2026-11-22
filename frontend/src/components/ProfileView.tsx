@@ -25,7 +25,6 @@ interface ProfileTexture {
 interface PlayerProfile {
   id: string;
   name: string;
-  model?: string;
   textures?: Partial<Record<TextureType, ProfileTexture>>;
 }
 
@@ -59,7 +58,6 @@ export default function ProfileView({ account, onSignIn, onSignOut }: ProfileVie
   const [notice, setNotice] = useState('');
   const [files, setFiles] = useState<Partial<Record<TextureType, File>>>({});
   const [previews, setPreviews] = useState<Partial<Record<TextureType, string>>>({});
-  const [skinModel, setSkinModel] = useState<'default' | 'slim'>('default');
   const [busy, setBusy] = useState<TextureType | 'signout' | null>(null);
   const [confirmAction, setConfirmAction] = useState<TextureType | 'signout' | null>(null);
   const inputs = useRef<Partial<Record<TextureType, HTMLInputElement | null>>>({});
@@ -84,7 +82,6 @@ export default function ProfileView({ account, onSignIn, onSignOut }: ProfileVie
         const data = result.data as { profiles?: PlayerProfile[] };
         const nextProfile = data.profiles?.find(item => item.id === playerUUID) ?? data.profiles?.[0] ?? null;
         setProfile(nextProfile);
-        setSkinModel(nextProfile?.model === 'slim' ? 'slim' : 'default');
       })
       .catch(() => {
         if (!cancelled) setLoadingError(t('profile.loadFailed'));
@@ -133,7 +130,6 @@ export default function ProfileView({ account, onSignIn, onSignOut }: ProfileVie
       const data = result.data as { profiles?: PlayerProfile[] };
       const nextProfile = data.profiles?.find(item => item.id === playerUUID) ?? data.profiles?.[0] ?? null;
       setProfile(nextProfile);
-      setSkinModel(nextProfile?.model === 'slim' ? 'slim' : 'default');
     } catch {
       setError(t('profile.loadFailed'));
     } finally {
@@ -152,7 +148,7 @@ export default function ProfileView({ account, onSignIn, onSignOut }: ProfileVie
         yggdrasilAccessToken,
         profile.id,
         type,
-        type === 'skin' ? skinModel : '',
+        '',
         file.name,
         await fileToBase64(file),
       );
@@ -234,19 +230,6 @@ export default function ProfileView({ account, onSignIn, onSignOut }: ProfileVie
           aria-label={t('profile.chooseFile', { type: t(`profile.${type}`) })}
           onChange={event => handleFile(type, event.target.files?.[0])}
         />
-        {type === 'skin' && (
-          <label className="mb-3 block text-sm text-ink-muted">
-            {t('profile.model')}
-            <select
-              value={skinModel}
-              onChange={event => setSkinModel(event.target.value as 'default' | 'slim')}
-              className="mt-1 h-10 w-full rounded-md border border-edge bg-panel px-3 text-ink"
-            >
-              <option value="default">{t('profile.modelDefault')}</option>
-              <option value="slim">{t('profile.modelSlim')}</option>
-            </select>
-          </label>
-        )}
         <div className="flex flex-wrap gap-2">
           <Button
             variant="secondary"
@@ -323,7 +306,6 @@ export default function ProfileView({ account, onSignIn, onSignOut }: ProfileVie
               <SkinViewer3D
                 skinUrl={previewSkin}
                 capeUrl={previewCape}
-                skinModel={skinModel}
               />
             </Suspense>
           ) : (

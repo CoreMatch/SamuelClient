@@ -58,6 +58,7 @@ describe('ProfileView', () => {
     expect(screen.getByText('Cape')).toBeTruthy();
     expect(screen.getByText('Active')).toBeTruthy();
     expect(screen.getByText('Not set')).toBeTruthy();
+    expect(screen.queryByLabelText('Skin model')).toBeNull();
     expect(await screen.findByTestId('skin-viewer-3d')).toBeTruthy();
     expect(mockGetTextures).toHaveBeenCalledWith('session-token');
   });
