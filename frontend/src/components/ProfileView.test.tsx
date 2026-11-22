@@ -13,6 +13,9 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   GetProfileTextures: vi.fn(),
   UploadProfileTexture: vi.fn(),
 }));
+vi.mock('./SkinViewer3D', () => ({
+  default: () => <div data-testid="skin-viewer-3d" />,
+}));
 
 const mockGetTextures = vi.mocked(GetProfileTextures);
 const mockDeleteTexture = vi.mocked(DeleteProfileTexture);
@@ -55,6 +58,7 @@ describe('ProfileView', () => {
     expect(screen.getByText('Cape')).toBeTruthy();
     expect(screen.getByText('Active')).toBeTruthy();
     expect(screen.getByText('Not set')).toBeTruthy();
+    expect(await screen.findByTestId('skin-viewer-3d')).toBeTruthy();
     expect(mockGetTextures).toHaveBeenCalledWith('session-token');
   });
 

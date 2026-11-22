@@ -223,6 +223,7 @@ const en = {
   'profile.active': 'Active',
   'profile.notSet': 'Not set',
   'profile.noTexture': 'No texture uploaded',
+  'profile.previewLoading': 'Loading 3D preview...',
   'profile.model': 'Skin model',
   'profile.modelDefault': 'Classic (wide)',
   'profile.modelSlim': 'Slim',

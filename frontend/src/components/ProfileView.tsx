@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { LogOut, Upload, UserRound } from 'lucide-react';
 import type { StoredAccount } from '../accountStorage';
 import { t } from '../i18n';
@@ -7,6 +7,8 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Callout } from '../ui/callout';
 import { LoadingSkeleton } from './states';
+
+const SkinViewer3D = lazy(() => import('./SkinViewer3D'));
 import {
   DeleteProfileTexture,
   GetProfileTextures,
@@ -210,9 +212,10 @@ export default function ProfileView({ account, onSignIn, onSignOut }: ProfileVie
   }
 
   const activeProfile = profile ?? { id: account.uuid, name: account.username };
+  const previewSkin = previews.skin || profile?.textures?.skin?.url;
+  const previewCape = previews.cape || profile?.textures?.cape?.url;
   const textureCard = (type: TextureType) => {
     const file = files[type];
-    const imageUrl = previews[type] || profile?.textures?.[type]?.url;
     const uploading = busy === type && !!file;
     const deleting = busy === type && !file;
     return (
@@ -222,13 +225,6 @@ export default function ProfileView({ account, onSignIn, onSignOut }: ProfileVie
           <Badge tone={profile?.textures?.[type]?.url ? 'success' : 'neutral'}>
             {profile?.textures?.[type]?.url ? t('profile.active') : t('profile.notSet')}
           </Badge>
-        </div>
-        <div className="mb-4 grid h-40 place-items-center overflow-hidden rounded-md bg-panel">
-          {imageUrl ? (
-            <img src={imageUrl} alt={t(`profile.${type}`)} className="max-h-full max-w-full object-contain" />
-          ) : (
-            <span className="text-sm text-ink-faint">{t('profile.noTexture')}</span>
-          )}
         </div>
         <input
           ref={element => { inputs.current[type] = element; }}
@@ -292,29 +288,50 @@ export default function ProfileView({ account, onSignIn, onSignOut }: ProfileVie
       {notice && <Callout tone="success" onDismiss={() => setNotice('')}>{notice}</Callout>}
 
       <section className="rounded-lg bg-panel p-6">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="grid size-16 place-items-center rounded-full bg-raised text-accent">
-            <UserRound className="size-8" aria-hidden />
+        <div className="grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <div>
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="grid size-16 place-items-center rounded-full bg-raised text-accent">
+                <UserRound className="size-8" aria-hidden />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="truncate text-2xl font-semibold text-ink">{activeProfile.name}</h2>
+                <Badge tone="success" className="mt-2">{t(account.authType === 'microsoft' ? 'profile.microsoft' : 'profile.hrpauth')}</Badge>
+              </div>
+              <Button variant="ghost" disabled={busy !== null} onClick={() => setConfirmAction('signout')}>
+                <LogOut className="size-4" aria-hidden />
+                {t('profile.signOut')}
+              </Button>
+            </div>
+            <dl className="mt-6 grid gap-4 border-t border-edge pt-5 sm:grid-cols-2">
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-ink-faint">{t('profile.playerName')}</dt>
+                <dd className="mt-1 text-sm text-ink">{activeProfile.name}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-ink-faint">{t('profile.uuid')}</dt>
+                <dd className="mt-1 break-all font-mono text-sm text-ink">{activeProfile.id}</dd>
+              </div>
+            </dl>
           </div>
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-2xl font-semibold text-ink">{activeProfile.name}</h2>
-            <Badge tone="success" className="mt-2">{t(account.authType === 'microsoft' ? 'profile.microsoft' : 'profile.hrpauth')}</Badge>
-          </div>
-          <Button variant="ghost" disabled={busy !== null} onClick={() => setConfirmAction('signout')}>
-            <LogOut className="size-4" aria-hidden />
-            {t('profile.signOut')}
-          </Button>
+          {previewSkin || previewCape ? (
+            <Suspense fallback={(
+              <div className="grid min-h-[300px] place-items-center rounded-md bg-raised text-sm text-ink-muted">
+                {t('profile.previewLoading')}
+              </div>
+            )}>
+              <SkinViewer3D
+                skinUrl={previewSkin}
+                capeUrl={previewCape}
+                skinModel={skinModel}
+              />
+            </Suspense>
+          ) : (
+            <div className="grid min-h-[300px] place-items-center rounded-md bg-raised px-6 text-center text-sm text-ink-faint">
+              {t('profile.noTexture')}
+            </div>
+          )}
         </div>
-        <dl className="mt-6 grid gap-4 border-t border-edge pt-5 sm:grid-cols-2">
-          <div>
-            <dt className="text-xs font-medium uppercase tracking-wide text-ink-faint">{t('profile.playerName')}</dt>
-            <dd className="mt-1 text-sm text-ink">{activeProfile.name}</dd>
-          </div>
-          <div>
-            <dt className="text-xs font-medium uppercase tracking-wide text-ink-faint">{t('profile.uuid')}</dt>
-            <dd className="mt-1 break-all font-mono text-sm text-ink">{activeProfile.id}</dd>
-          </div>
-        </dl>
       </section>
 
       <div>
