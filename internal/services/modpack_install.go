@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -43,7 +42,7 @@ func ReadModpackInstance(gameDir string) (ModpackInstance, bool) {
 }
 
 func (s *ModrinthService) InstallModpack(ctx context.Context, source ModpackSource, fingerprint string, options []string,
-	parent string, installer packGameInstaller, javaPaths []string, register func(string) error,
+	parent string, installer packGameInstaller, resolveJava PackJavaResolver, register func(string) error,
 	progress PackProgress, log func(string, string)) (ModpackInstallResult, error) {
 	var result ModpackInstallResult
 	if !isPackDigest(fingerprint, 32) {
@@ -81,48 +80,21 @@ func (s *ModrinthService) InstallModpack(ctx context.Context, source ModpackSour
 	}
 	defer os.RemoveAll(staging)
 
-	progress("jar", pack.preview.Name, 0, 0)
-	game := pack.preview.GameVersion
-	if res := installer.InstallVersion(ctx, game, staging, progress); !res.Success {
-		return result, fmt.Errorf("install Minecraft %s: %s", game, res.Error)
-	}
-	profile := game
-	meta, err := NewLauncherService().loadVersionJSON(game, staging)
+	profile, major, _, err := installPackGame(ctx, staging, pack.preview, installer, resolveJava, progress, log)
 	if err != nil {
 		return result, err
 	}
-	var loader *models.ApiResponse
-	switch pack.preview.Loader {
-	case "fabric":
-		loader = installer.InstallFabricLoader(ctx, game, pack.preview.LoaderVersion, staging, progress)
-	case "forge":
-		java, err := packInstallerJava(javaPaths, meta.JavaVersion.MajorVersion)
-		if err != nil {
-			return result, err
-		}
-		loader = installer.InstallForgeLoader(ctx, game, pack.preview.LoaderVersion, staging, java, log, progress)
-	}
-	if loader != nil {
-		if !loader.Success {
-			return result, fmt.Errorf("install %s %s: %s", pack.preview.Loader, pack.preview.LoaderVersion, loader.Error)
-		}
-		data, _ := loader.Data.(map[string]interface{})
-		profile, _ = data["version_id"].(string)
-		if !packVersion.MatchString(profile) {
-			return result, fmt.Errorf("loader did not produce a valid launch profile")
-		}
-		child, err := NewLauncherService().loadVersionJSON(profile, staging)
-		if err != nil || child.InheritsFrom != game {
-			return result, fmt.Errorf("loader profile does not inherit Minecraft %s", game)
-		}
-	}
-	if info, err := os.Stat(filepath.Join(staging, "versions", game, game+".jar")); err != nil || !info.Mode().IsRegular() {
-		return result, fmt.Errorf("Minecraft client JAR is missing")
+	receipt, err := makePackReceipt(staging, pack, source, options, selected, major)
+	if err != nil {
+		return result, err
 	}
 	if err := s.installModpackContent(ctx, staging, pack, selected, progress); err != nil {
 		return result, err
 	}
-	instance := ModpackInstance{pack.preview.Name, profile}
+	if err := writePackReceipt(ctx, staging, f, receipt); err != nil {
+		return result, err
+	}
+	instance := ModpackInstance{Name: pack.preview.Name, VersionID: profile, Managed: true}
 	marker, err := json.Marshal(instance)
 	if err != nil {
 		return result, err
@@ -146,27 +118,51 @@ func (s *ModrinthService) InstallModpack(ctx context.Context, source ModpackSour
 		}
 		return result, fmt.Errorf("register instance: %w", err)
 	}
-	return ModpackInstallResult{instance, dest, meta.JavaVersion.MajorVersion}, nil
+	return ModpackInstallResult{instance, dest, major}, nil
 }
 
-func packInstallerJava(paths []string, major int) (string, error) {
-	for _, path := range paths {
-		version, err := DetectJavaVersion(path)
-		if err != nil {
-			continue
+func installPackGame(ctx context.Context, staging string, preview ModpackPreview, installer packGameInstaller,
+	resolveJava PackJavaResolver, progress PackProgress, log func(string, string)) (string, int, string, error) {
+	progress("jar", preview.Name, 0, 0)
+	game := preview.GameVersion
+	if res := installer.InstallVersion(ctx, game, staging, progress); !res.Success {
+		return "", 0, "", fmt.Errorf("install Minecraft %s: %s", game, res.Error)
+	}
+	profile := game
+	meta, err := NewLauncherService().loadVersionJSON(game, staging)
+	if err != nil {
+		return "", 0, "", err
+	}
+	major := meta.JavaVersion.MajorVersion
+	java, err := resolveJava(ctx, major, progress)
+	if err != nil {
+		return "", 0, "", err
+	}
+	var loader *models.ApiResponse
+	switch preview.Loader {
+	case "fabric":
+		loader = installer.InstallFabricLoader(ctx, game, preview.LoaderVersion, staging, progress)
+	case "forge":
+		loader = installer.InstallForgeLoader(ctx, game, preview.LoaderVersion, staging, java, log, progress)
+	}
+	if loader != nil {
+		if !loader.Success {
+			return "", 0, "", fmt.Errorf("install %s %s: %s", preview.Loader, preview.LoaderVersion, loader.Error)
 		}
-		number := strings.TrimPrefix(version, "1.")
-		number, _, _ = strings.Cut(number, ".")
-		number, _, _ = strings.Cut(number, "-")
-		actual, _ := strconv.Atoi(number)
-		if actual > 0 && (major == 0 || actual == major || (major == 16 && actual == 17)) {
-			return path, nil
+		data, _ := loader.Data.(map[string]interface{})
+		profile, _ = data["version_id"].(string)
+		if !packVersion.MatchString(profile) {
+			return "", 0, "", fmt.Errorf("loader did not produce a valid launch profile")
+		}
+		child, err := NewLauncherService().loadVersionJSON(profile, staging)
+		if err != nil || child.InheritsFrom != game {
+			return "", 0, "", fmt.Errorf("loader profile does not inherit Minecraft %s", game)
 		}
 	}
-	if major > 0 {
-		return "", fmt.Errorf("Forge requires Java %d; add a compatible Java runtime in Settings and retry", major)
+	if info, err := os.Stat(filepath.Join(staging, "versions", game, game+".jar")); err != nil || !info.Mode().IsRegular() {
+		return "", 0, "", fmt.Errorf("Minecraft client JAR is missing")
 	}
-	return "", fmt.Errorf("Forge needs Java; add a Java runtime in Settings and retry")
+	return profile, major, java, nil
 }
 
 func (s *ModrinthService) installModpackContent(ctx context.Context, dir string, pack *modpackArchive, selected map[string]bool, progress PackProgress) error {

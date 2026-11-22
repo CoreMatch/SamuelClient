@@ -19,10 +19,15 @@ export interface DiskVersion {
   game_dir?: string;
   inherits_from?: string;
   modpack_name?: string;
+  repairable?: boolean;
+}
+
+export function isPlayableVersion(v: DiskVersion): boolean {
+  return Boolean(v.repairable || (v.has_json && v.has_jar));
 }
 
 export function installedFromDisk(versions: DiskVersion[]): InstalledVersion[] {
-  return versions.filter(v => v.has_json && v.has_jar).map(v => {
+  return versions.filter(isPlayableVersion).map(v => {
     const fabric = v.id.match(/^fabric-loader-(.+)-([^-]+)$/);
     const forge = v.id.match(/^(.+)-forge-?(.+)$/);
     return {

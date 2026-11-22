@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,8 +21,12 @@ var DetectSystemJava = detectSystemJava
 // version string from its output. Java prints the version banner to stderr,
 // so stderr is read first and stdout is used as a fallback.
 func detectJavaVersion(javaPath string) (string, error) {
+	return detectJavaVersionContext(context.Background(), javaPath)
+}
+
+func detectJavaVersionContext(ctx context.Context, javaPath string) (string, error) {
 	var stdout, stderr bytes.Buffer
-	cmd := exec.Command(javaPath, "-version")
+	cmd := exec.CommandContext(ctx, javaPath, "-version")
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 

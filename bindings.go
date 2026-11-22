@@ -337,6 +337,7 @@ type InstalledVersion struct {
 	GameDir      string `json:"game_dir"`
 	InheritsFrom string `json:"inherits_from,omitempty"`
 	ModpackName  string `json:"modpack_name,omitempty"`
+	Repairable   bool   `json:"repairable,omitempty"`
 }
 
 // GetInstalledVersions scans each registered game directory. Versions with the
@@ -354,14 +355,14 @@ func (a *App) GetInstalledVersions() *models.ApiResponse {
 
 func scanInstalledVersions(gameDir string) []InstalledVersion {
 	versionsDir := filepath.Join(gameDir, "versions")
+	pack, isPack := services.ReadModpackInstance(gameDir)
 
 	entries, err := os.ReadDir(versionsDir)
-	if err != nil {
+	if err != nil && !pack.Managed {
 		return nil
 	}
 
 	out := []InstalledVersion{}
-	pack, isPack := services.ReadModpackInstance(gameDir)
 	for _, e := range entries {
 		if !e.IsDir() || (isPack && e.Name() != pack.VersionID) {
 			continue
@@ -405,7 +406,13 @@ func scanInstalledVersions(gameDir string) []InstalledVersion {
 		out = append(out, InstalledVersion{
 			ID: id, Type: vType, HasJSON: hasJSON, HasJAR: hasJAR,
 			GameDir: gameDir, InheritsFrom: inheritsFrom, ModpackName: pack.Name,
+			Repairable: isPack && pack.Managed,
 		})
+	}
+	if len(out) == 0 && isPack && pack.Managed {
+		return []InstalledVersion{{
+			ID: pack.VersionID, Type: "release", GameDir: gameDir, ModpackName: pack.Name, Repairable: true,
+		}}
 	}
 
 	return out
@@ -996,6 +1003,10 @@ func (a *App) LaunchGame(req LaunchGameRequest) *models.ApiResponse {
 	// HRPAuth (required pre-launch step per the authlib-injector wiki). On
 	// failure we still launch; authlib-injector can fall back to a runtime
 	// fetch.
+	javaPath, err := a.prepareModpackLaunch(gameDir, req.VersionID, req.JavaPath)
+	if err != nil {
+		return &models.ApiResponse{Success: false, Error: "prepare modpack: " + err.Error()}
+	}
 	authlibMeta := req.AuthlibMeta
 	if authlibMeta == "" && services.IsHRPAuthAccount(req.AuthType) {
 		metaResult := a.authService.GetHRPAuthMeta()
@@ -1009,7 +1020,7 @@ func (a *App) LaunchGame(req LaunchGameRequest) *models.ApiResponse {
 	}
 
 	config := models.LauncherConfig{
-		JavaPath:        req.JavaPath,
+		JavaPath:        javaPath,
 		MaxMemory:       req.MaxMemory,
 		MinMemory:       req.MinMemory,
 		JavaArgs:        req.JavaArgs,

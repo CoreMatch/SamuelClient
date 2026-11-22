@@ -63,6 +63,7 @@ type ModpackPreview struct {
 type ModpackInstance struct {
 	Name      string `json:"name"`
 	VersionID string `json:"version_id"`
+	Managed   bool   `json:"managed,omitempty"`
 }
 
 type modpackIndex struct {
@@ -287,7 +288,7 @@ func packDestination(name string) bool {
 	}
 	top, _, _ := strings.Cut(strings.ToLower(name), "/")
 	switch top {
-	case "versions", "libraries", "assets", "runtime", "launcher_profiles.json", "launcher_accounts.json", packMarker:
+	case "versions", "libraries", "assets", "runtime", "launcher_profiles.json", "launcher_accounts.json", packMarker, packRepairDir:
 		return false
 	}
 	return true

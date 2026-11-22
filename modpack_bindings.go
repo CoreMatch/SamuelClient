@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"HRPMLW/internal/database"
@@ -67,15 +69,6 @@ func (a *App) InstallModpack(taskID, projectID, versionID, localPath, fingerprin
 	log := func(source, line string) {
 		a.emit("launcher:log", map[string]any{"source": source, "line": line})
 	}
-	var javaPaths []string
-	if a.javaRepo != nil {
-		if installations, err := a.javaRepo.GetAll(); err == nil {
-			for _, java := range installations {
-				javaPaths = append(javaPaths, java.Path)
-			}
-		}
-	}
-	javaPaths = append(javaPaths, a.launcherService.GetJavaPath())
 	parent, err := filepath.Abs(filepath.Join(database.DataDir(), "instances"))
 	if err != nil {
 		return a.installResult(ctx, taskID, modpackResponse(nil, err))
@@ -88,10 +81,79 @@ func (a *App) InstallModpack(taskID, projectID, versionID, localPath, fingerprin
 	}
 	result, err := services.NewModrinthService().InstallModpack(ctx,
 		services.ModpackSource{ProjectID: projectID, VersionID: versionID, LocalPath: localPath}, fingerprint, selected,
-		parent, a.downloadService(), javaPaths, register, progress, log)
+		parent, a.downloadService(), a.modpackJavaResolver(""), register, progress, log)
 	if err == nil {
 		// Once registered, a late cancel must not report a successful instance as cancelled.
 		ctx = context.Background()
 	}
 	return a.installResult(ctx, taskID, modpackResponse(result, err))
+}
+
+func (a *App) modpackJavaResolver(preferred string) services.PackJavaResolver {
+	paths := []string{preferred, a.launcherService.GetJavaPath()}
+	if a.javaRepo != nil && database.GetDB() != nil {
+		if installations, err := a.javaRepo.GetAll(); err == nil {
+			for _, java := range installations {
+				paths = append(paths, java.Path)
+			}
+		}
+	}
+	return func(ctx context.Context, major int, progress services.PackProgress) (string, error) {
+		cache, err := filepath.Abs(filepath.Join(database.DataDir(), "jre", "modpacks"))
+		if err != nil {
+			return "", err
+		}
+		return services.EnsureModpackJava(ctx, cache, paths, major, progress)
+	}
+}
+
+var modpackLaunchGate = make(chan struct{}, 1)
+
+func (a *App) prepareModpackLaunch(gameDir, versionID, preferredJava string) (string, error) {
+	if !slices.Contains(a.launcherService.GameDirs(), gameDir) {
+		return preferredJava, nil
+	}
+	parent, err := filepath.Abs(filepath.Join(database.DataDir(), "instances"))
+	if err != nil {
+		return "", err
+	}
+	if filepath.Dir(gameDir) != parent || !strings.HasPrefix(filepath.Base(gameDir), "pack-") {
+		return preferredJava, nil
+	}
+	pack, ok := services.ReadModpackInstance(gameDir)
+	if !ok || pack.VersionID != versionID {
+		return preferredJava, nil
+	}
+
+	id := "modpack-repair-" + newClientToken()
+	ctx, entry := a.beginInstall(id)
+	defer a.finishInstall(id, entry)
+	select {
+	case modpackLaunchGate <- struct{}{}:
+		defer func() { <-modpackLaunchGate }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	var emitted atomic.Bool
+	progress := func(stage, name string, downloaded, total int64) {
+		emitted.Store(true)
+		a.emit("download:progress", map[string]any{
+			"version_id": id, "stage": stage, "name": name, "downloaded": downloaded, "total": total,
+		})
+	}
+	log := func(source, line string) {
+		a.emit("launcher:log", map[string]any{"source": source, "line": line})
+	}
+	java, err := services.NewModrinthService().PrepareModpackLaunch(ctx, gameDir, pack, a.downloadService(),
+		a.modpackJavaResolver(preferredJava), progress, log)
+	if err == nil {
+		err = ctx.Err()
+	}
+	if emitted.Load() {
+		result := a.installResult(ctx, id, modpackResponse(nil, err))
+		if !result.Success {
+			return "", fmt.Errorf("%s", result.Error)
+		}
+	}
+	return java, err
 }
