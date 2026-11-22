@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Asset, type AssetId } from '@ha/ui';
 import HomeView from './components/HomeView';
 import VersionManager from './components/VersionManager';
-import AccountManager from './components/AccountManager';
+import ProfileView from './components/ProfileView';
 import SettingsView from './components/SettingsView';
 import HandoffBanner from './components/HandoffBanner';
 import LoginView, { LoggedInAccount } from './components/LoginView';
@@ -11,6 +11,7 @@ import {
   saveAccount,
   restoreLastUsedAccount,
   consumeOfflineRemovedNotice,
+  clearStoredAccounts,
 } from './accountStorage';
 import type { DiskVersion, InstalledVersion, HandoffPayload } from './types';
 import { t } from './i18n';
@@ -34,14 +35,14 @@ import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
 
 interface NavItem {
   id: string;
-  labelKey: 'nav.play' | 'nav.versions' | 'nav.accounts' | 'nav.settings';
+  labelKey: 'nav.play' | 'nav.versions' | 'nav.profile' | 'nav.settings';
   icon: AssetId;
 }
 
 const navItems: NavItem[] = [
   { id: 'home', labelKey: 'nav.play', icon: 'icon-play' },
   { id: 'versions', labelKey: 'nav.versions', icon: 'icon-version' },
-  { id: 'accounts', labelKey: 'nav.accounts', icon: 'icon-friends' },
+  { id: 'profile', labelKey: 'nav.profile', icon: 'mode-avatar' },
   { id: 'settings', labelKey: 'nav.settings', icon: 'icon-settings' },
 ];
 
@@ -263,11 +264,6 @@ export default function App() {
     }
   };
 
-  const handleSelectAccount = (account: StoredAccount) => {
-    setCurrentAccount(account);
-    setSelectedView('home');
-  };
-
   // The selected version survives restarts (localStorage metadata only).
   const handleVersionSelect = (version: InstalledVersion | null) => {
     setSelectedVersion(version);
@@ -282,8 +278,12 @@ export default function App() {
     }
   };
 
-  const handleAddAccount = () => {
-    setShowLogin(true);
+  const handleSignOut = async () => {
+    await clearStoredAccounts(currentAccount ? [currentAccount.id] : []);
+    setCurrentAccount(null);
+    setTokenStorageWarning('');
+    setShowLogin(false);
+    setSelectedView('profile');
   };
 
   const handleOpenSettings = () => {
@@ -295,10 +295,6 @@ export default function App() {
       return (
         <LoginView
           onLoginSuccess={handleLoginSuccess}
-          onSwitchToAccounts={() => {
-            setShowLogin(false);
-            setSelectedView('accounts');
-          }}
         />
       );
     }
@@ -315,11 +311,12 @@ export default function App() {
         );
       case 'versions':
         return <VersionManager onSelectVersion={handleVersionSelect} />;
-      case 'accounts':
+      case 'profile':
         return (
-          <AccountManager
-            onSelectAccount={handleSelectAccount}
-            onAddAccount={handleAddAccount}
+          <ProfileView
+            account={currentAccount}
+            onSignIn={() => setShowLogin(true)}
+            onSignOut={handleSignOut}
           />
         );
       case 'settings':
@@ -388,7 +385,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedView('accounts');
+                  setSelectedView('profile');
                   setShowLogin(false);
                 }}
                 className="flex w-full items-center gap-3 rounded-md border border-edge bg-raised p-3 text-left transition-colors duration-150 hover:border-edge-strong"
@@ -399,7 +396,7 @@ export default function App() {
                     {currentAccount.username}
                   </span>
                   <Badge tone="success" className="mt-1">
-                    {t('play.hrpauth')}
+                    {t(currentAccount.authType === 'microsoft' ? 'profile.microsoft' : 'profile.hrpauth')}
                   </Badge>
                 </span>
               </button>

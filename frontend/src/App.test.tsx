@@ -10,7 +10,7 @@ vi.mock('@ha/ui', () => ({
 
 vi.mock('./components/HomeView', () => ({ default: () => 'Home page' }));
 vi.mock('./components/VersionManager', () => ({ default: () => 'Versions page' }));
-vi.mock('./components/AccountManager', () => ({ default: () => 'Accounts page' }));
+vi.mock('./components/ProfileView', () => ({ default: () => 'Profile page' }));
 vi.mock('./components/SettingsView', () => ({ default: () => 'Settings page' }));
 vi.mock('./components/HandoffBanner', () => ({ default: () => null }));
 vi.mock('./components/LoginView', () => ({ default: () => 'Login page' }));
@@ -73,5 +73,13 @@ describe('App download queue', () => {
     expect(screen.getByText('Versions page')).toBeTruthy();
     expect(screen.getByLabelText('1.21.4: In progress')).toBeTruthy();
     expect(screen.getByText('25%')).toBeTruthy();
+  });
+
+  it('opens the Profile view from primary navigation', async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Profile' }));
+
+    expect(screen.getByText('Profile page')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Profile' })).toBeTruthy();
   });
 });

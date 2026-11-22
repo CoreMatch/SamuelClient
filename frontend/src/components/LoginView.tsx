@@ -13,12 +13,13 @@ import { Callout } from '../ui/callout';
 
 interface LoginViewProps {
   onLoginSuccess: (account: LoggedInAccount) => void;
-  onSwitchToAccounts: () => void;
 }
 
 export interface LoggedInAccount {
   username: string;
   uuid: string;
+  // HRPAuth login returns a Yggdrasil session directly; Microsoft login
+  // exchanges its Minecraft Services token for the same Yggdrasil credential.
   accessToken: string;
   clientToken: string;
   // HRPAuth is the primary login path (ADR-0008 removed offline login);
@@ -43,7 +44,7 @@ interface DeviceCodeState {
 
 const LAST_USERNAME_KEY = 'last_username';
 
-export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginViewProps) {
+export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   const [username, setUsername] = useState(() => localStorage.getItem(LAST_USERNAME_KEY) ?? '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -265,11 +266,6 @@ export default function LoginView({ onLoginSuccess, onSwitchToAccounts }: LoginV
             {t('login.microsoft.submit')}
           </Button>
 
-          <div className="text-center">
-            <Button variant="ghost" onClick={onSwitchToAccounts}>
-              {t('login.manageAccounts')}
-            </Button>
-          </div>
         </div>
       </div>
     </div>

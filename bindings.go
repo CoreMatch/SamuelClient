@@ -42,6 +42,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -409,6 +410,31 @@ func (a *App) HRPAuthValidate(accessToken, clientToken string) *models.ApiRespon
 		return &models.ApiResponse{Success: false, Error: "access token is required"}
 	}
 	return a.authService.ValidateHRPAuthToken(accessToken, clientToken)
+}
+
+// GetProfileTextures returns the signed-in player's current skin and cape
+// bindings. The argument is the Yggdrasil session token, not an MSA OAuth
+// access/refresh token; both login paths provide this credential.
+func (a *App) GetProfileTextures(yggdrasilAccessToken string) *models.ApiResponse {
+	return a.authService.GetHRPAuthTextures(yggdrasilAccessToken)
+}
+
+// UploadProfileTexture forwards a PNG to the Yggdrasil API without exposing
+// the session token to a frontend HTTP request.
+func (a *App) UploadProfileTexture(yggdrasilAccessToken, profileID, textureType, model, fileName, imageBase64 string) *models.ApiResponse {
+	if len(imageBase64) > 3*1024*1024 {
+		return &models.ApiResponse{Success: false, Error: "PNG file must be no larger than 2 MiB"}
+	}
+	imageData, err := base64.StdEncoding.DecodeString(imageBase64)
+	if err != nil {
+		return &models.ApiResponse{Success: false, Error: "invalid image data"}
+	}
+	return a.authService.UploadHRPAuthTexture(yggdrasilAccessToken, profileID, textureType, model, fileName, imageData)
+}
+
+// DeleteProfileTexture removes the signed-in player's active skin or cape.
+func (a *App) DeleteProfileTexture(yggdrasilAccessToken, profileID, textureType string) *models.ApiResponse {
+	return a.authService.DeleteHRPAuthTexture(yggdrasilAccessToken, profileID, textureType)
 }
 
 // ==================== Microsoft login (ADR-0007) ====================

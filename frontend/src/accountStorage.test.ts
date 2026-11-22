@@ -15,6 +15,7 @@ import {
   saveAccount,
   consumeOfflineRemovedNotice,
   deleteAccountTokens,
+  clearStoredAccounts,
 } from './accountStorage';
 
 // The Wails bindings are replaced with test doubles; account storage must
@@ -311,6 +312,30 @@ describe('saveAccount (schema 3)', () => {
     expect(mockStore).toHaveBeenLastCalledWith(first.account.id, 'at-2', 'ct-2');
   });
 
+  it('replaces the previous login and removes its stored session', async () => {
+    localStorage.setItem(
+      ACCOUNTS_STORAGE_KEY,
+      JSON.stringify([{ id: 'previous', username: 'alice', uuid: 'p1', authType: 'hrpauth', lastUsed: true }]),
+    );
+
+    const { account } = await saveAccount({
+      username: 'bob',
+      uuid: 'p2',
+      accessToken: 'at-bob',
+      clientToken: 'ct-bob',
+      authType: 'hrpauth',
+    });
+
+    expect(mockDelete).toHaveBeenCalledWith('previous');
+    expect(readStored()).toEqual([expect.objectContaining({
+      id: account.id,
+      username: 'bob',
+      uuid: 'p2',
+      lastUsed: true,
+    })]);
+    expect(account.lastUsed).toBe(true);
+  });
+
   it('reports a token storage failure without losing the metadata', async () => {
     mockStore.mockResolvedValue({ success: false, data: null, error: 'keychain locked' });
 
@@ -358,5 +383,22 @@ describe('deleteAccountTokens', () => {
   it('never throws when the binding rejects', async () => {
     mockDelete.mockRejectedValue(new Error('backend gone'));
     await expect(deleteAccountTokens('acc-9')).resolves.toBeUndefined();
+  });
+
+  it('clears all known credentials and metadata on sign-out', async () => {
+    localStorage.setItem(
+      ACCOUNTS_STORAGE_KEY,
+      JSON.stringify([
+        { id: 'acc-1', username: 'one', uuid: 'p1', authType: 'hrpauth' },
+        { id: 'acc-2', username: 'two', uuid: 'p2', authType: 'microsoft' },
+      ]),
+    );
+
+    await clearStoredAccounts(['memory-only']);
+
+    expect(mockDelete).toHaveBeenCalledWith('acc-1');
+    expect(mockDelete).toHaveBeenCalledWith('acc-2');
+    expect(mockDelete).toHaveBeenCalledWith('memory-only');
+    expect(readStored()).toEqual([]);
   });
 });

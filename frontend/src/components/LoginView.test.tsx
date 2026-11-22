@@ -40,7 +40,7 @@ describe('LoginView', () => {
 
   it('rejects login without credentials before calling the backend', async () => {
     const onLoginSuccess = vi.fn();
-    render(<LoginView onLoginSuccess={onLoginSuccess} onSwitchToAccounts={vi.fn()} />);
+    render(<LoginView onLoginSuccess={onLoginSuccess} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Login' }));
 
@@ -60,7 +60,7 @@ describe('LoginView', () => {
       error: '',
     });
     const onLoginSuccess = vi.fn();
-    render(<LoginView onLoginSuccess={onLoginSuccess} onSwitchToAccounts={vi.fn()} />);
+    render(<LoginView onLoginSuccess={onLoginSuccess} />);
 
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'steve' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } });
@@ -83,7 +83,7 @@ describe('LoginView', () => {
       data: null,
       error: 'Invalid credentials',
     });
-    render(<LoginView onLoginSuccess={vi.fn()} onSwitchToAccounts={vi.fn()} />);
+    render(<LoginView onLoginSuccess={vi.fn()} />);
 
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'steve' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrong' } });
@@ -94,7 +94,7 @@ describe('LoginView', () => {
 
   it('prefills the last used username', () => {
     localStorage.setItem('last_username', 'steve');
-    render(<LoginView onLoginSuccess={vi.fn()} onSwitchToAccounts={vi.fn()} />);
+    render(<LoginView onLoginSuccess={vi.fn()} />);
 
     expect((screen.getByLabelText('Username') as HTMLInputElement).value).toBe('steve');
   });
@@ -109,7 +109,7 @@ describe('LoginView', () => {
       },
       error: '',
     });
-    render(<LoginView onLoginSuccess={vi.fn()} onSwitchToAccounts={vi.fn()} />);
+    render(<LoginView onLoginSuccess={vi.fn()} />);
 
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'steve' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } });
@@ -119,7 +119,7 @@ describe('LoginView', () => {
   });
 
   it('offers no offline login path anymore (ADR-0008)', () => {
-    render(<LoginView onLoginSuccess={vi.fn()} onSwitchToAccounts={vi.fn()} />);
+    render(<LoginView onLoginSuccess={vi.fn()} />);
 
     // No auth-type selector and no offline wording anywhere in the view.
     expect(screen.queryAllByRole('combobox')).toHaveLength(0);
@@ -136,7 +136,7 @@ describe('LoginView', () => {
       mockMSBegin.mockResolvedValue({ success: true, data: deviceCodeData, error: '' });
       mockMSComplete.mockReturnValue(completePromise as ReturnType<typeof MicrosoftCompleteDeviceCode>);
       const onLoginSuccess = vi.fn();
-      render(<LoginView onLoginSuccess={onLoginSuccess} onSwitchToAccounts={vi.fn()} />);
+      render(<LoginView onLoginSuccess={onLoginSuccess} />);
 
       fireEvent.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }));
 
@@ -172,7 +172,7 @@ describe('LoginView', () => {
 
     it('surfaces the error when the device-code start fails', async () => {
       mockMSBegin.mockResolvedValue({ success: false, data: null, error: 'devicecode status 500' });
-      render(<LoginView onLoginSuccess={vi.fn()} onSwitchToAccounts={vi.fn()} />);
+      render(<LoginView onLoginSuccess={vi.fn()} />);
 
       fireEvent.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }));
 
@@ -185,7 +185,7 @@ describe('LoginView', () => {
     it('surfaces the exchange error and returns to the form', async () => {
       mockMSBegin.mockResolvedValue({ success: true, data: deviceCodeData, error: '' });
       mockMSComplete.mockResolvedValue({ success: false, data: null, error: 'mc_token_invalid' });
-      render(<LoginView onLoginSuccess={vi.fn()} onSwitchToAccounts={vi.fn()} />);
+      render(<LoginView onLoginSuccess={vi.fn()} />);
 
       fireEvent.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }));
 
@@ -203,7 +203,7 @@ describe('LoginView', () => {
       mockMSBegin.mockResolvedValue({ success: true, data: deviceCodeData, error: '' });
       mockMSComplete.mockReturnValue(completePromise as ReturnType<typeof MicrosoftCompleteDeviceCode>);
       const onLoginSuccess = vi.fn();
-      render(<LoginView onLoginSuccess={onLoginSuccess} onSwitchToAccounts={vi.fn()} />);
+      render(<LoginView onLoginSuccess={onLoginSuccess} />);
 
       fireEvent.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }));
       expect(await screen.findByText('ABCD-EFGH')).toBeTruthy();

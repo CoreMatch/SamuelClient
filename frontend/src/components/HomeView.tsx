@@ -268,7 +268,7 @@ export default function HomeView({
     // Tokens are hydrated from the OS keychain (ADR-0008); a session without
     // them must re-authenticate instead of launching.
     if (!currentAccount.accessToken || !currentAccount.clientToken) {
-      setError(t('accounts.reLoginNeeded'));
+      setError(t('profile.sessionExpired'));
       return;
     }
 

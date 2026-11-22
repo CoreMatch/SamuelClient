@@ -37,9 +37,11 @@ export interface StoredAccount {
   // Set by the migration for stored accounts that pointed at a non-HRPAuth
   // Yggdrasil server: they stay visible but cannot be used.
   legacy?: boolean;
-  // Session tokens are in-memory only since schema 3 (ADR-0008). They are
-  // hydrated from the OS keychain and must never be written back to
-  // localStorage; stripTokens() guards every persistence path.
+  // accessToken is always the HA Yggdrasil session token, including for
+  // Microsoft logins after the MC token has been exchanged. OAuth refresh
+  // credentials remain in the OS keychain and are never exposed here.
+  // Session tokens are in-memory only since schema 3 (ADR-0008); stripTokens()
+  // guards every persistence path.
   accessToken?: string;
   clientToken?: string;
 }
@@ -246,7 +248,7 @@ export async function saveAccount(
     username: account.username,
     uuid: account.uuid,
     authType: account.authType,
-    lastUsed: account.lastUsed,
+    lastUsed: true,
     legacy: account.legacy,
     id,
     accessToken: account.accessToken,
@@ -272,15 +274,16 @@ export async function saveAccount(
     }
   }
 
-  const metadata = stripTokens(newAccount);
-  if (existing) {
-    const existingIndex = accounts.indexOf(existing);
-    accounts[existingIndex] = { ...metadata, id: existing.id };
-  } else {
-    accounts.push(metadata);
+  // The launcher now has one signed-in identity. Replace any previous
+  // metadata and remove its OS credential-store entry after storing the new
+  // session, so switching users never leaves an inactive login behind.
+  for (const previous of accounts) {
+    if (previous.id !== newAccount.id) {
+      await deleteAccountTokens(previous.id);
+    }
   }
 
-  localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
+  localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify([stripTokens(newAccount)]));
   return { account: newAccount, tokenStorageError };
 }
 
@@ -310,6 +313,15 @@ export async function deleteAccountTokens(id: string): Promise<void> {
   } catch {
     // swallow: metadata removal proceeds regardless
   }
+}
+
+// clearStoredAccounts removes every known session token before clearing the
+// single-account metadata record.
+export async function clearStoredAccounts(extraAccountIDs: string[] = []): Promise<void> {
+  const accounts = readStoredMetadata();
+  const ids = new Set([...accounts.map(account => account.id), ...extraAccountIDs]);
+  await Promise.all([...ids].map(id => deleteAccountTokens(id)));
+  persistAccountsMetadata([]);
 }
 
 // loadAccountTokens hydrates one account's tokens from the keychain; null
@@ -358,7 +370,8 @@ export async function restoreLastUsedAccount(): Promise<RestoredAccount> {
   }
 
   const accounts = readStoredMetadata();
-  const lastUsed = accounts.find(acc => acc.lastUsed && !acc.legacy);
+  const lastUsed = accounts.find(acc => acc.lastUsed && !acc.legacy)
+    ?? accounts.find(acc => !acc.legacy);
   if (!lastUsed) {
     return { account: null, needsReLogin: false, keychainError: '' };
   }
