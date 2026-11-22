@@ -48,6 +48,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"HRPMLW/internal/interop"
 	"HRPMLW/internal/models"
@@ -63,6 +64,33 @@ func (a *App) emit(event string, payload interface{}) {
 		return
 	}
 	wailsruntime.EventsEmit(a.ctx, event, payload)
+}
+
+const installRetryAttempts = 3
+
+func waitForInstallRetry(ctx context.Context, attempt int) bool {
+	timer := time.NewTimer(250 * time.Millisecond * time.Duration(1<<attempt))
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+func retryInstall(ctx context.Context, run func() *models.ApiResponse) *models.ApiResponse {
+	var result *models.ApiResponse
+	for attempt := 0; attempt < installRetryAttempts; attempt++ {
+		result = run()
+		if result != nil && result.Success {
+			return result
+		}
+		if ctx.Err() != nil || attempt+1 == installRetryAttempts || !waitForInstallRetry(ctx, attempt) {
+			return result
+		}
+	}
+	return result
 }
 
 // beginInstall registers a cancellable context for the install identified by
@@ -640,7 +668,10 @@ func (a *App) DownloadVersion(versionID, gameDir string) *models.ApiResponse {
 		})
 	}
 
-	return a.installResult(ctx, versionID, a.downloadService().InstallVersion(ctx, versionID, gameDir, progress))
+	service := a.downloadService()
+	return a.installResult(ctx, versionID, retryInstall(ctx, func() *models.ApiResponse {
+		return service.InstallVersion(ctx, versionID, gameDir, progress)
+	}))
 }
 
 // InstallFabricLoader installs the Fabric loader profile on top of an
@@ -673,7 +704,10 @@ func (a *App) InstallFabricLoader(mcVersion, loaderVersion, gameDir string) *mod
 		})
 	}
 
-	return a.installResult(ctx, versionID, a.downloadService().InstallFabricLoader(ctx, mcVersion, loaderVersion, gameDir, progress))
+	service := a.downloadService()
+	return a.installResult(ctx, versionID, retryInstall(ctx, func() *models.ApiResponse {
+		return service.InstallFabricLoader(ctx, mcVersion, loaderVersion, gameDir, progress)
+	}))
 }
 
 // InstallForgeLoader downloads the Forge installer and runs it headless
@@ -712,7 +746,10 @@ func (a *App) InstallForgeLoader(mcVersion, forgeVersion, gameDir string) *model
 	}
 
 	javaPath := a.launcherService.GetJavaPath()
-	return a.installResult(ctx, versionID, a.downloadService().InstallForgeLoader(ctx, mcVersion, forgeVersion, gameDir, javaPath, logCallback, progress))
+	service := a.downloadService()
+	return a.installResult(ctx, versionID, retryInstall(ctx, func() *models.ApiResponse {
+		return service.InstallForgeLoader(ctx, mcVersion, forgeVersion, gameDir, javaPath, logCallback, progress)
+	}))
 }
 
 // ==================== Launch (write, streaming) ====================
@@ -885,7 +922,7 @@ func (a *App) InstallJavaRuntime(major int, destination string) *models.ApiRespo
 	defer a.finishInstall(versionID, entry)
 
 	installer := services.NewJavaRuntimeInstaller()
-	installed, err := installer.Install(ctx, major, destination, func(stage string, downloaded, total int64) {
+	progress := func(stage string, downloaded, total int64) {
 		a.emit("download:progress", map[string]interface{}{
 			"version_id": versionID,
 			"stage":      stage,
@@ -893,7 +930,15 @@ func (a *App) InstallJavaRuntime(major int, destination string) *models.ApiRespo
 			"downloaded": downloaded,
 			"total":      total,
 		})
-	})
+	}
+	var installed *services.JavaRuntimeInstall
+	var err error
+	for attempt := 0; attempt < installRetryAttempts; attempt++ {
+		installed, err = installer.Install(ctx, major, destination, progress)
+		if err == nil || ctx.Err() != nil || attempt+1 == installRetryAttempts || !waitForInstallRetry(ctx, attempt) {
+			break
+		}
+	}
 	if err != nil {
 		return a.installResult(ctx, versionID, &models.ApiResponse{Success: false, Error: err.Error()})
 	}

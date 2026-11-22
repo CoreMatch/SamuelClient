@@ -7,6 +7,7 @@ package main
 // variables in internal/services.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -50,6 +51,33 @@ func newTestApp() *App {
 		bmclService:     services.NewBMCLAPIService(),
 		launcherService: services.NewLauncherService(),
 		javaRepo:        repository.NewJavaRepository(),
+	}
+}
+
+func TestRetryInstallRetriesFailureAndStopsAfterSuccess(t *testing.T) {
+	attempts := 0
+	result := retryInstall(context.Background(), func() *models.ApiResponse {
+		attempts++
+		if attempts == 1 {
+			return &models.ApiResponse{Success: false, Error: "temporary network failure"}
+		}
+		return &models.ApiResponse{Success: true}
+	})
+
+	if !result.Success || attempts != 2 {
+		t.Fatalf("result = %+v after %d attempts, want success after 2", result, attempts)
+	}
+}
+
+func TestRetryInstallCapsAttempts(t *testing.T) {
+	attempts := 0
+	result := retryInstall(context.Background(), func() *models.ApiResponse {
+		attempts++
+		return &models.ApiResponse{Success: false, Error: "download failed"}
+	})
+
+	if result.Success || attempts != installRetryAttempts {
+		t.Fatalf("result = %+v after %d attempts, want failure after %d", result, attempts, installRetryAttempts)
 	}
 }
 
