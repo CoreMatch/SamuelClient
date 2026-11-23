@@ -1,209 +1,32 @@
-# Samuel Client
+<div align="center">
+  <img src="https://raw.githubusercontent.com/SamuelCheston/ha-assets/main/brand/samuel.svg" alt="SamuelClient" width="160">
+  <h1>SamuelClient</h1>
+  <p><strong>Your Minecraft instances, ready for the next match.</strong></p>
+  <p><a href="./README.zh-CN.md">简体中文</a></p>
+</div>
 
-A cross-platform Minecraft launcher built with [Wails](https://wails.io/) (Go + React/TypeScript), supporting vanilla, Fabric, and Forge profiles with offline and HRPAuth account authentication.
+SamuelClient is a Minecraft launcher for players managing vanilla, Fabric, and Forge instances. It brings accounts, mods, modpacks, Java runtimes, and MatchCore handoff into one desktop workspace.
 
-## Features
+## Why SamuelClient
 
-- **Account management** — offline and HRPAuth login flows, with token refresh and validation
-- **Version management** — browse and download vanilla Minecraft versions, plus Fabric and Forge mod loaders
-- **Modpack import** — search Modrinth or open a local `.mrpack`, then install it as a separate game instance
-- **Mod management** — under Settings > Folders > Manage Mods, import local `.jar` files or search Modrinth and CurseForge for an installed Fabric or Forge profile. Review required dependencies before installation. Profiles in the same game folder share `mods/`. Disable a mod by appending `.bak` and re-enable it by removing that suffix.
-- **Java management** — track installed Java runtimes and set a default per profile
-- **Persistent storage** — embedded [SQLite](https://www.sqlite.org/) database for settings and Java installations
-- **Cross-platform** — Windows, macOS, and Linux builds via Wails
+- **Bring a pack along.** Search Modrinth packs, import local `.mrpack` files, and repair missing pack files before launch.
+- **Manage mods your way.** Import local JARs or discover CurseForge and Modrinth mods for installed Fabric and Forge profiles.
+- **Choose the right Java.** Track installed runtimes and select a default for each profile.
+- **Use your account.** Offline and HRPAuth login flows support different ways to play.
+- **Update with verification.** The updater verifies release downloads with SHA-256.
+- **Continue into MatchCore.** Receive the Arena handoff and launch the assigned match with your selected account.
 
-## Tech stack
+## Learn more
 
-| Layer    | Technology |
-|----------|------------|
-| Backend  | Go 1.26, [Wails v2](https://wails.io/), [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) |
-| Frontend | React 19, TypeScript 5, [Vite 6](https://vitejs.dev/), Tailwind CSS v4 + Radix UI primitives (shared `@ha/ui` design system) |
-| Build    | Wails CLI (WebKitGTK 2.41+ on Linux) |
+- [v0.3.1 release](https://github.com/CoreMatch/SamuelClient/releases/tag/v0.3.1) — published Linux and Windows builds
+- [HA Wiki](https://wiki.mcnb.dev/) — ecosystem documentation
+- [MatchCoreArena Client](https://github.com/CoreMatch/MatchCoreArena-Client) — desktop matchmaking companion
+- [HRPAuth](https://auth.mcnb.dev/) — account services
 
-## Project layout
+## Compatibility and limits
 
-```
-SamuelClient/
-├── app.go                  # Wails App struct — entry point for Go ↔ JS bindings
-├── main.go                 # Wails application bootstrap
-├── wails.json              # Wails project configuration
-├── go.mod / go.sum         # Go module definition
-├── internal/
-│   ├── database/           # SQLite initialization and access
-│   ├── interop/            # Match handoff receiver (INTEROP-SPEC v1)
-│   ├── models/             # Domain & API models
-│   ├── repository/         # Data access layer
-│   └── services/           # Auth, download, and launcher services
-├── frontend/
-│   ├── src/
-│   │   ├── components/     # React views (HomeView, InstallWizard, AccountManager, LoginView, SettingsView, HandoffBanner, GetStartedChecklist)
-│   │   ├── App.tsx         # Main app shell with the persistent sidebar
-│   │   └── main.tsx        # React entry point
-│   ├── index.html
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── vite.config.ts
-├── build/                  # Platform-specific build assets (icons, manifests, installer)
-└── docs/                   # Reference docs (launcher standard, BMCLAPI, authlib-injector)
-```
+Version 0.3.1 provides Linux amd64 and Windows amd64 builds only. macOS, NeoForge, Quilt, and CurseForge modpacks are not supported.
 
-## Prerequisites
+## License and provenance
 
-- **Go** 1.26 or newer
-- **Node.js** 18+ and **npm**
-- **Wails CLI** v2: `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
-- Platform build dependencies — see the [Wails installation guide](https://wails.io/docs/gettingstarted/installation):
-  - **Linux**: GCC, libgtk-3-dev, libwebkit2gtk-4.0-dev (or 4.1), pkg-config
-  - **macOS**: Xcode Command Line Tools
-  - **Windows**: MinGW-w64 / MSYS2, WebView2 runtime
-
-Verify your environment with `wails doctor`.
-
-The frontend consumes the shared `@ha/ui` design system through a `file:`
-dependency (`frontend/package.json` → `../ha-ui`), pinned as a git submodule
-at the repository root ([CoreMatch/ha-ui](https://github.com/CoreMatch/ha-ui)).
-Clone with `--recurse-submodules` (or run `git submodule update --init`)
-before `npm ci` / `wails dev` / `wails build`. To pick up new ha-ui work,
-push it inside `ha-ui/` and then commit the updated submodule pointer here.
-
-## Getting started
-
-Clone the repository and run the app in live development mode (with hot reload for the frontend):
-
-```bash
-git clone --recurse-submodules https://github.com/CoreMatch/SamuelClient.git
-cd SamuelClient
-wails dev
-```
-
-`wails dev` starts a Vite dev server and reloads the UI on change. Go method changes trigger an automatic rebuild. A browser devtools server is also exposed on `http://localhost:34115` for inspecting the Go bindings from the browser console.
-
-## Building
-
-To produce a redistributable, production-mode binary for your current platform:
-
-```bash
-wails build
-```
-
-The output binary is written to `build/bin/` (`SamuelClient` / `SamuelClient.exe`). Cross-compilation is supported via `wails build -platform windows/amd64` etc. — see the [Wails CLI reference](https://wails.io/docs/reference/cli#build).
-
-Release builds should embed their release tag so the automatic updater can
-compare versions:
-
-```bash
-wails build -ldflags "-X main.version=v1.2.3"
-```
-
-On startup, versioned builds check the latest stable GitHub release. The current
-version is read from the embedded tag or standard published executable
-filename. If a newer release has a matching executable asset, SamuelClient
-verifies its SHA-256, installs it, and restarts. Development builds skip update checks.
-Release assets must end in `-linux-amd64` or `-windows-amd64.exe`; other
-platforms are skipped until matching assets are published.
-
-## Backend interface
-
-The frontend talks to the backend exclusively through Wails bindings (there is
-no frontend-facing HTTP listener). All bound methods return one uniform response shape:
-`{ success, data, error }`.
-
-| Area | Bindings |
-|------|----------|
-| Versions (read) | `GetVersions`, `GetFabricVersions`, `GetForgeVersions`, `GetInstalledVersions` |
-| Mods | `ListMods`, `AddMod`, `SetModEnabled`, `DeleteMod` |
-| Modrinth | `GetModrinthTargets`, `SearchModrinth`, `GetModrinthVersions`, `PreviewModrinthInstall`, `InstallModrinthMod` |
-| Modpacks | `SearchModrinthModpacks`, `GetModrinthModpackVersions`, `PickModpack`, `PreviewModpack`, `InstallModpack` |
-| CurseForge | `GetCurseForgeTargets`, `SearchCurseForge`, `GetCurseForgeVersions`, `PreviewCurseForgeInstall`, `InstallCurseForgeMod` |
-| Java (read) | `GetJavaInstallations` |
-| Config (read) | `GetLauncherConfig` |
-| Match handoff (read) | `GetPendingHandoff`, `GetInteropStatus` |
-| Auth (write) | `HRPAuthLogin`, `HRPAuthRefresh`, `HRPAuthValidate` |
-| Install / launch | `DownloadVersion`, `InstallFabricLoader`, `InstallForgeLoader`, `LaunchGame` |
-| Config (write) | `UpdateLauncherConfig` |
-| Java (write) | `AddJavaInstallation`, `UpdateJavaInstallation`, `DeleteJavaInstallation`, `SetDefaultJavaInstallation` |
-| Match handoff (write) | `DismissHandoff` |
-
-Live data is pushed from Go to the frontend via Wails runtime events:
-
-- `launcher:log` — one event per output line of the launched game process or
-  of the Forge installer while `InstallForgeLoader` runs.
-  Payload: `{ "source": "stdout" | "stderr", "line": string }`.
-- `download:progress` — progress while `DownloadVersion` installs a version
-  or `InstallFabricLoader`/`InstallForgeLoader` install a mod loader.
-  Payload: `{ "version_id": string, "stage": "jar" | "library" | "native" | "asset" | "loader" | "cancelled", "name": string, "downloaded": number, "total": number }`.
-  `downloaded`/`total` are cumulative within a stage (the bar advances 0→100 and only
-  reads 100% when the stage finishes); a terminal `cancelled` stage finalizes an aborted run.
-- `interop:handoff` — match handoff lifecycle from the matchmaking client.
-  Payload: `{ "status": "pending" | "dismissed" | "gone" | "invalid" | "version_mismatch" | "pull_timeout", "handoff": <payload when pending>, "message": <readable text for degraded statuses> }`.
-
-## Match handoff (MatchCore interop)
-
-SamuelClient is the receiver of the MatchCore match handoff protocol
-(`INTEROP-SPEC.md`, protocol v1): after matchmaking succeeds, the
-matchmaking client hands the match over and SamuelClient launches the game
-straight into the match server using its own logged-in account.
-
-- Loopback-only HTTP listener on `127.0.0.1` with a per-process random
-  token, published in a 0600 discovery file under
-  `$XDG_RUNTIME_DIR/matchcore-interop/samuel-client.json` (pid-checked by
-  readers; removed on clean exit).
-- The `matchcore://join?...` deep link is an invocation hint only (handoff
-  id + protocol version, never credentials). On Linux the launcher
-  self-registers an `x-scheme-handler/matchcore` .desktop entry at startup;
-  Windows/macOS registration is a documented gap.
-- If the launcher was woken by a deep link, it pulls the match parameters
-  from the matchmaking client's loopback endpoint (30 s retry window) and
-  then behaves like a pushed handoff.
-- Joining requires a logged-in account; when none is available the UI
-  guides login and auto-resumes the handoff afterwards. Unreachable match
-  servers, missing game versions, protocol mismatches and expired handoffs
-  all degrade with readable messages — the matchmaking result is never
-  dropped silently.
-- Match results are still reported by the BedwarsRel plugin; the launcher
-  only gets the player into the server.
-
-## Frontend
-
-The UI is a single-page React app written in TypeScript and built with Vite. Styling and primitives come from Tailwind CSS v4 and Radix UI, consumed through the shared dark-only `@ha/ui` design system. Views are organized around a persistent left sidebar:
-
-- **Play** — launch the currently selected version with the active account
-- **Versions** — browse, download, and select Minecraft versions (three-step install wizard)
-- **Accounts** — add and switch between offline and HRPAuth accounts
-- **Settings** — application preferences (Java runtimes, paths, memory, mods folder)
-
-Open **Versions > Modpacks** to search Modrinth (an empty search lists popular packs)
-or choose a local `.mrpack`. Review the pack's Minecraft and loader versions and
-select any optional client files before installing. The launcher installs the
-required game and pack files under its data directory in `instances/` and adds
-the completed instance to **Installed**, without changing your default game
-directory. The launcher reuses a compatible Java runtime or installs one
-automatically. For newly imported packs, Play checks for missing game and pack
-files and restores them before launching, without overwriting existing files
-or re-enabling disabled mods. Packs imported before the repair inventory was
-introduced still get automatic Java selection but do not have file repair.
-Modrinth packs using vanilla, Fabric or Forge are supported.
-NeoForge, Quilt and CurseForge modpacks are not supported by this importer.
-
-For CurseForge, launch SamuelClient with an authorized `SAMUEL_CURSEFORGE_API_KEY` in its process environment. Do not commit the key or bundle it with the app. With no key, the CurseForge panel links to the official website. Files that CurseForge does not make available for third-party downloads must be downloaded manually and imported with **Add Mod**.
-
-Run frontend-only checks:
-
-```bash
-cd frontend
-npm run lint
-npm run typecheck
-```
-
-Both need the generated Wails bindings (`frontend/wailsjs`, not committed).
-Run `wails generate module` once from the repository root to create them;
-`wails dev` and `wails build` regenerate them automatically.
-
-## License
-
-This project is licensed under the **GNU Affero General Public License v3.0** — see the [LICENSE](./LICENSE) file for the full text.
-
-## Acknowledgements
-
-- [Wails](https://wails.io/) — Go + web frontend framework
-- [authlib-injector](https://github.com/yushijinhun/authlib-injector) — Yggdrasil authentication reference
+Licensed under [AGPL-3.0](LICENSE). The visual is the existing Samuel brand asset from [ha-assets](https://github.com/SamuelCheston/ha-assets).
