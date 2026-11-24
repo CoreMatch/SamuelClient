@@ -9,12 +9,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sync"
 	"time"
-
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
@@ -43,6 +40,14 @@ type App struct {
 	// abort it. Guarded by installMu.
 	installMu      sync.Mutex
 	installCancels map[string]*installCancel
+
+	updateMu            sync.Mutex
+	updateStatus        UpdateStatus
+	updateCandidate     *updater.Update
+	updateCheckCancel   context.CancelFunc
+	updateInstallCancel context.CancelFunc
+	updateCheckID       uint64
+	updateInstalling    bool
 
 	// Match handoff state (INTEROP-SPEC §6): single pending slot plus the
 	// loopback server publishing it.
@@ -73,6 +78,7 @@ func NewApp() *App {
 			services.NewFileTokenStore(filepath.Join(database.DataDir(), "tokens.json")),
 		),
 		installCancels: map[string]*installCancel{},
+		updateStatus:   UpdateStatus{State: "idle"},
 	}
 }
 
@@ -99,42 +105,7 @@ func (a *App) startup(ctx context.Context) {
 		a.followDeepLink(link)
 	}
 
-	a.checkForUpdates()
-}
-
-func (a *App) checkForUpdates() {
-	go func() {
-		executablePath, err := os.Executable()
-		if err != nil {
-			fmt.Printf("[updater] locate executable: %v\n", err)
-			return
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-
-		currentVersion := updater.DetectVersion(version, executablePath)
-		stagedPath, releaseTag, err := updater.CheckAndStage(ctx, currentVersion, executablePath, "", nil)
-		if err != nil {
-			fmt.Printf("[updater] check failed: %v\n", err)
-			return
-		}
-		if stagedPath == "" {
-			return
-		}
-		workingDirectory, err := os.Getwd()
-		if err != nil {
-			_ = os.Remove(stagedPath)
-			fmt.Printf("[updater] locate working directory: %v\n", err)
-			return
-		}
-		if err := updater.StartApply(stagedPath, executablePath, workingDirectory, os.Args[1:]); err != nil {
-			_ = os.Remove(stagedPath)
-			fmt.Printf("[updater] start installation of %s: %v\n", releaseTag, err)
-			return
-		}
-		fmt.Printf("[updater] installing release %s and restarting\n", releaseTag)
-		wailsruntime.Quit(a.ctx)
-	}()
+	a.startUpdateCheck()
 }
 
 // startInterop brings up the loopback handoff listener and publishes the

@@ -18,28 +18,40 @@ export function Dialog({
   title,
   children,
   closeLabel,
+  dismissible = true,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
   children: ReactNode;
   closeLabel: string;
+  dismissible?: boolean;
 }) {
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+    <DialogPrimitive.Root
+      open={open}
+      onOpenChange={onOpenChange}
+      modal
+    >
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className={overlayClasses} />
-        <DialogPrimitive.Content className="fixed inset-0 z-(--ha-z-overlay) grid place-items-center p-4">
+        <DialogPrimitive.Content
+          className="fixed inset-0 z-(--ha-z-overlay) grid place-items-center p-4"
+          onEscapeKeyDown={event => { if (!dismissible) event.preventDefault(); }}
+          onPointerDownOutside={event => { if (!dismissible) event.preventDefault(); }}
+        >
           <div className={panelClasses}>
             <div className="mb-5 flex items-center justify-between">
               <DialogPrimitive.Title className="text-xl font-semibold text-ink">
                 {title}
               </DialogPrimitive.Title>
-              <DialogPrimitive.Close asChild>
-                <IconButton label={closeLabel}>
-                  <X className="size-4" />
-                </IconButton>
-              </DialogPrimitive.Close>
+              {dismissible && (
+                <DialogPrimitive.Close asChild>
+                  <IconButton label={closeLabel}>
+                    <X className="size-4" />
+                  </IconButton>
+                </DialogPrimitive.Close>
+              )}
             </div>
             {children}
           </div>

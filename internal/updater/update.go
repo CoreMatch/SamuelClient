@@ -3,9 +3,8 @@ package updater
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,38 +12,21 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
 )
 
-const (
-	defaultLatestReleaseURL = "https://api.github.com/repos/CoreMatch/SamuelClient/releases/latest"
-	maxReleaseAssetSize     = 500 << 20
-)
-
 var versionPattern = regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$`)
 var releaseExecutablePattern = regexp.MustCompile(`^SamuelClient-(v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$`)
 
-type release struct {
-	TagName string         `json:"tag_name"`
-	Assets  []releaseAsset `json:"assets"`
-}
-
-type releaseAsset struct {
-	Name string `json:"name"`
-	URL  string `json:"browser_download_url"`
-	Hash string `json:"digest"`
-}
-
 type version struct {
 	major, minor, patch uint64
-	prerelease          string
+	prerelease          []string
 }
 
-// DetectVersion prefers the version embedded in a release build and falls
-// back to the version in the official published executable filename.
+type ProgressFunc func(downloaded, total int64)
+
 func DetectVersion(buildVersion, executablePath string) string {
 	if _, err := parseVersion(buildVersion); err == nil {
 		return buildVersion
@@ -64,91 +46,41 @@ func DetectVersion(buildVersion, executablePath string) string {
 	return buildVersion
 }
 
-// CheckAndStage checks the latest stable release and writes a verified update
-// beside the running executable so it can be atomically installed later.
-func CheckAndStage(ctx context.Context, currentVersion, executablePath, latestReleaseURL string, client *http.Client) (string, string, error) {
-	current, err := parseVersion(currentVersion)
-	if err != nil {
-		return "", "", nil
+func DownloadAndStage(ctx context.Context, update *Update, executablePath string, client *http.Client, progress ProgressFunc) (string, error) {
+	if update == nil {
+		return "", fmt.Errorf("no update selected")
 	}
-	if latestReleaseURL == "" {
-		latestReleaseURL = defaultLatestReleaseURL
+	assetURL, err := url.Parse(update.Asset.URL)
+	if err != nil || assetURL.Scheme == "" || assetURL.Host == "" {
+		return "", fmt.Errorf("invalid update asset URL")
 	}
-	if client == nil {
-		client = &http.Client{Timeout: 2 * time.Minute}
+	expectedName := fmt.Sprintf("SamuelClient-%s-%s-%s", update.Version, update.Asset.OS, update.Asset.Arch)
+	if update.Asset.OS == "windows" {
+		expectedName += ".exe"
 	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, latestReleaseURL, nil)
-	if err != nil {
-		return "", "", err
+	expectedPath := fmt.Sprintf("/v1/releases/%s/%s-%s/%s", update.Version, update.Asset.OS, update.Asset.Arch, expectedName)
+	if update.Asset.Name != expectedName || assetURL.Path != expectedPath || assetURL.RawQuery != "" || assetURL.Fragment != "" {
+		return "", fmt.Errorf("update asset does not match the signed manifest")
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "SamuelClient-Updater")
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", "", err
+	if update.Asset.Size <= 0 || update.Asset.Size > maxAssetSize {
+		return "", fmt.Errorf("update asset has an invalid size")
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("release check returned HTTP %d", resp.StatusCode)
-	}
-	var latest release
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&latest); err != nil {
-		return "", "", fmt.Errorf("decode latest release: %w", err)
-	}
-	available, err := parseVersion(latest.TagName)
-	if err != nil {
-		return "", "", fmt.Errorf("invalid release tag %q", latest.TagName)
-	}
-	if compareVersions(available, current) <= 0 {
-		return "", latest.TagName, nil
-	}
-
-	asset, err := findAsset(latest.Assets, runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		return "", latest.TagName, err
-	}
-	downloadURL, err := url.Parse(asset.URL)
-	if err != nil || downloadURL.Scheme != "https" || (downloadURL.Host != "github.com" && downloadURL.Host != "objects.githubusercontent.com") {
-		return "", latest.TagName, errors.New("release asset has an unsupported download URL")
-	}
-	digestParts := strings.SplitN(asset.Hash, ":", 2)
-	if len(digestParts) != 2 || digestParts[0] != "sha256" || len(digestParts[1]) != sha256.Size*2 {
-		return "", latest.TagName, errors.New("release asset is missing a valid SHA-256 digest")
-	}
-	expectedDigest, err := hex.DecodeString(digestParts[1])
-	if err != nil {
-		return "", latest.TagName, errors.New("release asset has an invalid SHA-256 digest")
-	}
-
-	req, err = http.NewRequestWithContext(ctx, http.MethodGet, asset.URL, nil)
-	if err != nil {
-		return "", latest.TagName, err
-	}
-	req.Header.Set("User-Agent", "SamuelClient-Updater")
-	resp, err = client.Do(req)
-	if err != nil {
-		return "", latest.TagName, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", latest.TagName, fmt.Errorf("release download returned HTTP %d", resp.StatusCode)
-	}
-	if resp.ContentLength > maxReleaseAssetSize {
-		return "", latest.TagName, errors.New("release asset exceeds the maximum supported size")
+	expectedDigest, err := hex.DecodeString(update.Asset.SHA256)
+	if err != nil || len(expectedDigest) != sha256.Size {
+		return "", fmt.Errorf("update asset has an invalid digest")
 	}
 
 	executablePath, err = filepath.EvalSymlinks(executablePath)
 	if err != nil {
-		return "", latest.TagName, fmt.Errorf("resolve executable path: %w", err)
+		return "", fmt.Errorf("resolve executable path: %w", err)
 	}
 	info, err := os.Stat(executablePath)
 	if err != nil {
-		return "", latest.TagName, fmt.Errorf("stat executable: %w", err)
+		return "", fmt.Errorf("stat executable: %w", err)
 	}
 	staged, err := os.CreateTemp(filepath.Dir(executablePath), ".SamuelClient-update-*")
 	if err != nil {
-		return "", latest.TagName, fmt.Errorf("create staged update: %w", err)
+		return "", fmt.Errorf("create staged update: %w", err)
 	}
 	stagedPath := staged.Name()
 	removeStaged := true
@@ -158,46 +90,83 @@ func CheckAndStage(ctx context.Context, currentVersion, executablePath, latestRe
 		}
 	}()
 
-	hash := sha256.New()
-	written, err := io.Copy(io.MultiWriter(staged, hash), io.LimitReader(resp.Body, maxReleaseAssetSize+1))
+	client = securedClient(client, assetURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, assetURL.String(), nil)
 	if err != nil {
 		_ = staged.Close()
-		return "", latest.TagName, fmt.Errorf("download release asset: %w", err)
+		return "", err
 	}
-	if written == 0 || written > maxReleaseAssetSize {
+	req.Header.Set("User-Agent", "SamuelClient-Updater")
+	resp, err := client.Do(req)
+	if err != nil {
 		_ = staged.Close()
-		return "", latest.TagName, errors.New("release asset has an invalid size")
+		return "", fmt.Errorf("download update: %w", err)
 	}
-	if err := staged.Chmod(info.Mode().Perm() | 0111); err != nil {
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
 		_ = staged.Close()
-		return "", latest.TagName, fmt.Errorf("set staged executable permissions: %w", err)
+		return "", fmt.Errorf("update download returned HTTP %d", resp.StatusCode)
+	}
+	if resp.ContentLength >= 0 && resp.ContentLength != update.Asset.Size {
+		_ = staged.Close()
+		return "", fmt.Errorf("update download size does not match the signed manifest")
+	}
+
+	hash := sha256.New()
+	counter := &progressWriter{total: update.Asset.Size, progress: progress}
+	written, err := io.CopyBuffer(io.MultiWriter(staged, hash, counter), io.LimitReader(resp.Body, maxAssetSize+1), make([]byte, 32<<10))
+	if err != nil {
+		_ = staged.Close()
+		return "", fmt.Errorf("download update: %w", err)
+	}
+	if written != update.Asset.Size {
+		_ = staged.Close()
+		return "", fmt.Errorf("update download size does not match the signed manifest")
+	}
+	if subtle.ConstantTimeCompare(hash.Sum(nil), expectedDigest) != 1 {
+		_ = staged.Close()
+		return "", fmt.Errorf("update SHA-256 does not match the signed manifest")
+	}
+	if err := staged.Chmod(info.Mode().Perm() | 0o111); err != nil {
+		_ = staged.Close()
+		return "", fmt.Errorf("set staged executable permissions: %w", err)
 	}
 	if err := staged.Sync(); err != nil {
 		_ = staged.Close()
-		return "", latest.TagName, fmt.Errorf("flush staged update: %w", err)
+		return "", fmt.Errorf("flush staged update: %w", err)
 	}
 	if err := staged.Close(); err != nil {
-		return "", latest.TagName, fmt.Errorf("close staged update: %w", err)
+		return "", fmt.Errorf("close staged update: %w", err)
 	}
-	if !equalBytes(hash.Sum(nil), expectedDigest) {
-		return "", latest.TagName, errors.New("release asset SHA-256 digest does not match")
-	}
-
+	counter.emit(true)
 	removeStaged = false
-	return stagedPath, latest.TagName, nil
+	return stagedPath, nil
 }
 
-func findAsset(assets []releaseAsset, goos, goarch string) (releaseAsset, error) {
-	suffix := "-" + goos + "-" + goarch
-	if goos == "windows" {
-		suffix += ".exe"
+type progressWriter struct {
+	total    int64
+	written  int64
+	lastEmit time.Time
+	progress ProgressFunc
+}
+
+func (w *progressWriter) Write(data []byte) (int, error) {
+	count := len(data)
+	w.written += int64(count)
+	w.emit(w.written == w.total)
+	return count, nil
+}
+
+func (w *progressWriter) emit(force bool) {
+	if w.progress == nil {
+		return
 	}
-	for _, asset := range assets {
-		if strings.HasSuffix(asset.Name, suffix) {
-			return asset, nil
-		}
+	now := time.Now()
+	if !force && now.Sub(w.lastEmit) < 100*time.Millisecond {
+		return
 	}
-	return releaseAsset{}, fmt.Errorf("no release executable is available for %s/%s", goos, goarch)
+	w.lastEmit = now
+	w.progress(w.written, w.total)
 }
 
 func parseVersion(raw string) (version, error) {
@@ -205,23 +174,28 @@ func parseVersion(raw string) (version, error) {
 	if matches == nil {
 		return version{}, fmt.Errorf("unsupported version %q", raw)
 	}
-	major, err := strconv.ParseUint(matches[1], 10, 64)
-	if err != nil {
-		return version{}, fmt.Errorf("invalid version %q", raw)
+	values := make([]uint64, 3)
+	for index := range values {
+		value, err := strconv.ParseUint(matches[index+1], 10, 64)
+		if err != nil {
+			return version{}, fmt.Errorf("invalid version %q", raw)
+		}
+		values[index] = value
 	}
-	minor, err := strconv.ParseUint(matches[2], 10, 64)
-	if err != nil {
-		return version{}, fmt.Errorf("invalid version %q", raw)
+	parsed := version{major: values[0], minor: values[1], patch: values[2]}
+	if matches[4] != "" {
+		parsed.prerelease = strings.Split(matches[4], ".")
+		for _, part := range parsed.prerelease {
+			if part == "" {
+				return version{}, fmt.Errorf("invalid prerelease version %q", raw)
+			}
+		}
 	}
-	patch, err := strconv.ParseUint(matches[3], 10, 64)
-	if err != nil {
-		return version{}, fmt.Errorf("invalid version %q", raw)
-	}
-	return version{major: major, minor: minor, patch: patch, prerelease: matches[4]}, nil
+	return parsed, nil
 }
 
-func compareVersions(a, b version) int {
-	for _, pair := range [][2]uint64{{a.major, b.major}, {a.minor, b.minor}, {a.patch, b.patch}} {
+func compareVersions(left, right version) int {
+	for _, pair := range [][2]uint64{{left.major, right.major}, {left.minor, right.minor}, {left.patch, right.patch}} {
 		if pair[0] > pair[1] {
 			return 1
 		}
@@ -229,28 +203,48 @@ func compareVersions(a, b version) int {
 			return -1
 		}
 	}
-	if a.prerelease == b.prerelease {
-		return 0
-	}
-	if a.prerelease == "" {
-		return 1
-	}
-	if b.prerelease == "" {
-		return -1
-	}
-	if a.prerelease > b.prerelease {
-		return 1
-	}
-	return -1
+	return comparePrerelease(left.prerelease, right.prerelease)
 }
 
-func equalBytes(a, b []byte) bool {
-	if len(a) != len(b) {
-		return false
+func comparePrerelease(left, right []string) int {
+	if len(left) == 0 && len(right) == 0 {
+		return 0
 	}
-	var diff byte
-	for i := range a {
-		diff |= a[i] ^ b[i]
+	if len(left) == 0 {
+		return 1
 	}
-	return diff == 0
+	if len(right) == 0 {
+		return -1
+	}
+	for index := 0; index < len(left) && index < len(right); index += 1 {
+		a, b := left[index], right[index]
+		if a == b {
+			continue
+		}
+		aNumber, aErr := strconv.ParseUint(a, 10, 64)
+		bNumber, bErr := strconv.ParseUint(b, 10, 64)
+		if aErr == nil && bErr == nil {
+			if aNumber > bNumber {
+				return 1
+			}
+			return -1
+		}
+		if aErr == nil {
+			return -1
+		}
+		if bErr == nil {
+			return 1
+		}
+		if a > b {
+			return 1
+		}
+		return -1
+	}
+	if len(left) > len(right) {
+		return 1
+	}
+	if len(left) < len(right) {
+		return -1
+	}
+	return 0
 }

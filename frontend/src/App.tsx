@@ -21,8 +21,10 @@ import { Button } from './ui/button';
 import { Callout } from './ui/callout';
 import { TooltipProvider } from './ui/tooltip';
 import DownloadQueue from './components/DownloadQueue';
+import { UpdateDialog } from './components/UpdateDialog';
 import { updateDownloadQueue } from './downloadQueue';
 import type { DownloadProgressEvent, DownloadTask } from './downloadQueue';
+import { useUpdateStatus } from './useUpdateStatus';
 import {
   GetPendingHandoff,
   DismissHandoff,
@@ -79,6 +81,7 @@ export default function App() {
   const [keychainError, setKeychainError] = useState('');
   const [keychainFallback, setKeychainFallback] = useState(false);
   const [tokenStorageWarning, setTokenStorageWarning] = useState('');
+  const update = useUpdateStatus();
 
   useEffect(() => {
     // Restore the last-used account. HRPAuth tokens are validated
@@ -339,6 +342,26 @@ export default function App() {
     return item ? item.labelKey : 'nav.play';
   };
 
+  const updateDialog = (
+    <UpdateDialog
+      status={update.status}
+      open={update.visible}
+      onInstall={() => { void update.install(); }}
+      onDismiss={update.dismiss}
+      onRetry={() => { void update.retry(); }}
+    />
+  );
+
+  if (update.blocking) {
+    return (
+      <TooltipProvider>
+        <div className="grid h-screen place-items-center bg-base p-4 text-ink">
+          {updateDialog}
+        </div>
+      </TooltipProvider>
+    );
+  }
+
   return (
     <TooltipProvider>
       <div className="flex h-screen overflow-hidden bg-base text-ink">
@@ -457,6 +480,7 @@ export default function App() {
           </div>
         </main>
       </div>
+      {updateDialog}
     </TooltipProvider>
   );
 }

@@ -1,18 +1,15 @@
-# On-demand artifact publishing for milestone releases (ci.yml never
-# publishes). Triggered manually (workflow_dispatch) with a git ref: checks
-# out that ref, builds the Linux binary and the mingw cross-compiled Windows
-# .exe, then creates the GitHub Release for the ref — or uploads to it when
-# the Release already exists. A failed Windows cross-compile does not block
-# the Linux artifact; the step stays visibly failed so the reason is honest.
+# On-demand publishing for tagged portable releases. The ref must be a tag
+# matching VERSION so both artifact names and the embedded client version agree
+# with the OTA manifest.
 name: release
 
 on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Git ref to build and release (tag, branch, or SHA)'
+        description: 'Release tag matching VERSION (for example v0.3.2)'
         required: true
-        default: 'v0.1.0'
+        default: 'v0.3.2'
 
 permissions:
   contents: write
@@ -33,6 +30,22 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           submodules: true
+
+      - name: Validate release tag
+        id: version
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          version="${version#v}"
+          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "VERSION must contain a semantic version" >&2
+            exit 1
+          fi
+          if [ "$RELEASE_REF" != "v$version" ]; then
+            echo "Release ref $RELEASE_REF does not match VERSION v$version" >&2
+            exit 1
+          fi
+          git rev-parse --verify "refs/tags/$RELEASE_REF" >/dev/null
+          echo "version=v$version" >> "$GITHUB_OUTPUT"
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -70,42 +83,43 @@ jobs:
         run: wails generate module
 
       - name: Build Linux binary
-        run: wails build -o SamuelClient-linux-amd64
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: wails build -ldflags "-X main.version=$RELEASE_VERSION" -o "SamuelClient-$RELEASE_VERSION-linux-amd64"
 
       - name: Build Windows binary (mingw cross-compile)
-        id: windows-build
-        continue-on-error: true
         env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
           CC: x86_64-w64-mingw32-gcc
-        run: wails build -platform windows/amd64 -o SamuelClient-windows-amd64.exe
+        run: wails build -platform windows/amd64 -ldflags "-X main.version=$RELEASE_VERSION" -o "SamuelClient-$RELEASE_VERSION-windows-amd64.exe"
 
       - name: Collect artifacts
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          SAFE_REF="${RELEASE_REF//\//-}"
           mkdir -p release-assets
-          cp build/bin/SamuelClient-linux-amd64 "release-assets/SamuelClient-${SAFE_REF}-linux-amd64"
-          if [ -f build/bin/SamuelClient-windows-amd64.exe ]; then
-            cp build/bin/SamuelClient-windows-amd64.exe "release-assets/SamuelClient-${SAFE_REF}-windows-amd64.exe"
-          fi
+          cp "build/bin/SamuelClient-$RELEASE_VERSION-linux-amd64" release-assets/
+          cp "build/bin/SamuelClient-$RELEASE_VERSION-windows-amd64.exe" release-assets/
           {
-            echo "## Release artifacts for ${RELEASE_REF}"
+            echo "## Release artifacts for $RELEASE_VERSION"
             ls -l release-assets
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create or update Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          cat > /tmp/release-notes.md <<'NOTES'
-          Historical milestone snapshot of SamuelClient, provided as-is.
+          cat > /tmp/release-notes.md <<NOTES
+          Portable release for $RELEASE_VERSION.
 
-          This release preserves the project state at the tagged commit as a
-          reference point. It carries no guarantee of updates, bug fixes, or
-          ongoing maintenance, and does not constitute a support baseline.
+          - Signed OTA manifests with user-confirmed installation.
+          - Mandatory update support and SHA-256-verified downloads.
+          - Linux amd64 and Windows amd64 portable builds.
           NOTES
-          if gh release view "$RELEASE_REF" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_REF" release-assets/* --clobber
+          if gh release view "$RELEASE_VERSION" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_VERSION" release-assets/* --clobber
           else
-            gh release create "$RELEASE_REF" release-assets/* \
-              --title "$RELEASE_REF" --notes-file /tmp/release-notes.md
+            gh release create "$RELEASE_VERSION" release-assets/* \
+              --title "$RELEASE_VERSION" --notes-file /tmp/release-notes.md
           fi

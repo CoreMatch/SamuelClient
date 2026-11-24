@@ -353,6 +353,23 @@ const en = {
   'login.microsoft.waiting': 'Waiting for you to finish signing in…',
   'login.microsoft.failed': 'Microsoft sign-in failed. Please try again.',
 
+  // Client updates
+  'updater.available': 'Update available',
+  'updater.required': 'Required update',
+  'updater.version': 'Version {version}',
+  'updater.installNow': 'Install now',
+  'updater.later': 'Later',
+  'updater.dismiss': 'Dismiss update',
+  'updater.downloading': 'Downloading update',
+  'updater.preparing': 'Preparing download…',
+  'updater.progress': '{progress}%',
+  'updater.installing': 'Installing update',
+  'updater.pleaseWait': 'Please wait…',
+  'updater.failed': 'Update failed',
+  'updater.retry': 'Try again',
+  'updater.exit': 'Exit',
+  'updater.rollback': 'This update rolls back to a previous stable version.',
+
   // App shell notices (ADR-0008)
   'app.disclaimer':
     'NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.',
