@@ -46,8 +46,8 @@ describe('AccountManager', () => {
     expect(await screen.findByText('steve')).toBeTruthy();
     expect(screen.getByText('SteveMS')).toBeTruthy();
     expect(screen.getByText('oldy')).toBeTruthy();
-    // Two usable HRPAuth-flavored badges (hrpauth + microsoft) and one legacy.
-    expect(screen.getAllByText('HRPAuth')).toHaveLength(2);
+    // Two usable Armorial-flavored badges (hrpauth + microsoft) and one legacy.
+    expect(screen.getAllByText('Armorial')).toHaveLength(2);
     expect(screen.getByText('Legacy')).toBeTruthy();
   });
 
@@ -103,7 +103,7 @@ describe('AccountManager', () => {
 
     fireEvent.click(await screen.findByLabelText('Use account oldy'));
 
-    expect(await screen.findByText('Sign in again with HRPAuth')).toBeTruthy();
+    expect(await screen.findByText('Sign in again with Armorial')).toBeTruthy();
     expect(onSelectAccount).not.toHaveBeenCalled();
     expect(mockLoad).not.toHaveBeenCalled();
   });

@@ -54,6 +54,7 @@ describe('ProfileView', () => {
 
     expect(await screen.findByRole('heading', { name: 'Steve' })).toBeTruthy();
     expect(screen.getByText(account.uuid)).toBeTruthy();
+    expect(screen.getByText('Armorial account')).toBeTruthy();
     expect(screen.getByText('Skin')).toBeTruthy();
     expect(screen.getByText('Cape')).toBeTruthy();
     expect(screen.getByText('Active')).toBeTruthy();

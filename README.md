@@ -12,16 +12,16 @@ SamuelClient is a Minecraft launcher for players managing vanilla, Fabric, and F
 - **Bring a pack along.** Search Modrinth packs, import local `.mrpack` files, and repair missing pack files before launch.
 - **Manage mods your way.** Import local JARs or discover CurseForge and Modrinth mods for installed Fabric and Forge profiles.
 - **Choose the right Java.** Track installed runtimes and select a default for each profile.
-- **Use your account.** Offline and HRPAuth login flows support different ways to play.
+- **Use your account.** Offline and Armorial login flows support different ways to play.
 - **Update with verification.** Signed OTA manifests and SHA-256-verified downloads keep updates trustworthy.
 - **Continue into MatchCore.** Receive the Arena handoff and launch the assigned match with your selected account.
 
 ## Learn more
 
 - [v0.3.2 release](https://github.com/CoreMatch/SamuelClient/releases/tag/v0.3.2) — published Linux and Windows builds
-- [HA Wiki](https://wiki.mcnb.dev/) — ecosystem documentation
+- [Armorial Wiki](https://wiki.mcnb.dev/) — ecosystem documentation
 - [MatchCoreArena Client](https://github.com/CoreMatch/MatchCoreArena-Client) — desktop matchmaking companion
-- [HRPAuth](https://auth.mcnb.dev/) — account services
+- [Armorial](https://auth.mcnb.dev/) — account services
 
 ## Compatibility and limits
 

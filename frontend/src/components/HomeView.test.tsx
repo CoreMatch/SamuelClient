@@ -126,6 +126,7 @@ describe('HomeView', () => {
     await waitFor(() => {
       expect(screen.getByRole('combobox', { name: 'Minecraft Version' }).textContent).toBe('Main world');
     });
+    expect(screen.getByText('Armorial')).toBeTruthy();
     const play = await waitFor(() => {
       const btn = screen.getByRole('button', { name: 'Play' });
       expect(btn.hasAttribute('disabled')).toBe(false);

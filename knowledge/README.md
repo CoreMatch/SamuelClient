@@ -4,15 +4,15 @@
 
 This knowledge base is **SamuelClient's memo to itself**. It serves self-hosting
 and maintenance of this repository: what the launcher is, how it authenticates
-against the HA ecosystem, and where it is (and is not) covered by external
+against the Armorial ecosystem, and where it is (and is not) covered by external
 contracts. It is maintained alongside the code and is not meant to make external
 projects accommodate this one.
 
 ## Order of Authority
 
 This knowledge base **does not define outward behavior**. Outward behavior of
-the HA ecosystem is defined by
-[HA-Contract](https://github.com/CoreMatch/HA-Contract). As of this writing the
+the Armorial ecosystem is defined by
+[Armorial Contract](https://github.com/CoreMatch/HA-Contract). As of this writing the
 contract does **not** cover SamuelClient at all (see entry 0003); if a contract
 later covers launcher behavior and an entry here contradicts it, **the contract
 wins and the entry is stale — fix the entry, never the contract**, and surface

@@ -27,7 +27,7 @@ const en = {
   'play.noVersions': 'No versions installed',
   'play.noJava': 'No Java installed',
   'play.none': 'None',
-  'play.hrpauth': 'HRPAuth',
+  'play.hrpauth': 'Armorial',
   'play.launchSettings': 'Launch Settings',
   'play.temporarySettingsNotice': 'Temporary launch settings: changes here are not saved. Use Settings to change your permanent defaults.',
   'play.permanentSettings': 'Open Settings',
@@ -286,12 +286,12 @@ const en = {
 
   // Profile
   'profile.signedOutTitle': 'No player signed in',
-  'profile.signedOutDescription': 'Sign in with your HA account to view your player profile and manage your skin and cape.',
+  'profile.signedOutDescription': 'Sign in with your Armorial account to view your player profile and manage your skin and cape.',
   'profile.loadFailed': "Couldn't load your player profile. Check your connection and try again.",
   'profile.sessionExpired': 'Your session has expired. Please sign in again.',
   'profile.playerName': 'Player name',
   'profile.uuid': 'Player UUID',
-  'profile.hrpauth': 'HA account',
+  'profile.hrpauth': 'Armorial account',
   'profile.microsoft': 'Microsoft sign-in',
   'profile.texturesTitle': 'Skin & Cape',
   'profile.texturesDescription': 'Manage the textures shown on your Yggdrasil player profile.',
@@ -323,9 +323,9 @@ const en = {
   // no longer part of the application navigation.
   'accounts.add': 'Add Account',
   'accounts.emptyTitle': 'No accounts',
-  'accounts.hrpauth': 'HRPAuth',
+  'accounts.hrpauth': 'Armorial',
   'accounts.legacy': 'Legacy',
-  'accounts.legacyNotice': 'Sign in again with HRPAuth',
+  'accounts.legacyNotice': 'Sign in again with Armorial',
   'accounts.reLoginNeeded': 'This account needs to sign in again',
   'accounts.deleteTitle': 'Delete Account',
   'accounts.deleteConfirm':
@@ -335,7 +335,7 @@ const en = {
 
   // Login
   'login.title': 'Sign in',
-  'login.hrpauth': 'HRPAuth',
+  'login.hrpauth': 'Armorial',
   'login.username': 'Username',
   'login.password': 'Password',
   'login.showPassword': 'Show password',
@@ -374,7 +374,7 @@ const en = {
   'app.disclaimer':
     'NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.',
   'app.offlineRemoved':
-    'Offline accounts are no longer supported and were removed during this update ({usernames}). Please sign in with your HA account.',
+    'Offline accounts are no longer supported and were removed during this update ({usernames}). Please sign in with your Armorial account.',
   'app.keychainUnavailable':
     'The system credential store is unavailable on this machine. Session tokens cannot be stored securely; sign-in may need to be repeated and tokens may remain in fallback storage. ({error})',
   'app.tokenStorageWarning':
